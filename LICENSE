@@ -1,0 +1,9 @@
+AeonUI
+Copyright (c) 2026 dldvlpr. All rights reserved.
+
+No part of this software may be copied, modified, redistributed or reused,
+in whole or in part, without prior written permission from the author.
+
+Bundled third-party libraries keep their own licenses:
+- LibStub (public domain), in Libs/LibStub
+- LibDeflate (zlib License), in Libs/LibDeflate/LICENSE.txt

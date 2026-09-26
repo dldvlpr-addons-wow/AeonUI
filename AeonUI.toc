@@ -1,0 +1,83 @@
+## Interface: 16001
+## Title: |cff3fa9f5Aeon|rUI
+## Notes: Barre d'infos, confort automatique, rappels et habillage pour WoW Forever (addon non officiel). Modules activables un par un, sans dépendance. /aeon
+## Version: @project-version@
+## X-Curse-Project-ID: 
+## X-Wago-ID: 
+## SavedVariables: AeonUIDB
+## OptionalDeps: LibSharedMedia-3.0
+## IconTexture: Interface\AddOns\AeonUI\Media\Logo
+## AddonCompartmentFunc: AeonUI_AddonCompartmentFunc
+## Category: User Interface
+## Category-frFR: Interface utilisateur
+## X-License: All Rights Reserved
+
+# 16001 = WoW Forever 1.60 (nom de code Camelot) : contenu Classic sur moteur 12.x.
+# Un seul .toc sans suffixe : un fichier AeonUI_Forever.toc ne serait chargé par aucun client.
+#
+# L'ordre de chargement est le seul mécanisme de dépendance :
+#   Libs (LibStub, LibDeflate : compression des exports) -> Locale -> Core (Compat, Core, Pixel, Database, CVars, Modules, Media, Movers, DataTexts) -> Modules -> Config
+
+Libs\LibStub\LibStub.lua
+Libs\LibDeflate\LibDeflate.lua
+Locale\enUS.lua
+Locale\frFR.lua
+Locale\deDE.lua
+Locale\esES.lua
+Locale\esMX.lua
+Locale\itIT.lua
+Locale\ptBR.lua
+Locale\ruRU.lua
+Locale\koKR.lua
+Locale\zhCN.lua
+Locale\zhTW.lua
+Locale\Locale.lua
+Core\Compat.lua
+Core\Core.lua
+Core\Pixel.lua
+Core\Database.lua
+Core\CVars.lua
+Core\Media.lua
+Core\Modules.lua
+Core\Movers.lua
+Core\DataTexts.lua
+Core\ProfileShare.lua
+Modules\TopBar.lua
+Modules\DataPanels.lua
+Modules\Automation.lua
+Modules\Reminders.lua
+Modules\Alerts.lua
+Modules\Nameplates.lua
+Modules\Frames.lua
+Modules\UnitFrameElements.lua
+Modules\UnitFrames.lua
+Modules\ResourceBars.lua
+Modules\SwingTimer.lua
+Modules\RaidCooldowns.lua
+Modules\Quickdraw.lua
+Modules\NamePlateFrames.lua
+Modules\GroupFrames.lua
+Modules\ActionBars.lua
+Modules\MinimapFrame.lua
+Modules\Chat.lua
+Modules\Loot.lua
+Modules\RaidUtility.lua
+Modules\Bags.lua
+Modules\DataBars.lua
+Modules\QuestTracker.lua
+Modules\BlizzardFrames.lua
+Modules\CooldownManager.lua
+Modules\CoTank.lua
+Modules\Tracker.lua
+Modules\GroupFinder.lua
+Modules\Cursor.lua
+Modules\AFK.lua
+Modules\Gear.lua
+Modules\Skin.lua
+Modules\Interface.lua
+Config\Widgets.lua
+Config\OptionsWindow.lua
+Config\Options.lua
+Config\Install.lua
+Config\AddonPlacements.lua
+Config\FirstRun.lua

@@ -1,0 +1,9 @@
+package-as: AeonUI
+
+ignore:
+  - AeonUI
+  - docs
+  - tests
+  - "*.zip"
+  - tools
+  - Media/aeonUI.png
