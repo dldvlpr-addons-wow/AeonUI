@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: |cff3fa9f5Aeon|rUI Bags
+## Title-frFR: |cff3fa9f5Aeon|rUI Sacs
+## Notes: AeonUI bags and bank. Disable to use another bag addon.
+## Notes-frFR: Sacs et banque AeonUI. À désactiver pour utiliser un autre addon de sacs.
+## Version: @project-version@
+## Dependencies: AeonUI
+## Group: AeonUI
+## IconTexture: Interface\AddOns\AeonUI\Media\Logo
+## Category: User Interface
+## Category-frFR: Interface utilisateur
+## X-License: All Rights Reserved
+
+Bags.lua
+Bank.lua

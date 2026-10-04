@@ -1,5 +1,15 @@
 package-as: AeonUI
 
+move-folders:
+  AeonUI/AeonUI_Bags: AeonUI_Bags
+  AeonUI/AeonUI_ActionBars: AeonUI_ActionBars
+  AeonUI/AeonUI_UnitFrames: AeonUI_UnitFrames
+  AeonUI/AeonUI_GroupFrames: AeonUI_GroupFrames
+  AeonUI/AeonUI_Nameplates: AeonUI_Nameplates
+  AeonUI/AeonUI_Chat: AeonUI_Chat
+  AeonUI/AeonUI_Minimap: AeonUI_Minimap
+  AeonUI/AeonUI_QuestTracker: AeonUI_QuestTracker
+
 ignore:
   - AeonUI
   - docs
@@ -7,3 +17,7 @@ ignore:
   - "*.zip"
   - tools
   - Media/aeonUI.png
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown

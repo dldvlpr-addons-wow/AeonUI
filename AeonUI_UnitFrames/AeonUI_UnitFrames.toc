@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: |cff3fa9f5Aeon|rUI Unit Frames
+## Title-frFR: |cff3fa9f5Aeon|rUI Cadres d'unité
+## Notes: AeonUI unit frames and resource bars.
+## Notes-frFR: Cadres d'unité et barres de ressources AeonUI.
+## Version: @project-version@
+## Dependencies: AeonUI
+## Group: AeonUI
+## IconTexture: Interface\AddOns\AeonUI\Media\Logo
+## Category: User Interface
+## Category-frFR: Interface utilisateur
+## X-License: All Rights Reserved
+
+UnitFrames.lua
+ResourceBars.lua

@@ -5,9 +5,10 @@
 --   * masquer en combat les infobulles d'unité, ou toutes les infobulles ;
 --   * icônes d'aura (buffs du joueur) et du gestionnaire de temps de recharge recadrées :
 --     on retire le liseré intégré aux icônes Blizzard (zoom réglable) ;
---   * fiche de personnage et fenêtre d'amis au thème : art Blizzard effacé (alpha 0, rendu
---     au décochage), fond plat et bordure 1 px, emplacements d'équipement
---     recadrés avec une bordure à la couleur de qualité.
+--   * une quarantaine de fenêtres, popups et menus Blizzard, un style chacune (défaut commun,
+--     exceptions par fenêtre) sous un interrupteur général : « thème » (art effacé à alpha 0,
+--     fond plat et bordure 1 px ; emplacements d'équipement recadrés, bordure de qualité),
+--     « sombre » (même art, teinté) ou « Blizzard » (intact). Tout est rendu au décochage.
 -- Blizzard réapplique le fond des infobulles à chaque affichage : on repasse derrière
 -- (hooks), et au disable on rend le style d'origine. Les hooks ne se retirent pas,
 -- d'où le test `active` en tête de chacun.
@@ -28,9 +29,14 @@ local Skin = NS.Modules:Register("skin", {
         hideAllTooltipsInCombat = false,
         iconZoom = true,
         iconZoomAmount = 8,        -- en % de chaque bord (0-20)
-        darkPanels = false,        -- panneaux Blizzard (personnage, grimoire, marchand…) assombris
-        skinWindows = false,       -- fiche de personnage et amis : fond plat du thème
+        skinWindows = false,       -- interrupteur général de l'habillage des fenêtres Blizzard
+        windowStyle = "theme",     -- style par défaut : "theme" | "dark" | "blizzard"
+        windowStyles = {},         -- [nom du cadre] = style propre à cette fenêtre
         anchorCursor = false,      -- infobulles par défaut (monde, cadres) collées au curseur
+        anchorFixed = false,       -- infobulles par défaut sur un mover (prioritaire sur le curseur)
+        anchorGrowth = "UP_LEFT",  -- sens de croissance depuis le mover : UP_LEFT, UP_RIGHT, DOWN_LEFT, DOWN_RIGHT
+        anchorOffsetX = 0,
+        anchorOffsetY = 0,
         tooltipTarget = true,      -- ligne « Cible : » sur les infobulles d'unité
         guildRank = true,          -- rang de guilde après le nom de guilde
         tooltipIDs = false,        -- identifiant des sorts, objets et auras
@@ -158,6 +164,26 @@ local function OnTooltipUnit(tooltip)
     if Skin.db.tooltips then SetColors(tooltip, BACKGROUND, { r, g, b, 1 }) end
 end
 
+-- Sens de croissance -> coin de l'infobulle posé sur le même coin du mover.
+local GROWTH_POINTS = { UP_LEFT = "BOTTOMRIGHT", UP_RIGHT = "BOTTOMLEFT", DOWN_LEFT = "TOPRIGHT", DOWN_RIGHT = "TOPLEFT" }
+local tooltipAnchor
+
+--- Mover de l'infobulle, présent seulement quand la position fixe est choisie.
+function Skin:UpdateTooltipAnchor()
+    if active and self.db.anchorFixed then
+        if not tooltipAnchor then
+            tooltipAnchor = CreateFrame("Frame", "AeonUITooltipAnchor", UIParent)
+            tooltipAnchor:SetSize(160, 40)
+        end
+        NS.Movers:Register("tooltip", tooltipAnchor, L.MOVER_TOOLTIP, "BOTTOMRIGHT", -80, 180)
+        NS.Movers:Load("tooltip")
+    elseif tooltipAnchor then
+        NS.Movers:Unregister("tooltip")
+    end
+end
+
+function Skin:GetTooltipAnchor() return tooltipAnchor end
+
 local function HookTooltips()
     for _, tooltip in ipairs(Tooltips()) do
         tooltip:HookScript("OnShow", OnTooltipShow)
@@ -168,7 +194,14 @@ local function HookTooltips()
     -- Infobulles « par défaut » (unités du monde, cadres) : au curseur plutôt qu'en bas à droite.
     if _G.GameTooltip_SetDefaultAnchor then
         hooksecurefunc("GameTooltip_SetDefaultAnchor", function(tooltip, parent)
-            if active and Skin.db.anchorCursor and not (tooltip.IsForbidden and tooltip:IsForbidden()) then
+            if not active or (tooltip.IsForbidden and tooltip:IsForbidden()) then return end
+            local db = Skin.db
+            if db.anchorFixed and tooltipAnchor then
+                local point = GROWTH_POINTS[db.anchorGrowth] or "BOTTOMRIGHT"
+                tooltip:SetOwner(parent, "ANCHOR_NONE")
+                tooltip:ClearAllPoints()
+                tooltip:SetPoint(point, tooltipAnchor, point, db.anchorOffsetX, db.anchorOffsetY)
+            elseif db.anchorCursor then
                 tooltip:SetOwner(parent, "ANCHOR_CURSOR")
             end
         end)
@@ -227,48 +260,46 @@ function Skin.CollectIcons()
     return icons
 end
 
-local HookIcons
-
 function Skin:ApplyIcons()
-    HookIcons()   -- Blizzard_CooldownViewer se charge à la demande : rattraper ses cadres
     for _, icon in ipairs(self.CollectIcons()) do Crop(icon) end
 end
 
--- Un verrou par cadre : un cadre absent au premier passage est hooké dès qu'il existe.
-local hookedFrames = {}
-function HookIcons()
-    for _, name in ipairs(ICON_CONTAINERS) do
-        local container = _G[name]
-        if container and container.UpdateAuraButtons and not hookedFrames[name] then
-            hookedFrames[name] = true
-            hooksecurefunc(container, "UpdateAuraButtons", function() if active then Skin:ApplyIcons() end end)
-        end
-    end
-    for _, name in ipairs(COOLDOWN_VIEWERS) do
-        local viewer = _G[name]
-        if viewer and viewer.RefreshLayout and not hookedFrames[name] then
-            hookedFrames[name] = true
-            hooksecurefunc(viewer, "RefreshLayout", function() if active then Skin:ApplyIcons() end end)
-        end
-    end
+-- Aucun hook sur BuffFrame ni les viewers (cadres Edit Mode : un hook sur leurs méthodes
+-- contamine la mise en page, « attempt to call a nil value ») : recadrage l'image qui suit
+-- les événements qui les remettent à jour.
+local iconsQueued = false
+local function QueueIcons()
+    if iconsQueued then return end
+    iconsQueued = true
+    C_Timer.After(0, function()
+        iconsQueued = false
+        if active then Skin:ApplyIcons() end
+    end)
 end
 
 --------------------------------------------------------------------------------
--- Panneaux sombres
+-- Fenêtres Blizzard : style « sombre »
 --------------------------------------------------------------------------------
--- Les panneaux Blizzard (NineSlice, fond, barre de titre) sont teintés : même art, plus
+-- Style sombre : les panneaux (NineSlice, fond, barre de titre) sont teintés, même art, plus
 -- sombre. Réversible (teinte 1,1,1). Les Blizzard_* chargés à la demande sont rattrapés sur
--- ADDON_LOADED. Les panneaux non listés restent tels quels.
+-- ADDON_LOADED. Les fenêtres non listées restent telles quelles.
+-- ponytail: menus contextuels Blizzard_Menu (11.0+) non habillés, seulement les DropDownList
+-- d'UIDropDownMenu ; hook de Menu.GetManager si le besoin se confirme.
 
-local DARK_PANELS = {
+local WINDOWS = {
     "CharacterFrame", "InspectFrame", "SpellBookFrame", "PlayerSpellsFrame", "ClassTalentFrame", "TalentFrame",
     "FriendsFrame", "QuestLogFrame", "MerchantFrame", "GameMenuFrame", "MailFrame", "OpenMailFrame", "DressUpFrame",
     "TradeFrame", "TaxiFrame", "GossipFrame", "QuestFrame", "LootFrame", "BankFrame", "PVEFrame", "PVPFrame",
     "GuildFrame", "ItemTextFrame", "TabardFrame", "PetStableFrame", "MacroFrame", "KeyBindingFrame",
     "AuctionHouseFrame", "ProfessionsFrame", "EncounterJournal", "AchievementFrame", "CalendarFrame",
     "CollectionsJournal", "AddonList", "HelpFrame", "ChannelFrame", "RaidParentFrame", "CommunitiesFrame",
+    "WorldMapFrame", "ReadyCheckFrame", "StaticPopup1", "StaticPopup2", "StaticPopup3", "StaticPopup4",
+    "DropDownList1", "DropDownList2", "DropDownList3",
 }
-local DARK_KEYS = { "Bg", "TitleBg", "TopTileStreaks", "Inset", "TitleContainer" }   -- jamais le portrait
+Skin.WINDOWS = WINDOWS
+local STYLES = { theme = true, dark = true, blizzard = true }
+-- Border, BG : popups et menus déroulants.
+local DARK_KEYS = { "Bg", "TitleBg", "TopTileStreaks", "Inset", "TitleContainer", "Border", "BG" }   -- jamais le portrait
 local DARK_TINT = 0.25
 local darkenedPanels = {}    -- [cadre] = true
 
@@ -295,25 +326,22 @@ function Skin.DarkenPanel(frame, on)
     end
 end
 
-function Skin:ApplyDarkPanels()
-    local on = active and self.db.darkPanels
-    for _, name in ipairs(DARK_PANELS) do
-        local frame = _G[name]
-        if type(frame) == "table" and (on or darkenedPanels[frame]) then
-            Skin.DarkenPanel(frame, on)
-            darkenedPanels[frame] = on or nil
-        end
-    end
+--- Style de la fenêtre `name` : exception, sinon défaut ; "blizzard" sans l'interrupteur.
+function Skin:WindowStyle(name)
+    if not (active and self.db.skinWindows) then return "blizzard" end
+    local style = self.db.windowStyles[name]
+    if STYLES[style] then return style end
+    return STYLES[self.db.windowStyle] and self.db.windowStyle or "blizzard"
 end
 
 --------------------------------------------------------------------------------
--- Fenêtres au thème : fiche de personnage et amis
+-- Fenêtres Blizzard : style « thème »
 --------------------------------------------------------------------------------
 
--- Onglets laissés à Blizzard : effacés, ils perdraient la marque de l'onglet actif.
-local SKIN_WINDOWS = { "CharacterFrame", "FriendsFrame" }
--- Parties d'art des fenêtres Blizzard (jamais TitleContainer : il porte le titre).
-local WINDOW_PARTS = { "NineSlice", "Bg", "TitleBg", "TopTileStreaks", "Inset", "PortraitContainer", "portrait" }
+-- Parties d'art des fenêtres Blizzard (jamais TitleContainer : il porte le titre). Onglets laissés
+-- à Blizzard : effacés, ils perdraient la marque de l'onglet actif.
+local WINDOW_PARTS = { "NineSlice", "Bg", "TitleBg", "TopTileStreaks", "Inset", "PortraitContainer", "portrait",
+                       "Border", "BG" }
 local EQUIPMENT_SLOTS = {
     "Head", "Neck", "Shoulder", "Back", "Chest", "Shirt", "Tabard", "Wrist", "Hands", "Waist", "Legs", "Feet",
     "Finger0", "Finger1", "Trinket0", "Trinket1", "MainHand", "SecondaryHand", "Ranged", "Ammo",
@@ -358,11 +386,10 @@ function Skin.SkinFrame(frame, on)
     if holder then holder:SetShown(on) end
 end
 
-local function SlotButton(slot) return _G["Character" .. slot .. "Slot"] end
-
---- Bordure de qualité et icône recadrée d'un emplacement d'équipement.
-function Skin.PaintSlot(slot, on)
-    local button = SlotButton(slot)
+--- Bordure de qualité et icône recadrée d'un emplacement d'équipement. prefix « Character »
+-- (défaut) ou « Inspect » avec l'unité inspectée.
+function Skin.PaintSlot(slot, on, prefix, unit)
+    local button = _G[(prefix or "Character") .. slot .. "Slot"]
     if not button then return end
     local icon = button.icon or _G[button:GetName() .. "IconTexture"]
     if icon and icon.SetTexCoord then
@@ -374,9 +401,8 @@ function Skin.PaintSlot(slot, on)
     if normal then Fade(normal, on) end
     local edges = slotBorders[button]
     local quality
-    if on and _G.GetInventorySlotInfo and _G.GetInventoryItemQuality then
-        local ok, id = pcall(GetInventorySlotInfo, slot .. "Slot")
-        quality = ok and id and GetInventoryItemQuality("player", id) or nil
+    if on then
+        quality = select(2, NS.GetEquipped(slot, unit))
         if NS.IsSecret(quality) then quality = nil end
     end
     if quality and not edges then
@@ -385,7 +411,7 @@ function Skin.PaintSlot(slot, on)
     end
     if not edges then return end
     local r, g, b = 0, 0, 0
-    if quality and C_Item and C_Item.GetItemQualityColor then r, g, b = C_Item.GetItemQualityColor(quality) end
+    if quality then r, g, b = NS.QualityColor(quality) end
     for _, edge in pairs(edges) do
         NS.SetSolidColor(edge, r, g, b, 1)
         edge:SetShown(quality ~= nil)
@@ -393,13 +419,28 @@ function Skin.PaintSlot(slot, on)
 end
 
 function Skin:ApplyWindows()
-    local on = active and self.db.skinWindows and true or false
-    for _, name in ipairs(SKIN_WINDOWS) do
+    for _, name in ipairs(WINDOWS) do
         local frame = _G[name]
-        if type(frame) == "table" and (on or windowBackdrops[frame]) then Skin.SkinFrame(frame, on) end
+        if type(frame) == "table" then
+            local style = self:WindowStyle(name)
+            local theme, dark = style == "theme", style == "dark"
+            if theme or windowBackdrops[frame] then Skin.SkinFrame(frame, theme) end
+            if dark or darkenedPanels[frame] then
+                Skin.DarkenPanel(frame, dark)
+                darkenedPanels[frame] = dark or nil
+            end
+        end
     end
-    if _G.CharacterFrame and (on or next(slotBorders)) then
-        for _, slot in ipairs(EQUIPMENT_SLOTS) do Skin.PaintSlot(slot, on) end
+    local character = self:WindowStyle("CharacterFrame") == "theme"
+    if _G.CharacterFrame and (character or next(slotBorders)) then
+        for _, slot in ipairs(EQUIPMENT_SLOTS) do Skin.PaintSlot(slot, character) end
+    end
+    local inspect = _G.InspectFrame
+    local unit = inspect and inspect.unit
+    if NS.IsSecret(unit) then unit = nil end
+    local inspected = self:WindowStyle("InspectFrame") == "theme"
+    if inspect and (inspected or next(slotBorders)) then
+        for _, slot in ipairs(EQUIPMENT_SLOTS) do Skin.PaintSlot(slot, inspected and unit ~= nil, "Inspect", unit) end
     end
 end
 
@@ -409,9 +450,9 @@ end
 
 local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event)
-    if event == "ADDON_LOADED" then Skin:ApplyDarkPanels() Skin:ApplyWindows() return end
-    if event == "PLAYER_EQUIPMENT_CHANGED" then Skin:ApplyWindows() return end
-    Skin:ApplyIcons()
+    if event == "ADDON_LOADED" then Skin:ApplyWindows() QueueIcons() return end
+    if event == "PLAYER_EQUIPMENT_CHANGED" or event == "INSPECT_READY" then Skin:ApplyWindows() return end
+    QueueIcons()
 end)
 
 function Skin:OnEnable()
@@ -420,16 +461,17 @@ function Skin:OnEnable()
         hooked = true
         HookTooltips()
     end
-    HookIcons()
     if self.db.tooltips then
         for _, tooltip in ipairs(Tooltips()) do StyleTooltip(tooltip) end
     end
+    self:UpdateTooltipAnchor()
     NS.RegisterEventSafe(events, "UNIT_AURA", "player")
+    NS.RegisterEventSafe(events, "SPELL_UPDATE_COOLDOWN")   -- items des viewers de recharge
     NS.RegisterEventSafe(events, "PLAYER_ENTERING_WORLD")
     NS.RegisterEventSafe(events, "ADDON_LOADED")
     NS.RegisterEventSafe(events, "PLAYER_EQUIPMENT_CHANGED")
+    NS.RegisterEventSafe(events, "INSPECT_READY")
     self:ApplyIcons()
-    self:ApplyDarkPanels()
     self:ApplyWindows()
 end
 
@@ -437,8 +479,8 @@ function Skin:OnDisable()
     active = false
     events:UnregisterAllEvents()
     for _, tooltip in ipairs(Tooltips()) do RestoreTooltip(tooltip) end
+    self:UpdateTooltipAnchor()
     self:ApplyIcons()   -- active = false : rognage Blizzard d'origine
-    self:ApplyDarkPanels()
     self:ApplyWindows()
 end
 
@@ -446,8 +488,8 @@ function Skin:OnRefresh()
     for _, tooltip in ipairs(Tooltips()) do
         if self.db.tooltips then StyleTooltip(tooltip) else RestoreTooltip(tooltip) end
     end
+    self:UpdateTooltipAnchor()
     self:ApplyIcons()
-    self:ApplyDarkPanels()
     self:ApplyWindows()
 end
 
@@ -462,14 +504,35 @@ function Skin:BuildOptions(o)
     o:Check("hideUnitTooltipInCombat", L.OPT_SKIN_HIDE_COMBAT)
     o:Check("hideAllTooltipsInCombat", L.OPT_SKIN_HIDE_ALL_COMBAT)
     o:Check("anchorCursor", L.OPT_SKIN_ANCHOR_CURSOR)
+    o:Advanced()
+    o:Check("anchorFixed", L.OPT_SKIN_ANCHOR_FIXED)
+    o:Dropdown("anchorGrowth", L.OPT_SKIN_ANCHOR_GROWTH, {
+        { name = L.OPT_SKIN_GROWTH_UP_LEFT, value = "UP_LEFT" }, { name = L.OPT_SKIN_GROWTH_UP_RIGHT, value = "UP_RIGHT" },
+        { name = L.OPT_SKIN_GROWTH_DOWN_LEFT, value = "DOWN_LEFT" }, { name = L.OPT_SKIN_GROWTH_DOWN_RIGHT, value = "DOWN_RIGHT" },
+    }, 36)
+    o:Slider("anchorOffsetX", L.OPT_SKIN_ANCHOR_OFFSET_X, -100, 100, 1, 36)
+    o:Slider("anchorOffsetY", L.OPT_SKIN_ANCHOR_OFFSET_Y, -100, 100, 1, 36)
+    o:EndAdvanced()
     o:Check("tooltipTarget", L.OPT_SKIN_TOOLTIP_TARGET)
     o:Check("guildRank", L.OPT_SKIN_GUILD_RANK)
+    o:Advanced()
     o:Check("tooltipIDs", L.OPT_SKIN_TOOLTIP_IDS)
+    o:EndAdvanced()
     o:Check("hideHealthBar", L.OPT_SKIN_HIDE_HEALTHBAR)
     o:Title(L.OPT_SKIN_ICONS_TITLE)
     o:Check("iconZoom", L.OPT_SKIN_ICON_ZOOM)
+    o:Advanced()
     o:Slider("iconZoomAmount", L.OPT_SKIN_ICON_ZOOM_AMOUNT, 0, 20, 1, 36, "%d %%")
-    o:Title(L.OPT_SKIN_PANELS_TITLE)
-    o:Check("darkPanels", L.OPT_SKIN_DARK_PANELS)
+    o:Tab(L.OPT_SKIN_PANELS_TITLE)
     o:Check("skinWindows", L.OPT_SKIN_WINDOWS)
+    local styles = { { name = L.OPT_SKIN_STYLE_THEME, value = "theme" }, { name = L.OPT_SKIN_STYLE_DARK, value = "dark" },
+                     { name = L.OPT_SKIN_STYLE_BLIZZARD, value = "blizzard" } }
+    o:Dropdown("windowStyle", L.OPT_SKIN_WINDOW_STYLE, styles, 36)
+    local perWindow = { { name = L.OPT_SKIN_STYLE_DEFAULT, value = "" } }
+    for _, choice in ipairs(styles) do perWindow[#perWindow + 1] = choice end
+    o:Title(L.OPT_SKIN_PER_WINDOW)
+    o:Advanced()
+    for _, name in ipairs(WINDOWS) do
+        o:Dropdown("windowStyles." .. name, name, perWindow, 36)
+    end
 end

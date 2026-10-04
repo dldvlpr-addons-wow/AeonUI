@@ -104,6 +104,8 @@ function Cursor:BuildOptions(o)
     o:Check("crosshair", L.OPT_CURSOR_CROSSHAIR_SHOW)
     o:Check("crosshairCombatOnly", L.OPT_CURSOR_COMBAT_ONLY, 36)
     o:Slider("crosshairSize", L.OPT_CURSOR_SIZE, 8, 64, 2, 36)
+    o:Advanced()
     o:Slider("crosshairThickness", L.OPT_CURSOR_THICKNESS, 1, 6, 1, 36)
+    o:EndAdvanced()
     o:Color("crosshairColor", L.OPT_CURSOR_COLOR, 36)
 end

@@ -7,10 +7,12 @@ quelques points, et signaler ce qui cloche. Aucune connaissance d'addon n'est n�
 
 1. Ferme le jeu.
 2. Décompresse `AeonUI-1.0.0.zip`.
-3. Copie le dossier `AeonUI` dans le dossier des addons de ton client Forever :
+3. Copie le dossier `AeonUI` et tous les dossiers `AeonUI_*` dans le dossier des addons de ton client Forever :
    `World of Warcraft/_classic_beta_/Interface/AddOns/`.
-   Le dossier doit s'appeler exactement `AeonUI` et contenir `AeonUI.toc`.
-4. Lance le jeu. Sur l'écran des personnages, bouton **AddOns** : AeonUI doit être coché.
+   Chaque dossier garde son nom exact (`AeonUI` contient `AeonUI.toc`, `AeonUI_Bags` contient `AeonUI_Bags.toc`…).
+4. Lance le jeu. Sur l'écran des personnages, bouton **AddOns** : AeonUI et ses parties (Sacs, Barres d'action,
+   Cadres d'unité, Cadres de groupe, Barres de nom, Chat, Minicarte, Suivi de quêtes) doivent être cochés.
+   Décoche une partie pour la remplacer par un autre addon (par exemple Sacs pour Bagnator).
 5. Active l'affichage des erreurs, une seule fois, dans le chat :
    ```
    /console scriptErrors 1

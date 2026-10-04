@@ -1,10 +1,12 @@
 name: Release
 
-# Pousser un tag (ex. 1.2.0) construit le zip avec le packager BigWigs et le
-# publie sur CurseForge, Wago et en release GitHub.
-# Secrets du dépôt : CF_API_KEY, WAGO_API_TOKEN (GITHUB_TOKEN est fourni).
-# Identifiants de projet dans le .toc : ## X-Curse-Project-ID et ## X-Wago-ID.
-# Une plateforme sans secret ou sans identifiant est ignorée.
+# Pousser un tag nommé comme la version (ex. 1.0.0, v1.0.1, 1.1.0-beta) construit le zip avec le
+# packager BigWigs, le publie en release GitHub et l'envoie sur CurseForge.
+# Le tag, sans son « v », doit être la version du premier titre de CHANGELOG.md : cette section
+# devient le changelog CurseForge.
+# CurseForge : secret CF_API_KEY ; identifiant de projet lu dans AeonUI.toc (## X-Curse-Project-ID).
+# L'envoi est fait ici, pas par le packager : le packager classerait l'interface 16001 en retail,
+# ici le fichier est marqué WoW Forever seulement, avec ForeverMeter en dépendance requise.
 
 on:
   push:
@@ -16,12 +18,65 @@ jobs:
     permissions:
       contents: write
     env:
-      CF_API_KEY: ${{ secrets.CF_API_KEY }}
-      WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
-      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.ref_name }}
+      GAME_VERSION: "1.60.1"
+      REQUIRED_DEPENDENCY: forever-meter
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Vérifier le changelog et les réglages CurseForge
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+        run: |
+          version="${TAG#v}"
+          case "$(head -n1 CHANGELOG.md | tr -d '\r') " in
+            "# AeonUI $version "*) ;;
+            *) echo "::error::Le premier titre de CHANGELOG.md n'est pas « # AeonUI $version »"; exit 1 ;;
+          esac
+          [ -n "$CF_API_KEY" ] || { echo "::error::Secret CF_API_KEY absent"; exit 1; }
+          grep -Eq '^## X-Curse-Project-ID: *[0-9]+' AeonUI.toc || { echo "::error::X-Curse-Project-ID absent de AeonUI.toc"; exit 1; }
+
       - uses: BigWigsMods/packager@v2
+        env:
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Envoyer sur CurseForge
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+        run: |
+          set -euo pipefail
+          api=https://wow.curseforge.com/api
+          version="${TAG#v}"
+          project_id=$(sed -n 's/^## X-Curse-Project-ID: *\([0-9]*\).*/\1/p' AeonUI.toc)
+
+          zip=(.release/*.zip)
+          if [ "${#zip[@]}" -ne 1 ] || [ ! -f "${zip[0]}" ]; then
+            echo "::error::Un seul zip attendu dans .release, trouvé : ${zip[*]}"; exit 1
+          fi
+
+          game_version_ids=$(curl -sS --fail-with-body -H "X-Api-Token: $CF_API_KEY" "$api/game/versions" \
+            | jq -c --arg name "$GAME_VERSION" '[.[] | select(.name == $name) | .id]')
+          if [ "$game_version_ids" = "[]" ]; then
+            echo "::error::CurseForge n'a pas de version de jeu nommée $GAME_VERSION"; exit 1
+          fi
+
+          case "$TAG" in
+            *alpha*) release_type=alpha ;;
+            *beta*) release_type=beta ;;
+            *) release_type=release ;;
+          esac
+
+          metadata=$(jq -n \
+            --arg changelog "$(tr -d '\r' < CHANGELOG.md | awk '/^# /{n++} n==1')" \
+            --arg name "AeonUI $version" \
+            --arg type "$release_type" \
+            --arg dependency "$REQUIRED_DEPENDENCY" \
+            --argjson versions "$game_version_ids" \
+            '{changelog: $changelog, changelogType: "markdown", displayName: $name, gameVersions: $versions,
+              releaseType: $type, relations: {projects: [{slug: $dependency, type: "requiredDependency"}]}}')
+
+          curl -sS --fail-with-body -H "X-Api-Token: $CF_API_KEY" \
+            --form-string "metadata=$metadata" -F "file=@${zip[0]}" \
+            "$api/projects/$project_id/upload-file"

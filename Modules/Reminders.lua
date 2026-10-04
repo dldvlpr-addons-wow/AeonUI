@@ -35,6 +35,14 @@ local CLASS_RULES = {
 }
 NS.REMINDER_CLASS_RULES = CLASS_RULES
 
+-- Buffs de groupe : membres vivants et connectés qui ne l'ont pas (version de groupe acceptée).
+-- Intelligence des arcanes, Mot de pouvoir : Robustesse, Marque du fauve.
+local COVERAGE_RULES = {
+    { key = "arcaneIntellect", class = "MAGE", spells = { 1459 }, accept = { 23028 } },
+    { key = "fortitude", class = "PRIEST", spells = { 1243 }, accept = { 21562 } },
+    { key = "wildCoverage", class = "DRUID", spells = { 1126 }, accept = { 21849 } },
+}
+
 local STEALTH_SPELLS = { ROGUE = 1784, DRUID = 5215 }
 local CAT_FORM_ID = 1
 local TRAVEL_FORM_IDS = { [3] = true, [4] = true, [27] = true, [29] = true }   -- voyage, aquatique, vol
@@ -55,6 +63,7 @@ local WELL_FED = 19705                               -- « Bien nourri »
 local Reminders = NS.Modules:Register("reminders", {
     titleKey = "REM_TITLE",
     descKey = "REM_DESC",
+    secure = true,             -- icônes sécurisées ancrées au cadre : tout hors combat
     defaults = {
         enabled = true,
         classBuffs = true,
@@ -72,6 +81,9 @@ local Reminders = NS.Modules:Register("reminders", {
         repeatSound = 0,           -- secondes entre deux sons tant que camouflage/posture reste affiché, 0 = jamais
         pet = true,
         wellFed = false,
+        groupCoverage = true,      -- membres du groupe sans ton buff de groupe
+        customBuffs = "",          -- identifiants de buffs à garder (« 1234, 5678 »), si le sort est connu
+        castButtons = true,        -- icône cliquable qui lance le sort manquant, hors combat
         shadowform = false,
         righteousFury = false,
         sound = true,
@@ -193,7 +205,52 @@ local function WellFedReminder(db)
     return L.REM_WELL_FED
 end
 
---- Liste ordonnée des rappels actifs : { { key =, text = }, ... }.
+--- Membres vivants et connectés du groupe (joueur compris) sans aucun buff de `names` : leur
+-- nombre et le premier d'entre eux. Un membre illisible (secret) ne compte pas.
+local function MissingMembers(names)
+    local units = { "player" }
+    local prefix, count = "party", GetNumGroupMembers() - 1
+    if IsInRaid() then units, prefix, count = {}, "raid", GetNumGroupMembers() end
+    for i = 1, count do units[#units + 1] = prefix .. i end
+    local missing, first = 0, nil
+    for _, unit in ipairs(units) do
+        local dead = UnitIsDeadOrGhost(unit)
+        local connected = not _G.UnitIsConnected or UnitIsConnected(unit)
+        if UnitExists(unit) and not NS.IsSecret(dead) and not dead and not NS.IsSecret(connected) and connected
+            and NS.UnitHasBuff(unit, names) == false then
+            missing = missing + 1
+            first = first or unit
+        end
+    end
+    return missing, first
+end
+
+local function CoverageReminders(db, classFile, result)
+    if not (db.groupCoverage and IsInGroupNow()) then return end
+    for _, rule in ipairs(COVERAGE_RULES) do
+        local known = rule.class == classFile and KnownSpellName(rule)
+        if known then
+            local missing, first = MissingMembers(RuleNames(rule))
+            if missing > 0 then
+                result[#result + 1] = { key = "coverage:" .. rule.key, spell = known, unit = first,
+                                        text = string.format(L.REM_COVERAGE, known, missing) }
+            end
+        end
+    end
+end
+
+--- Buffs choisis par identifiant : rappel si le sort est connu et le buff absent.
+local function CustomReminders(db, result)
+    for id in pairs(NS.ParseSpellList(db.customBuffs)) do
+        local name = NS.KnowsSpell(id) and NS.GetSpellName(id)
+        if name and NS.PlayerHasBuff({ [name] = true }) == false then
+            result[#result + 1] = { key = "custom:" .. id, spell = name, text = string.format(L.REM_MISSING, name) }
+        end
+    end
+end
+
+--- Liste ordonnée des rappels actifs : { { key =, text =, spell =, unit = }, ... } ; `spell` :
+-- sort à lancer depuis l'icône cliquable, sur `unit` (le joueur sans unité).
 function Reminders:Collect()
     local db = self.db
     local result = {}
@@ -206,10 +263,16 @@ function Reminders:Collect()
         for _, rule in ipairs(CLASS_RULES) do
             if rule.class == classFile then
                 local text = self:CheckClassRule(rule)
-                if text then result[#result + 1] = { key = rule.key, text = text } end
+                if text then
+                    result[#result + 1] = { key = rule.key, text = text,
+                                            spell = rule.kind == "aura" and KnownSpellName(rule) or nil }
+                end
             end
         end
     end
+
+    CoverageReminders(db, classFile, result)
+    CustomReminders(db, result)
 
     local stealth = StealthReminder(db, classFile)
     if stealth then result[#result + 1] = { key = "stealth", text = stealth, color = db.stealthColor } end
@@ -253,8 +316,51 @@ local function Build()
     for i = 1, MAX_LINES do
         local line = Media:CreateText(frame, "OVERLAY", 4, "OUTLINE")
         line:SetPoint("TOP", frame, "TOP", 0, -(i - 1) * 22)
+        line.index = i
         lines[i] = line
     end
+end
+
+--- Icône qui lance le sort manquant : bouton sécurisé, fille d'UIParent, caché par le moteur dès
+-- l'entrée en combat. Créé hors combat, au besoin.
+local function CastButton(line)
+    if line.castButton then return line.castButton end
+    local button = CreateFrame("Button", "AeonUIReminderCast" .. line.index, UIParent, "SecureActionButtonTemplate")
+    button:SetSize(20, 20)
+    button:RegisterForClicks("AnyUp", "AnyDown")
+    button:SetAttribute("type", "spell")
+    button.icon = button:CreateTexture(nil, "ARTWORK")
+    button.icon:SetAllPoints(button)
+    button.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    button:Hide()
+    RegisterStateDriver(button, "visibility", "[combat] hide")   -- l'affichage revient à Evaluate
+    line.castButton = button
+    return button
+end
+
+--- Icône cliquable de la ligne : sort et cible, hors combat seulement (bouton sécurisé).
+local function SetCastButton(line, entry, enabled)
+    if NS.InCombat() then return end
+    local spell = enabled and entry and entry.spell
+    if not spell then
+        local button = line.castButton
+        if button then
+            button:SetAttribute("spell", nil)
+            NS.Glow.Hide(button)
+            button:Hide()
+        end
+        return
+    end
+    local button = CastButton(line)
+    -- Un cadre protégé ne s'ancre pas à une FontString (moteur 12.x) : à gauche du texte, via le cadre.
+    button:ClearAllPoints()
+    button:SetPoint("RIGHT", frame, "TOP", -(line:GetStringWidth() or 0) / 2 - 6,
+        -(line.index - 1) * 22 - (line:GetStringHeight() or 20) / 2)
+    button:SetAttribute("spell", spell)
+    button:SetAttribute("unit", entry.unit or "player")
+    button.icon:SetTexture(NS.GetSpellTexture(spell))
+    button:Show()
+    NS.Glow.Show(button, "pixel")
 end
 
 local function ApplyUnlock(unlocked)
@@ -279,9 +385,11 @@ function Reminders:Evaluate()
             lines[i]:SetText(nil)
             lines[i]:Hide()
         end
+        SetCastButton(lines[i], entry, self.db.castButtons)   -- après le texte : il se cale sur sa largeur
     end
     shown = now
-    frame:SetShown(#list > 0 or NS.unlocked)
+    -- Les icônes sécurisées s'ancrent au cadre, qui devient protégé : en combat, les lignes vides suffisent.
+    if not NS.InCombat() then frame:SetShown(#list > 0 or NS.unlocked) end
     if fresh and self.db.sound and GetTime() - lastSound >= SOUND_THROTTLE then
         lastSound = GetTime()
         NS.PlayPreset(self.db.soundPreset, self.db.soundFile)
@@ -349,7 +457,10 @@ function Reminders:OnDisable()
     active = false
     events:UnregisterAllEvents()
     NS.Movers:Unregister("reminders")
-    if frame then frame:Hide() end
+    if frame then
+        frame:Hide()
+        for _, line in ipairs(lines) do SetCastButton(line, nil, false) end
+    end
     shown = {}
     self:UpdateRepeat()
 end
@@ -377,26 +488,39 @@ function Reminders:BuildOptions(o)
     o:Check("righteousFury", L.OPT_REM_FURY, 36)
     o:Check("pet", L.OPT_REM_PET)
     o:Check("wellFed", L.OPT_REM_WELL_FED)
+    o:Check("groupCoverage", L.OPT_REM_COVERAGE)
+    o:Advanced()
+    o:EditBox("customBuffs", L.OPT_REM_CUSTOM, 1)
+    o:EndAdvanced()
+    o:Check("castButtons", L.OPT_REM_CAST_BUTTONS)
     local _, classFile = UnitClass("player")
     local choices = NS.STANCE_CHOICES[classFile]
     if choices then
         local list = { { name = L.STANCE_none, value = "none" } }
         for _, choice in ipairs(choices) do list[#list + 1] = { name = L["STANCE_" .. choice.key], value = choice.key } end
         o:Dropdown("expectedStance", L.OPT_REM_STANCE, list)
+        o:Advanced()
         o:EditBox("stanceText", L.OPT_REM_STANCE_TEXT, 1, 36)
         o:Color("stanceColor", L.OPT_REM_COLOR, 36)
+        o:EndAdvanced()
     end
     o:Check("stealth", L.OPT_REM_STEALTH)
+    o:Advanced()
     o:Check("stealthEverywhere", L.OPT_REM_STEALTH_EVERYWHERE, 36)
     o:EditBox("stealthText", L.OPT_REM_STEALTH_TEXT, 1, 36)
     o:Color("stealthColor", L.OPT_REM_COLOR, 36)
+    o:EndAdvanced()
     o:Title(L.OPT_REM_GEAR)
     o:Check("durability", L.OPT_REM_DURABILITY)
+    o:Advanced()
     o:Slider("durabilityThreshold", L.OPT_REM_DURABILITY_THRESHOLD, 5, 50, 5, 36, "%d %%")
+    o:EndAdvanced()
     o:Check("bagsFull", L.OPT_REM_BAGS)
     o:Title(L.OPT_REM_ALERT)
     o:Check("sound", L.OPT_REM_SOUND)
     o:Sound("soundPreset", "soundFile", 36)
+    o:Advanced()
     o:Slider("repeatSound", L.OPT_REM_REPEAT, 0, 30, 1, 36, "%d s")
+    o:EndAdvanced()
     o:Button(L.OPT_UNLOCK, function() NS:SetUnlocked(not NS.unlocked) end)
 end

@@ -60,6 +60,18 @@ test("infobulles : identifiants de sort et d'objet, au curseur", function()
     db.anchorCursor = true
     GameTooltip_SetDefaultAnchor(GameTooltip, UIParent)
     eq(GameTooltip.anchor, "ANCHOR_CURSOR")
+    -- Position fixe : prioritaire sur le curseur, coin choisi par le sens de croissance.
+    db.anchorFixed, db.anchorGrowth, db.anchorOffsetX, db.anchorOffsetY = true, "DOWN_RIGHT", 4, -6
+    NS.Modules:Refresh("skin")
+    local anchor = NS.Modules:Get("skin"):GetTooltipAnchor()
+    truthy(NS.Movers.registry.tooltip, "mover de l'infobulle")
+    GameTooltip_SetDefaultAnchor(GameTooltip, UIParent)
+    eq(GameTooltip.anchor, "ANCHOR_NONE")
+    local point, relTo, relPoint, x, y = GameTooltip:GetPoint()
+    eq(point, "TOPLEFT"); eq(relTo, anchor); eq(relPoint, "TOPLEFT"); eq(x, 4); eq(y, -6)
+    db.anchorFixed, db.anchorGrowth, db.anchorOffsetX, db.anchorOffsetY = false, "UP_LEFT", 0, 0
+    NS.Modules:Refresh("skin")
+    eq(NS.Movers.registry.tooltip, nil, "mover retiré")
     db.anchorCursor = false
 end)
 

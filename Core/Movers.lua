@@ -1,18 +1,23 @@
 -- Core/Movers.lua
 -- Déverrouillage : chaque cadre mobile s'enregistre ici avec une clé et une position par
 -- défaut. Le cadre réel n'est jamais rendu déplaçable : en mode déverrouillé, un calque
--- coloré de sa taille se pose dessus et c'est lui qu'on glisse. Au lâcher, le calque
--- s'aimante (bords et centre de l'écran, autres calques), la position est arrondie au
--- pixel et sauvée dans NS.db.anchors[clé] = { point, relPoint, x, y } (format inchangé),
--- puis le cadre réel est reposé, hors combat s'il est protégé.
+-- coloré de sa taille se pose dessus et c'est lui qu'on glisse. Pendant le glisser, le calque
+-- s'aimante en direct (bords et centre de l'écran, autres calques) et des lignes guides montrent
+-- l'accroche ; aimant coupé par l'interrupteur de la barre d'outils ou Maj. Au lâcher, la position
+-- est arrondie au pixel et sauvée dans NS.db.anchors[clé] = { point, relPoint, x, y } (format
+-- inchangé), puis le cadre réel est reposé, hors combat s'il est protégé.
+-- Session : les positions sont photographiées au déverrouillage ; « Annuler » les rend toutes.
 -- Clavier sur le calque sélectionné : flèches = 1 px, Maj+flèches = 10 px.
 -- Clic droit sur un calque : options du module qui le possède ; Maj + clic droit : position
--- par défaut. Maj pendant le glisser : pas d'aimant. Barre d'outils en haut de l'écran :
--- grille, filtre par module, tout réinitialiser, verrouiller.
+-- par défaut. Barre d'outils en haut de l'écran : grille, filtre par module, aimant, tout
+-- réinitialiser, enregistrer (verrouille), annuler la session.
 -- Ancrage : un mover peut suivre un autre mover (champs `target`, point relatif, x/y relatifs
 -- à la cible), avec une position de secours (`fallback`) quand la cible n'est pas enregistrée,
 -- un axe fixé à l'écran (`edgeX` / `edgeY`) et la largeur / hauteur de la cible (`matchWidth`,
--- `matchHeight`). Panneau des coordonnées : « Ancrer à… » puis clic sur la cible.
+-- `matchHeight`, plus un écart `widthOffset` / `heightOffset`). Panneau des coordonnées : « Ancrer à… »
+-- puis clic sur la cible.
+-- Écran : `pin` épingle le point d'écran (bord ou coin) au lieu du tiers choisi au lâcher ; `grow`
+-- est le coin du cadre gardé fixe quand sa taille change (sinon le même point que l'écran).
 local _, NS = ...
 local L = NS.L
 local Media = NS.Media
@@ -51,21 +56,22 @@ function Movers.OffsetFor(point, left, bottom, width, height, screenWidth, scree
 end
 
 --- Aimant : rapproche le rectangle des lignes verticales `xLines` et horizontales `yLines`
--- (bord ou centre) si l'écart est sous `threshold`. Retourne (dx, dy), 0 si rien n'accroche.
+-- (bord ou centre) si l'écart est sous `threshold`. Retourne (dx, dy), 0 si rien n'accroche,
+-- puis les lignes accrochées (x, y), nil sans accroche.
 function Movers.SnapDelta(left, bottom, width, height, xLines, yLines, threshold)
     local function best(edges, lines)
-        local chosen
+        local chosen, hit
         for _, line in ipairs(lines) do
             for _, edge in ipairs(edges) do
                 local d = line - edge
-                if math.abs(d) <= threshold and (not chosen or math.abs(d) < math.abs(chosen)) then chosen = d end
+                if math.abs(d) <= threshold and (not chosen or math.abs(d) < math.abs(chosen)) then chosen, hit = d, line end
             end
         end
-        return chosen or 0
+        return chosen or 0, hit
     end
-    local dx = best({ left, left + width / 2, left + width }, xLines)
-    local dy = best({ bottom, bottom + height / 2, bottom + height }, yLines)
-    return dx, dy
+    local dx, xLine = best({ left, left + width / 2, left + width }, xLines)
+    local dy, yLine = best({ bottom, bottom + height / 2, bottom + height }, yLines)
+    return dx, dy, xLine, yLine
 end
 
 --- Coordonnées du point `point` (TOPLEFT, CENTER…) d'un rectangle { left, bottom, width, height }.
@@ -140,12 +146,22 @@ local function Rect(entry)
     return { left = left, bottom = bottom, width = region:GetWidth() or 0, height = region:GetHeight() or 0 }
 end
 
---- Position absolue (relative à UIParent) d'un rectangle, arrondie au pixel.
-local function AbsoluteAnchor(rect)
-    local screenWidth, screenHeight = UIParent:GetWidth(), UIParent:GetHeight()
-    local point = Movers.PointFor(rect.left + rect.width / 2, rect.bottom + rect.height / 2, screenWidth, screenHeight)
-    local x, y = Movers.OffsetFor(point, rect.left, rect.bottom, rect.width, rect.height, screenWidth, screenHeight)
-    return { point = point, relPoint = point, x = NS.Pixel:Scale(x), y = NS.Pixel:Scale(y) }
+--- Point d'écran et coin du cadre d'un rectangle posé à l'écran, puis le décalage du coin par
+-- rapport au point d'écran. `pin` : point d'écran imposé ; `grow` : coin du cadre imposé.
+function Movers.ScreenAnchor(rect, screenWidth, screenHeight, pin, grow)
+    local relPoint = pin or Movers.PointFor(rect.left + rect.width / 2, rect.bottom + rect.height / 2, screenWidth, screenHeight)
+    local point = grow or relPoint
+    local screen = { left = 0, bottom = 0, width = screenWidth, height = screenHeight }
+    local x, y = Movers.RelativeOffset(point, relPoint, rect, screen)
+    return point, relPoint, x, y
+end
+
+--- Position absolue (relative à UIParent) d'un rectangle, arrondie au pixel. `old` : l'ancrage
+-- dont l'épingle et le coin de croissance sont repris.
+local function AbsoluteAnchor(rect, old)
+    local pin, grow = old and old.pin, old and old.grow
+    local point, relPoint, x, y = Movers.ScreenAnchor(rect, UIParent:GetWidth(), UIParent:GetHeight(), pin, grow)
+    return { point = point, relPoint = relPoint, x = NS.Pixel:Scale(x), y = NS.Pixel:Scale(y), pin = pin, grow = grow }
 end
 
 --- Movers enregistrés ancrés sur `key`.
@@ -255,6 +271,8 @@ function Movers:Release(key)
     self:Unregister(key)
 end
 
+local RefitIfMatched   -- défini plus bas, avec ApplySize
+
 --- Retire un cadre du déverrouillage (son calque disparaît). La position sauvée reste.
 function Movers:Unregister(key)
     local entry = self.registry[key]
@@ -263,7 +281,10 @@ function Movers:Unregister(key)
     if self.selected == key then self.selected = nil end
     self.registry[key] = nil
     -- Les éléments ancrés dessus retombent sur leur position de secours.
-    for _, other in ipairs(Dependents(key)) do self:Load(other) end
+    for _, other in ipairs(Dependents(key)) do
+        self:Load(other)
+        RefitIfMatched(self.registry[other], NS.db.anchors[other])
+    end
 end
 
 -- Taille reprise de la cible (largeur et/ou hauteur). `entry.sizing` : nos propres SetWidth ne
@@ -273,8 +294,8 @@ local function ApplySize(entry, a, target)
     local width, height = target.frame:GetWidth() or 0, target.frame:GetHeight() or 0
     entry.sizing = true
     local ok, err = pcall(function()
-        if a.matchWidth and width > 0 then entry.frame:SetWidth(width) end
-        if a.matchHeight and height > 0 then entry.frame:SetHeight(height) end
+        if a.matchWidth and width > 0 then entry.frame:SetWidth(math.max(1, width + (a.widthOffset or 0))) end
+        if a.matchHeight and height > 0 then entry.frame:SetHeight(math.max(1, height + (a.heightOffset or 0))) end
     end)
     entry.sizing = false
     if not ok then geterrorhandler()(err) end
@@ -327,7 +348,7 @@ local function Refit(entry)
 end
 
 -- Ancien ancrage qui reprenait la taille de sa cible : le module la reprend.
-local function RefitIfMatched(entry, old)
+function RefitIfMatched(entry, old)
     if old and (old.matchWidth or old.matchHeight) then Refit(entry) end
 end
 
@@ -381,7 +402,9 @@ function Movers:Save(key, point, relPoint, x, y)
     if old and old.target then
         a.target, a.fallback, a.edgeX, a.edgeY = old.target, old.fallback, old.edgeX, old.edgeY
         a.matchWidth, a.matchHeight = old.matchWidth, old.matchHeight
+        a.widthOffset, a.heightOffset = old.widthOffset, old.heightOffset
     end
+    if old then a.pin, a.grow = old.pin, old.grow end
     NS.db.anchors[key] = a
 end
 
@@ -406,8 +429,10 @@ function Movers:AttachTo(key, targetKey)
     if not (child and parent) then return false end
     local point, relPoint = Movers.SideFor(child, parent)
     local x, y = Movers.RelativeOffset(point, relPoint, child, parent)
+    local old = NS.db.anchors[key]
     NS.db.anchors[key] = { point = point, relPoint = relPoint, x = NS.Pixel:Scale(x), y = NS.Pixel:Scale(y),
-                           target = targetKey, fallback = AbsoluteAnchor(child) }
+                           target = targetKey, fallback = AbsoluteAnchor(child, old),
+                           pin = old and old.pin, grow = old and old.grow }
     self:Load(key)
     return true
 end
@@ -418,9 +443,44 @@ function Movers:Detach(key)
     local rect = entry and Rect(entry)
     if not rect then return false end
     local old = NS.db.anchors[key]
-    NS.db.anchors[key] = AbsoluteAnchor(rect)
+    NS.db.anchors[key] = AbsoluteAnchor(rect, old)
     self:Load(key)
     RefitIfMatched(entry, old)
+    return true
+end
+
+--- Épingle `key` au point d'écran `point` (bord ou coin), nil : tiers choisi au lâcher. Garde la
+-- place à l'écran. Mover ancré à un autre : sans objet.
+function Movers:SetPin(key, point)
+    return self:Reposition(key, "pin", point)
+end
+
+--- Coin du cadre gardé fixe quand sa taille change, nil : le point d'écran.
+function Movers:SetGrow(key, point)
+    return self:Reposition(key, "grow", point)
+end
+
+function Movers:Reposition(key, field, value)
+    local entry = self.registry[key]
+    local rect = entry and Rect(entry)
+    local a = NS.db.anchors[key] or Anchor(entry or {})
+    if not (entry and rect) or a.target then return false end
+    if NS.InCombat() and entry.frame.IsProtected and entry.frame:IsProtected() then return false end
+    local changed = { pin = a.pin, grow = a.grow }
+    changed[field] = value
+    NS.db.anchors[key] = AbsoluteAnchor(rect, changed)
+    self:Load(key)
+    return true
+end
+
+--- Écart ajouté à la largeur ("width") ou hauteur ("height") reprise de la cible.
+function Movers:SetSizeOffset(key, axis, value)
+    local a = NS.db.anchors[key]
+    value = tonumber(value)
+    if not (a and a.target and value) or value ~= value then return false end
+    value = math.max(-500, math.min(500, value))
+    if axis == "width" then a.widthOffset = value ~= 0 and value or nil else a.heightOffset = value ~= 0 and value or nil end
+    self:Load(key)
     return true
 end
 
@@ -477,9 +537,30 @@ function Movers:Reset(key)
     end
 end
 
-function Movers:ResetAll()
-    for key in pairs(NS.db.anchors) do NS.db.anchors[key] = nil end
-    for key in pairs(self.registry) do self:Load(key) end
+--- Remplace toutes les positions par `anchors` (nil : défauts) et repose chaque mover.
+local function ReplaceAnchors(anchors)
+    local old = {}
+    for key, anchor in pairs(NS.db.anchors) do
+        old[key] = anchor
+        NS.db.anchors[key] = nil
+    end
+    for key, anchor in pairs(anchors or {}) do NS.db.anchors[key] = anchor end
+    for key, entry in pairs(Movers.registry) do
+        Movers:Load(key)
+        RefitIfMatched(entry, old[key])
+        RefitIfMatched(entry, NS.db.anchors[key])
+    end
+end
+
+function Movers:ResetAll() ReplaceAnchors(nil) end
+
+--- Rend les positions photographiées au déverrouillage (même profil seulement) et verrouille.
+function Movers:CancelSession()
+    local session = self.session
+    if session and session.db == NS.db then ReplaceAnchors(NS.Database.DeepCopy(session.anchors)) end
+    self.session = nil
+    NS:SetUnlocked(false)
+    NS.Print(L.MSG_MOVERS_CANCELLED)
 end
 
 --- Décale la position sauvée de (dx, dy) unités d'interface.
@@ -502,7 +583,7 @@ function Movers:Nudge(key, dx, dy)
     self:Load(key)
     -- Ancré : le secours suit le déplacement, comme au glisser.
     local rect = saved.target and Rect(entry)
-    if rect then saved.fallback = AbsoluteAnchor(rect) end
+    if rect then saved.fallback = AbsoluteAnchor(rect, saved) end
 end
 
 --- Clés enregistrées, triées.
@@ -603,10 +684,17 @@ local function PanelCheck(text, anchor, get, set)
     return check
 end
 
+local POINT_ORDER = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }
+local function PointChoices()
+    local choices = { { name = L.MOVER_AUTO, value = false } }
+    for _, point in ipairs(POINT_ORDER) do choices[#choices + 1] = { name = L["POINT_" .. point], value = point } end
+    return choices
+end
+
 local function BuildCoordsPanel()
     coordsPanel = CreateFrame("Frame", "AeonUIMoverCoords", UIParent)
     coordsPanel:SetFrameStrata("FULLSCREEN_DIALOG")
-    coordsPanel:SetSize(640, 62)
+    coordsPanel:SetSize(640, 94)
     coordsPanel:SetPoint("TOP", UIParent, "TOP", 0, -60)
     Media:CreateBackdrop(coordsPanel)
     coordsPanel.title = Media:CreateText(coordsPanel, "OVERLAY")
@@ -621,7 +709,7 @@ local function BuildCoordsPanel()
     end)
     -- Seconde ligne : ancrage à un autre élément.
     coordsPanel.status = Media:CreateText(coordsPanel, "OVERLAY")
-    coordsPanel.status:SetPoint("BOTTOMLEFT", coordsPanel, "BOTTOMLEFT", 8, 10)
+    coordsPanel.status:SetPoint("TOPLEFT", coordsPanel, "TOPLEFT", 8, -40)
     coordsPanel.status:SetWidth(170)
     coordsPanel.status:SetJustifyH("LEFT")
     coordsPanel.anchor = PanelButton(L.MOVER_ANCHOR_TO, 110, coordsPanel.status, function()
@@ -643,6 +731,27 @@ local function BuildCoordsPanel()
         function(a) return a.edgeX ~= nil end, function(key, on) Movers:SetEdge(key, "x", on) end)
     coordsPanel.edgeY = PanelCheck(L.MOVER_LOCK_Y, coordsPanel.edgeX.label,
         function(a) return a.edgeY ~= nil end, function(key, on) Movers:SetEdge(key, "y", on) end)
+    -- Troisième ligne : à l'écran, point épinglé et coin gardé ; ancré, écart de taille.
+    local function Selected() return Movers.selected and Movers:Anchor(Movers.selected) or {} end
+    coordsPanel.pin = NS.Widgets.Dropdown(coordsPanel, 240, L.MOVER_PIN, PointChoices,
+        function() return Selected().pin or false end,
+        function(value) if Movers.selected then Movers:SetPin(Movers.selected, value or nil) end Movers.RefreshCoords() end)
+    coordsPanel.pin:SetPoint("BOTTOMLEFT", coordsPanel, "BOTTOMLEFT", 8, 8)
+    coordsPanel.grow = NS.Widgets.Dropdown(coordsPanel, 240, L.MOVER_GROW, PointChoices,
+        function() return Selected().grow or false end,
+        function(value) if Movers.selected then Movers:SetGrow(Movers.selected, value or nil) end Movers.RefreshCoords() end)
+    coordsPanel.grow:SetPoint("LEFT", coordsPanel.pin, "RIGHT", 8, 0)
+    local function applyOffsets()
+        local key = Movers.selected
+        if not key then return end
+        Movers:SetSizeOffset(key, "width", coordsPanel.widthOffset:GetText())
+        Movers:SetSizeOffset(key, "height", coordsPanel.heightOffset:GetText())
+    end
+    coordsPanel.offsetLabel = Media:CreateText(coordsPanel, "OVERLAY")
+    coordsPanel.offsetLabel:SetPoint("BOTTOMLEFT", coordsPanel, "BOTTOMLEFT", 8, 14)
+    coordsPanel.offsetLabel:SetText(L.MOVER_SIZE_OFFSET)
+    coordsPanel.widthOffset = CoordsBox(L.MOVER_WIDTH_SHORT, coordsPanel.offsetLabel, applyOffsets)
+    coordsPanel.heightOffset = CoordsBox(L.MOVER_HEIGHT_SHORT, coordsPanel.widthOffset, applyOffsets)
     coordsPanel:Hide()
 end
 
@@ -667,6 +776,17 @@ function Movers.RefreshCoords()
         check:SetShown(anchored)
         check.label:SetShown(anchored)
     end
+    coordsPanel.pin:SetShown(not anchored)
+    coordsPanel.grow:SetShown(not anchored)
+    coordsPanel.pin.Paint()
+    coordsPanel.grow.Paint()
+    local matched = anchored and (a.matchWidth or a.matchHeight) and true or false
+    coordsPanel.widthOffset:SetText(tostring(a.widthOffset or 0))
+    coordsPanel.heightOffset:SetText(tostring(a.heightOffset or 0))
+    for _, region in ipairs({ coordsPanel.offsetLabel, coordsPanel.widthOffset, coordsPanel.widthOffset.label,
+                              coordsPanel.heightOffset, coordsPanel.heightOffset.label }) do
+        region:SetShown(matched)
+    end
     coordsPanel:Show()
 end
 
@@ -687,15 +807,21 @@ local function SnapLines(entry)
     return xLines, yLines
 end
 
+--- Aimant actif : interrupteur de la barre d'outils, Maj pour le couper le temps d'un glisser.
+local function SnapEnabled()
+    return not (NS.db and NS.db.theme.snap == false) and not (IsShiftKeyDown and IsShiftKeyDown())
+end
+
 --- Fin de glisser : aimant, conversion en point d'ancrage, sauvegarde, repose du cadre.
-function Movers:Drop(key)
+-- `left`, `bottom` : position posée par le glisser (sinon celle rendue par le calque).
+function Movers:Drop(key, left, bottom)
     local entry = self.registry[key]
     local overlay = entry and entry.overlay
     if not overlay then return end
-    local left, bottom = overlay:GetLeft(), overlay:GetBottom()
+    if not (left and bottom) then left, bottom = overlay:GetLeft(), overlay:GetBottom() end
     local width, height = overlay:GetWidth(), overlay:GetHeight()
     if not left or not bottom then Attach(entry) return end
-    if not (IsShiftKeyDown and IsShiftKeyDown()) then
+    if SnapEnabled() then
         local xLines, yLines = SnapLines(entry)
         local dx, dy = Movers.SnapDelta(left, bottom, width, height, xLines, yLines, SNAP_THRESHOLD)
         left, bottom = left + dx, bottom + dy
@@ -709,22 +835,106 @@ function Movers:Drop(key)
         local x, y = Movers.RelativeOffset(a.point, a.relPoint, child, parent)
         self:Save(key, a.point, a.relPoint, x, y)
         local saved = NS.db.anchors[key]
-        saved.fallback = AbsoluteAnchor(child)
+        saved.fallback = AbsoluteAnchor(child, saved)
         if saved.edgeX then saved.edgeX = left end
         if saved.edgeY then saved.edgeY = bottom end
         self:Load(key)
         return
     end
-    local screenWidth, screenHeight = UIParent:GetWidth(), UIParent:GetHeight()
-    local point = Movers.PointFor(left + width / 2, bottom + height / 2, screenWidth, screenHeight)
-    local x, y = Movers.OffsetFor(point, left, bottom, width, height, screenWidth, screenHeight)
+    local rect = { left = left, bottom = bottom, width = width, height = height }
     if a and a.target then
         -- Cible absente : c'est la position de secours qu'on déplace, l'ancrage attend son retour.
-        a.fallback = { point = point, relPoint = point, x = NS.Pixel:Scale(x), y = NS.Pixel:Scale(y) }
+        a.fallback = AbsoluteAnchor(rect, a)
     else
-        self:Save(key, point, point, x, y)
+        local point, relPoint, x, y = Movers.ScreenAnchor(rect, UIParent:GetWidth(), UIParent:GetHeight(),
+            a and a.pin, a and a.grow)
+        self:Save(key, point, relPoint, x, y)
     end
     self:Load(key)
+end
+
+--------------------------------------------------------------------------------
+-- Glisser : calque suivi à la main (StartMoving ne laisse pas corriger la position en direct),
+-- aimant et lignes guides à chaque image.
+--------------------------------------------------------------------------------
+
+local guides
+
+local function Guides()
+    if guides then return guides end
+    guides = CreateFrame("Frame", nil, UIParent)
+    guides:SetAllPoints(UIParent)
+    guides:SetFrameStrata("FULLSCREEN")
+    guides.vertical = guides:CreateTexture(nil, "OVERLAY")
+    guides.horizontal = guides:CreateTexture(nil, "OVERLAY")
+    return guides
+end
+
+--- Lignes guides aux lignes accrochées (x verticale, y horizontale), cachées sans accroche.
+local function ShowGuides(xLine, yLine)
+    local frame = Guides()
+    local r, g, b = Media:Accent()
+    local px = NS.Pixel:Scale(1)
+    local vertical, horizontal = frame.vertical, frame.horizontal
+    vertical:ClearAllPoints()
+    if xLine then
+        vertical:SetPoint("TOP", UIParent, "TOPLEFT", xLine, 0)
+        vertical:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", xLine, 0)
+        vertical:SetWidth(px)
+        NS.SetSolidColor(vertical, r, g, b, 0.9)
+    end
+    vertical:SetShown(xLine ~= nil)
+    horizontal:ClearAllPoints()
+    if yLine then
+        horizontal:SetPoint("LEFT", UIParent, "BOTTOMLEFT", 0, yLine)
+        horizontal:SetPoint("RIGHT", UIParent, "BOTTOMRIGHT", 0, yLine)
+        horizontal:SetHeight(px)
+        NS.SetSolidColor(horizontal, r, g, b, 0.9)
+    end
+    horizontal:SetShown(yLine ~= nil)
+    frame:SetShown(xLine ~= nil or yLine ~= nil)
+end
+
+function Movers:GetGuides() return guides end
+
+local function CursorPosition()
+    local x, y = GetCursorPosition()
+    local scale = UIParent:GetEffectiveScale()
+    return x / scale, y / scale
+end
+
+local function DragUpdate(overlay)
+    local cx, cy = CursorPosition()
+    local width, height = overlay:GetWidth() or 0, overlay:GetHeight() or 0
+    -- Gardé à l'écran : SetClampedToScreen ne vaut que pour StartMoving.
+    local left = math.max(0, math.min(UIParent:GetWidth() - width, cx - overlay.grabX))
+    local bottom = math.max(0, math.min(UIParent:GetHeight() - height, cy - overlay.grabY))
+    local xLine, yLine
+    if SnapEnabled() then
+        local xLines, yLines = SnapLines(overlay.entry)
+        local dx, dy
+        dx, dy, xLine, yLine = Movers.SnapDelta(left, bottom, width, height, xLines, yLines, SNAP_THRESHOLD)
+        left, bottom = left + dx, bottom + dy
+    end
+    overlay.dragLeft, overlay.dragBottom = left, bottom
+    overlay:ClearAllPoints()
+    overlay:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", left, bottom)
+    ShowGuides(xLine, yLine)
+end
+
+local function StartDrag(overlay)
+    local cx, cy = CursorPosition()
+    overlay.grabX, overlay.grabY = cx - (overlay:GetLeft() or cx), cy - (overlay:GetBottom() or cy)
+    overlay.dragLeft, overlay.dragBottom = nil, nil
+    overlay:SetScript("OnUpdate", DragUpdate)
+end
+
+local function StopDrag(overlay)
+    overlay:SetScript("OnUpdate", nil)
+    if guides then guides:Hide() end
+    local left, bottom = overlay.dragLeft, overlay.dragBottom
+    overlay.dragLeft, overlay.dragBottom = nil, nil
+    return left, bottom
 end
 
 local function OnKeyDown(overlay, key)
@@ -763,13 +973,12 @@ BuildOverlay = function(entry)
         if NS.InCombat() and entry.frame.IsProtected and entry.frame:IsProtected() then return end
         Movers:Select(entry.key)
         self.dragging = true
-        self:StartMoving()
+        StartDrag(self)
     end)
     overlay:SetScript("OnDragStop", function(self)
         if not self.dragging then return end   -- glisser refusé en combat : rien à sauver
         self.dragging = nil
-        self:StopMovingOrSizing()
-        Movers:Drop(entry.key)
+        Movers:Drop(entry.key, StopDrag(self))
     end)
     overlay:SetScript("OnMouseDown", function(_, button)
         if button ~= "LeftButton" then return end
@@ -787,8 +996,8 @@ BuildOverlay = function(entry)
         if button ~= "RightButton" then return end
         if IsShiftKeyDown and IsShiftKeyDown() then
             Movers:Reset(entry.key)
-        elseif entry.module then
-            NS.OpenOptions(entry.module)
+        elseif entry.module and NS.Options then
+            NS.Options.RevealModule(entry.module, entry.revealHint or entry.label)
         end
     end)
     overlay:SetScript("OnEnter", function(self)
@@ -904,41 +1113,57 @@ end
 local function BuildToolbar()
     toolbar = CreateFrame("Frame", "AeonUIMoverToolbar", UIParent)
     toolbar:SetFrameStrata("FULLSCREEN_DIALOG")
-    toolbar:SetSize(860, 34)
+    toolbar:SetSize(1000, 34)
     toolbar:SetPoint("TOP", UIParent, "TOP", 0, -16)
     Media:CreateBackdrop(toolbar)
     local title = Media:CreateText(toolbar, "OVERLAY")
     title:SetPoint("LEFT", toolbar, "LEFT", 10, 0)
     title:SetText(L.MOVER_TOOLBAR_TITLE)
-    local grid = NS.Widgets.Dropdown(toolbar, 170, L.MOVER_GRID, {
+    local grid = NS.Widgets.Dropdown(toolbar, 150, L.MOVER_GRID, {
             { name = L.GRID_NONE, value = 0 }, { name = "16 px", value = 16 }, { name = "32 px", value = 32 },
         },
         function() return NS.db.theme.grid end,
         function(value) NS.db.theme.grid = value; NS:Fire("THEME_CHANGED") end)
-    grid:SetPoint("LEFT", toolbar, "LEFT", 150, 0)
-    local filter = NS.Widgets.Dropdown(toolbar, 240, L.MOVER_FILTER, FilterChoices,
+    grid:SetPoint("LEFT", toolbar, "LEFT", 140, 0)
+    local filter = NS.Widgets.Dropdown(toolbar, 200, L.MOVER_FILTER, FilterChoices,
         function() return Movers.filter or false end,
         function(value)
             Movers.filter = value or nil
             Movers:SetUnlocked(true)
         end)
     filter:SetPoint("LEFT", grid, "RIGHT", 8, 0)
+    local snap = CreateFrame("CheckButton", nil, toolbar, "UICheckButtonTemplate")
+    snap:SetSize(24, 24)
+    snap:SetPoint("LEFT", filter, "RIGHT", 8, 0)
+    snap.label = Media:CreateText(toolbar, "OVERLAY")
+    snap.label:SetPoint("LEFT", snap, "RIGHT", 2, 0)
+    snap.label:SetText(L.MOVER_SNAP)
+    snap:SetScript("OnClick", function(self) NS.db.theme.snap = self:GetChecked() and true or false end)
     local resetAll = CreateFrame("Button", nil, toolbar, "UIPanelButtonTemplate")
-    resetAll:SetSize(140, 24)
-    resetAll:SetPoint("LEFT", filter, "RIGHT", 8, 0)
+    resetAll:SetSize(130, 24)
+    resetAll:SetPoint("LEFT", snap, "RIGHT", 70, 0)
     resetAll:SetText(L.MOVER_RESET_ALL)
-    NS.Widgets.FitText(resetAll, 140)
+    NS.Widgets.FitText(resetAll, 130)
     resetAll:SetScript("OnClick", function()
         StaticPopupDialogs.AEONUI_RESET_POSITIONS.text = L.MSG_RESET_POSITIONS_CONFIRM
         StaticPopup_Show("AEONUI_RESET_POSITIONS")
     end)
-    local lock = CreateFrame("Button", nil, toolbar, "UIPanelButtonTemplate")
-    lock:SetSize(120, 24)
-    lock:SetPoint("LEFT", resetAll, "RIGHT", 8, 0)
-    lock:SetText(L.MOVER_LOCK)
-    NS.Widgets.FitText(lock, 120)
-    lock:SetScript("OnClick", function() NS:SetUnlocked(false) end)
-    toolbar.grid, toolbar.filter = grid, filter
+    -- Enregistrer : les positions sont déjà sauvées au fil des glisser, on verrouille.
+    local save = CreateFrame("Button", nil, toolbar, "UIPanelButtonTemplate")
+    save:SetSize(110, 24)
+    save:SetPoint("LEFT", resetAll, "RIGHT", 8, 0)
+    save:SetText(L.MOVER_SAVE)
+    NS.Widgets.FitText(save, 110)
+    save:SetScript("OnClick", function() NS:SetUnlocked(false) end)
+    local cancel = CreateFrame("Button", nil, toolbar, "UIPanelButtonTemplate")
+    cancel:SetSize(110, 24)
+    cancel:SetPoint("LEFT", save, "RIGHT", 8, 0)
+    cancel:SetText(L.MOVER_CANCEL)
+    NS.Widgets.FitText(cancel, 110)
+    cancel:SetScript("OnClick", function()
+        NS.Options.Confirm("AEONUI_MOVERS_CANCEL", L.MSG_MOVERS_CANCEL_CONFIRM, function() Movers:CancelSession() end)
+    end)
+    toolbar.grid, toolbar.filter, toolbar.snap, toolbar.save, toolbar.cancel = grid, filter, snap, save, cancel
     toolbar:Hide()
 end
 
@@ -946,7 +1171,13 @@ function Movers:GetToolbar() return toolbar end
 
 function Movers:SetUnlocked(unlocked)
     self.unlocked = unlocked and true or false
-    if not self.unlocked then self.filter = nil end
+    if not self.unlocked and not self.suspended then self.filter = nil end   -- gardé pour la reprise après combat
+    -- Session : photo à l'ouverture (pas à la reprise après combat), oubliée au verrouillage.
+    if self.unlocked and not self.session then
+        self.session = { db = NS.db, anchors = NS.Database.DeepCopy(NS.db.anchors) }
+    elseif not self.unlocked and not self.suspended then
+        self.session = nil
+    end
     self.picking = nil
     for _, entry in pairs(self.registry) do
         if self.unlocked and not entry.overlay then BuildOverlay(entry) end
@@ -964,6 +1195,7 @@ function Movers:SetUnlocked(unlocked)
         toolbar:SetShown(self.unlocked)
         toolbar.grid.Paint()
         toolbar.filter.Paint()
+        toolbar.snap:SetChecked(NS.db.theme.snap ~= false)
     end
     Movers.RefreshCoords()
     local size = NS.db and NS.db.theme and NS.db.theme.grid or 0
@@ -974,9 +1206,22 @@ NS:On("THEME_CHANGED", function()
     if Movers.unlocked then Movers:SetUnlocked(true) end
 end)
 
--- Entrée en combat : plus de clavier sur les calques (SetPropagateKeyboardInput protégé).
+-- Entrée en combat : mode déplacement suspendu (calques et barre d'outils cachés, plus de clavier :
+-- SetPropagateKeyboardInput est protégé), repris à la sortie du combat.
 local combat = CreateFrame("Frame")
 combat:RegisterEvent("PLAYER_REGEN_DISABLED")
-combat:SetScript("OnEvent", function()
-    if Movers.selected then Movers:Select(nil) end
+combat:RegisterEvent("PLAYER_REGEN_ENABLED")
+combat:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_REGEN_DISABLED" then
+        if Movers.selected then Movers:Select(nil) end
+        if Movers.unlocked then
+            Movers.suspended = true
+            Movers:SetUnlocked(false)
+            NS.Print(L.MSG_MOVERS_SUSPENDED)
+        end
+    elseif Movers.suspended then
+        Movers.suspended = nil
+        -- Verrouillé pendant le combat (/aeon lock) : rien à reprendre, session close.
+        if NS.unlocked then Movers:SetUnlocked(true) else Movers.session, Movers.filter = nil, nil end
+    end
 end)

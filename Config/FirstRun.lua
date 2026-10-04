@@ -1,7 +1,8 @@
 -- Config/FirstRun.lua
--- Assistant d'installation en cinq pages : Installation un clic, Modules, Disposition (Edit
--- Mode), Cooldown Manager, CVars recommandées. Les pages 1 et 3 à 5 agissent au clic (rien à
--- mémoriser) ; seule la page Modules attend « Terminer ». Réouvrable par /aeon setup ou depuis les options.
+-- Assistant d'installation en six pages : Installation un clic, Modules, Style (AeonUI, Classic,
+-- Blizzard), Disposition (Edit Mode), Cooldown Manager, CVars recommandées. Les pages agissent au
+-- clic (rien à mémoriser), sauf les choix module par module (pages Modules et Style), qui attendent
+-- « Terminer ». Réouvrable par /aeon setup ou depuis les options.
 local _, NS = ...
 local L = NS.L
 
@@ -11,12 +12,11 @@ NS.FirstRun = FirstRun
 local SIDEBAR_WIDTH = 180
 local CONTENT_WIDTH = 720
 
--- CVars proposées à la page 4. Aucune n'est déjà gérée par Modules/Interface.lua : un seul
--- propriétaire par CVar. Toutes passent par NS.CVars, donc réversibles.
+-- CVars proposées à la page 6. Aucune n'est déjà gérée par Modules/Interface.lua ni par les
+-- barres de nom (portée, PNJ, familiers) : un seul propriétaire par CVar. Toutes passent par NS.CVars, donc réversibles.
 local RECOMMENDED_CVARS = {
     { name = "nameplateShowEnemies",        value = "1",   label = "SETUP_CVAR_NP_ENEMIES" },
     { name = "nameplateMotion",             value = "1",   label = "SETUP_CVAR_NP_STACK" },
-    { name = "nameplateMaxDistance",        value = "60",  label = "SETUP_CVAR_NP_DISTANCE" },
     { name = "cameraDistanceMaxZoomFactor", value = "2.6", label = "SETUP_CVAR_CAMERA" },
     { name = "autoLootDefault",             value = "1",   label = "SETUP_CVAR_AUTOLOOT" },
     { name = "ffxGlow",                     value = "0",   label = "SETUP_CVAR_GLOW" },
@@ -74,6 +74,31 @@ local function LayoutTools(layout, key, preset, import, export, canExport, noneM
     end
 end
 
+local function SyncChoices()
+    for _, module in ipairs(NS.Modules:List()) do choices[module.name] = NS.db.modules[module.name].enabled end
+end
+
+--- Bouton de profil de l'assistant. Profil déjà là : il porte peut-être les réglages du joueur,
+-- l'installation n'est rejouée qu'après confirmation ; refus ou Échap = simple bascule.
+local function InstallProfile(name, install)
+    if not NS.global.profiles[name] then
+        NS:RunOutOfCombat(function() install() SyncChoices() end)
+        return
+    end
+    StaticPopupDialogs.AEONUI_PROFILE_EXISTS = {
+        text = "%s", button1 = L.INSTALL_PROFILE_RESET, button2 = L.INSTALL_PROFILE_KEEP,
+        OnAccept = function() NS:RunOutOfCombat(function() install() SyncChoices() end) end,
+        -- Seulement sur un vrai refus (bouton 2, Échap) : pas quand /camp ou une autre popup l'annule.
+        OnCancel = function(_, _, reason)
+            if reason ~= "clicked" then return end
+            NS:RunOutOfCombat(function() NS:SwitchProfile(name) SyncChoices() end)
+        end,
+        timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+    }
+    StaticPopup_Show("AEONUI_PROFILE_EXISTS", string.format(L.MSG_PROFILE_EXISTS, name))
+end
+FirstRun.InstallProfile = InstallProfile
+
 --------------------------------------------------------------------------------
 -- Pages
 --------------------------------------------------------------------------------
@@ -81,21 +106,25 @@ end
 pages[1] = { key = "install", titleKey = "SETUP_PAGE_INSTALL", build = function(page)
     local layout = NS.Widgets.NewLayout(page, 20, CONTENT_WIDTH)
     layout:Header(L.FIRST_RUN_TITLE)
-    layout:Note(L.INSTALL_HINT)
-    for _, role in ipairs({ "dps", "heal", "tank" }) do
-        layout:Button(string.format(L.INSTALL_ROLE_BUTTON, NS.Install.ProfileName(role)), function()
-            NS:RunOutOfCombat(function()
-                NS.Install:Apply(role)
-                for _, module in ipairs(NS.Modules:List()) do choices[module.name] = NS.db.modules[module.name].enabled end
+    -- Profils de la classe du joueur ; sans classe lisible, les trois profils de rôle génériques.
+    local classFile = NS.Install.PlayerClass()
+    local styles = classFile and NS.Install.ClassStyles() or { "dps", "heal", "tank" }
+    layout:Note(classFile and L.INSTALL_CLASS_HINT or L.INSTALL_HINT)
+    for _, style in ipairs(styles) do
+        local name = classFile and NS.Install.ClassProfileName(style) or NS.Install.ProfileName(style)
+        layout:Button(string.format(L.INSTALL_ROLE_BUTTON, name), function()
+            InstallProfile(name, function()
+                if classFile then NS.Install:ApplyClass(style) else NS.Install:Apply(style) end
             end)
         end)
-        layout:Note(L["INSTALL_ROLE_" .. role:upper() .. "_DESC"], 28)
+        layout:Note(classFile and L["INSTALL_CLASS_" .. classFile .. "_" .. style:upper()]
+            or L["INSTALL_ROLE_" .. style:upper() .. "_DESC"], 28)
     end
     -- Confort seulement : les cadres Blizzard restent, profil actuel, sans rôle.
     layout:Button(L.INSTALL_PRESET_LIGHT, function()
         NS:RunOutOfCombat(function()
             NS.Install:ApplyPreset("light")
-            for _, module in ipairs(NS.Modules:List()) do choices[module.name] = NS.db.modules[module.name].enabled end
+            SyncChoices()
         end)
     end)
     layout:Note(L.INSTALL_NOTE)
@@ -127,7 +156,37 @@ pages[2] = { key = "modules", titleKey = "SETUP_PAGE_MODULES", build = function(
     return { header, columns[1], columns[2] }
 end }
 
-pages[3] = { key = "layout", titleKey = "SETUP_PAGE_LAYOUT", build = function(page)
+pages[3] = { key = "style", titleKey = "SETUP_PAGE_STYLE", build = function(page)
+    local layout = NS.Widgets.NewLayout(page, 20, CONTENT_WIDTH)
+    layout:Header(L.SETUP_PAGE_STYLE)
+    layout:Note(L.SETUP_STYLE_HINT)
+    for _, name in ipairs(NS.Install.STYLE_ORDER) do
+        layout:Button(L["STYLE_" .. name:upper()], function()
+            NS:RunOutOfCombat(function()
+                NS.Install:ApplyStyle(name)
+                for _, module in ipairs(NS.Install.STYLE_MODULES) do
+                    if NS.Modules:Get(module) then choices[module] = NS.db.modules[module].enabled end
+                end
+                layout:Refresh()
+            end)
+        end)
+        layout:Note(L["STYLE_" .. name:upper() .. "_DESC"], 28)
+    end
+    -- Module par module : AeonUI (module actif) ou Blizzard (module coupé), posé à « Terminer ».
+    layout:Header(L.SETUP_STYLE_PER_MODULE)
+    local styles = { { name = L.STYLE_AEON, value = "aeon" }, { name = L.STYLE_BLIZZARD, value = "blizzard" } }
+    for _, name in ipairs(NS.Install.STYLE_MODULES) do
+        local module = NS.Modules:Get(name)
+        if module then
+            layout:Dropdown(module.title, styles,
+                function() return choices[name] and "aeon" or "blizzard" end,
+                function(value) choices[name] = value == "aeon" end)
+        end
+    end
+    return { layout }
+end }
+
+pages[4] = { key = "layout", titleKey = "SETUP_PAGE_LAYOUT", build = function(page)
     local layout = NS.Widgets.NewLayout(page, 20, CONTENT_WIDTH)
     layout:Header(L.SETUP_PAGE_LAYOUT)
     layout:Note(L.SETUP_EDITMODE_HINT)
@@ -136,7 +195,7 @@ pages[3] = { key = "layout", titleKey = "SETUP_PAGE_LAYOUT", build = function(pa
     return { layout }
 end }
 
-pages[4] = { key = "cooldown", titleKey = "SETUP_PAGE_CDM", build = function(page)
+pages[5] = { key = "cooldown", titleKey = "SETUP_PAGE_CDM", build = function(page)
     local layout = NS.Widgets.NewLayout(page, 20, CONTENT_WIDTH)
     layout:Header(L.SETUP_PAGE_CDM)
     layout:Note(L.SETUP_CDM_HINT)
@@ -148,7 +207,7 @@ pages[4] = { key = "cooldown", titleKey = "SETUP_PAGE_CDM", build = function(pag
     return { layout }
 end }
 
-pages[5] = { key = "cvars", titleKey = "SETUP_PAGE_CVARS", build = function(page)
+pages[6] = { key = "cvars", titleKey = "SETUP_PAGE_CVARS", build = function(page)
     local layout = NS.Widgets.NewLayout(page, 20, CONTENT_WIDTH)
     layout:Header(L.SETUP_PAGE_CVARS)
     layout:Note(L.SETUP_CVARS_HINT)

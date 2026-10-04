@@ -3,7 +3,8 @@
 --   * rez en combat : charges partagées du groupe (C_Spell.GetSpellCharges(20484)), en
 --     instance de groupe seulement, « charges | temps avant la prochaine » ;
 --   * Furie sanguinaire / Héroïsme : temps restant de l'affaiblissement « Rassasié » ou
---     équivalent sur le joueur.
+--     équivalent sur le joueur. Quand le client offre le conteneur d'auras du moteur, c'est lui
+--     qui le montre (lu en combat compris), posé sur l'icône avec son temps restant.
 -- Sur un client qui ne renvoie ni charges ni ces sorts (contenu Classic), rien ne s'affiche.
 local _, NS = ...
 local L = NS.L
@@ -27,6 +28,9 @@ local THROTTLE = 0.2
 
 local active = false
 local icons = {}   -- battleRes, bloodlust
+local engine       -- conteneur du moteur pour l'affaiblissement ; false : absent
+local SATED_SET = {}
+for _, id in ipairs(RaidCooldowns.SATED) do SATED_SET[id] = true end
 
 --- "m:ss" (ou "s" sous la minute) pour un temps restant en secondes.
 function RaidCooldowns.FormatTime(seconds)
@@ -61,8 +65,9 @@ local function BattleRes(icon)
     return true
 end
 
---- Affaiblissement de Furie sanguinaire sur le joueur ; faux sinon.
+--- Affaiblissement de Furie sanguinaire sur le joueur ; faux sinon (ou montré par le moteur).
 local function Bloodlust(icon)
+    if engine then return false end
     for _, id in ipairs(RaidCooldowns.SATED) do
         local texture, _, expiration = NS.FindAuraBySpellID("player", id, "HARMFUL")
         if not NS.IsSecret(texture) and texture and not NS.IsSecret(expiration) and type(expiration) == "number" then
@@ -89,6 +94,8 @@ local function Build()
     for _, icon in pairs(icons) do
         icon.elapsed = 0
         icon:SetScript("OnUpdate", function(self, elapsed)
+            -- Une seule icône pilote quand les deux sont visibles.
+            if self ~= icons.battleRes and icons.battleRes:IsShown() then return end
             self.elapsed = self.elapsed + elapsed
             if self.elapsed < THROTTLE then return end
             self.elapsed = 0
@@ -97,9 +104,25 @@ local function Build()
     end
 end
 
+--- Emplacement du moteur sur l'icône : les affaiblissements « Rassasié » ne sont jamais secrets,
+-- le moteur les filtre par identifiant sur le joueur.
+local function LayoutEngine()
+    if engine == nil then
+        engine = NS.CreateAuraContainer(UIParent) or false
+        if engine then engine:SetPoint("CENTER", icons.bloodlust, "CENTER") end
+    end
+    if not engine then return end
+    NS.SetAuraSlot(engine, "sated", "HARMFUL", active and RaidCooldowns.db.bloodlust, function(slotButton)
+        NS.InitAuraButton(slotButton, { noNumbers = true, durationText = true })
+        pcall(slotButton.SetAllPoints, slotButton, icons.bloodlust)
+    end, { includeSpellIDs = SATED_SET })
+    NS.SetAuraContainerUnit(engine, "player", true)
+end
+
 function RaidCooldowns:Layout()
     local size = self.db.size
     for _, icon in pairs(icons) do icon:SetSize(size, size) end
+    LayoutEngine()
 end
 
 function RaidCooldowns:GetIcons() return icons end
@@ -128,6 +151,7 @@ function RaidCooldowns:OnDisable()
     events:UnregisterAllEvents()
     NS.Movers:Unregister("battleRes")
     NS.Movers:Unregister("bloodlust")
+    LayoutEngine()
     self:Update()
 end
 

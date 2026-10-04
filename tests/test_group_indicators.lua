@@ -70,6 +70,8 @@ test("indicateurs : menace orange ou rouge, en bordure ou en lueur", function()
     Enable()
     Mock.SetGroup(2, false)
     local ami = GF:GetButton("party1")
+    GF.db.aggroStyle = "border"
+    NS.Modules:Refresh("groupframes")
     Mock.units.party1.threat = 2
     Mock.FireEvent("UNIT_THREAT_SITUATION_UPDATE", "party1")
     eq(ami.border.top.color[1], 1, "orange en bordure")
@@ -82,7 +84,6 @@ test("indicateurs : menace orange ou rouge, en bordure ou en lueur", function()
     Mock.units.party1.threat = Mock.SetSecret(3)
     Mock.FireEvent("UNIT_THREAT_SITUATION_UPDATE", "party1")
     eq(ami.glow:IsShown(), false, "menace secrète : rien")
-    GF.db.aggroStyle = "border"
     Disable()
 end)
 
@@ -153,4 +154,137 @@ test("indicateurs : portrait des cadres d'unité en option", function()
     db.units.player.portrait = false
     NS.Modules:SetEnabled("unitframes", false)
     _G.SetPortraitTexture = nil
+end)
+
+test("indicateurs : croissance du raid, groupes affichés, groupe inversé", function()
+    reset()
+    Enable()
+    local raid, party = GF.headers.raid, GF.headers.party
+    eq(raid:GetAttribute("point"), "TOP"); eq(raid:GetAttribute("columnAnchorPoint"), "LEFT")
+    eq(raid:GetAttribute("groupFilter"), nil, "8 groupes : pas de filtre")
+    GF.db.raidUnitGrowth, GF.db.raidGroupGrowth, GF.db.raidGroups = "LEFT", "UP", 5
+    NS.Modules:Refresh("groupframes")
+    eq(raid:GetAttribute("point"), "RIGHT")
+    truthy(raid:GetAttribute("xOffset") < 0 and raid:GetAttribute("yOffset") == 0)
+    eq(raid:GetAttribute("columnAnchorPoint"), "BOTTOM")
+    eq(raid:GetAttribute("groupFilter"), "1,2,3,4,5")
+    GF.db.raidGroupGrowth = "RIGHT"
+    NS.Modules:Refresh("groupframes")
+    eq(raid:GetAttribute("columnAnchorPoint"), "TOP", "même axe que les membres : corrigé")
+    local horizontal = GF.db.horizontal
+    GF.db.reverse, GF.db.horizontal = true, false
+    NS.Modules:Refresh("groupframes")
+    eq(party:GetAttribute("point"), "BOTTOM")
+    truthy(party:GetAttribute("yOffset") > 0)
+    GF.db.horizontal = true
+    NS.Modules:Refresh("groupframes")
+    eq(party:GetAttribute("point"), "RIGHT", "ligne inversée : vers la gauche")
+    eq(party:GetAttribute("columnAnchorPoint"), "TOP")
+    GF.db.raidUnitGrowth, GF.db.raidGroupGrowth, GF.db.raidGroups, GF.db.reverse = "DOWN", "RIGHT", 8, false
+    GF.db.horizontal = horizontal
+    Disable()
+end)
+
+test("indicateurs : rôle par style, filtre par rôle, caché en combat", function()
+    reset()
+    Enable()
+    Mock.SetGroup(3, false)
+    Mock.roles.party1, Mock.roles.party2 = "TANK", "DAMAGER"
+    GF.db.roleShowDamager = true
+    NS.Modules:Refresh("groupframes")
+    local tank, dps = GF:GetButton("party1"), GF:GetButton("party2")
+    truthy(tank.role:IsShown() and dps.role:IsShown())
+    GF.db.roleShowDamager = false
+    GF.db.roleIconStyle = "tiny"
+    NS.Modules:Refresh("groupframes")
+    eq(dps.role:IsShown(), false, "dégâts masqués")
+    eq(tank.role.atlas, "roleicon-tiny-tank")
+    Mock.missingAtlas["roleicon-tiny-tank"] = true
+    GF:UpdateRole(tank)
+    eq(tank.role.texture, "Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES", "atlas absent : portrait")
+    Mock.missingAtlas["roleicon-tiny-tank"] = nil
+    GF.db.roleHideInCombat = true
+    Mock.combat = true
+    Mock.FireEvent("PLAYER_REGEN_DISABLED")
+    eq(tank.role:IsShown(), false, "caché en combat")
+    Mock.combat = false
+    Mock.FireEvent("PLAYER_REGEN_ENABLED")
+    truthy(tank.role:IsShown())
+    GF.db.roleIconStyle, GF.db.roleHideInCombat = "portrait", false
+    Disable()
+end)
+
+test("indicateurs : offre de résurrection gardée 60 s, icônes d'état séparées", function()
+    reset()
+    Enable()
+    Mock.SetGroup(2, false)
+    local ami = GF:GetButton("party1")
+    local casting = true
+    _G.UnitHasIncomingResurrection = function() return casting end
+    Mock.units.party1.dead = true
+    Mock.FireEvent("INCOMING_RESURRECT_CHANGED", "party1")
+    truthy(ami.status:IsShown(), "incantation")
+    casting = false
+    Mock.FireEvent("INCOMING_RESURRECT_CHANGED", "party1")
+    truthy(ami.status:IsShown(), "offre à accepter")
+    GF.db.rezIcons = false
+    GF:UpdateStatus(ami)
+    eq(ami.status:IsShown(), false, "option coupée")
+    GF.db.rezIcons = true
+    Mock.units.party1.dead = false
+    Mock.FireEvent("UNIT_HEALTH", "party1")
+    eq(ami.status:IsShown(), false, "relevé : icône retirée")
+    Mock.units.party1.dead = true
+    casting = true
+    Mock.FireEvent("INCOMING_RESURRECT_CHANGED", "party1")
+    casting = false
+    Mock.FireEvent("INCOMING_RESURRECT_CHANGED", "party1")
+    Mock.Advance(61, 1)
+    eq(ami.status:IsShown(), false, "offre expirée")
+    _G.UnitHasIncomingResurrection = nil
+    Disable()
+end)
+
+test("indicateurs : dispel de tout type avec lueur, soins absorbés", function()
+    reset()
+    Mock.units.player.class = "MAGE"
+    Enable()
+    Mock.SetGroup(2, false)
+    local ami = GF:GetButton("party1")
+    Mock.debuffs.party1 = { { icon = "p", dispelName = "Poison" } }
+    Mock.FireEvent("UNIT_AURA", "party1")
+    eq(ami.border.top.color[1], NS.db.theme.border.r, "mage : poison ignoré")
+    GF.db.dispelMode, GF.db.dispelGlow = "all", true
+    Mock.FireEvent("UNIT_AURA", "party1")
+    eq(ami.border.top.color[2], DebuffTypeColor.Poison.g, "tout type : poison signalé")
+    eq(NS.Glow.Current(ami), "pixel")
+    Mock.debuffs.party1 = {}
+    Mock.FireEvent("UNIT_AURA", "party1")
+    eq(NS.Glow.Current(ami), nil, "lueur éteinte")
+    GF.db.dispelMode, GF.db.dispelGlow = "mine", false
+    _G.UnitGetTotalHealAbsorbs = function() return 30 end
+    Mock.FireEvent("UNIT_HEAL_ABSORB_AMOUNT_CHANGED", "party1")
+    truthy(ami.healAbsorb:IsShown())
+    eq(ami.healAbsorb:GetValue(), 30)
+    _G.UnitGetTotalHealAbsorbs = nil
+    Disable()
+end)
+
+test("indicateurs : mana des soigneurs en texte", function()
+    reset()
+    GF.db.healerMana = "party"
+    Enable()
+    Mock.SetGroup(3, false)
+    Mock.roles.party2 = "HEALER"
+    Mock.FireEvent("PLAYER_ROLES_ASSIGNED")
+    local row = GF.manaUnits.party2
+    truthy(row and row.name:IsShown(), "ligne du soigneur")
+    eq(GF.manaUnits.party1, nil)
+    eq(row.name:GetText(), Mock.units.party2.name)
+    truthy(NS.Movers:Anchor("uf_healermana"))
+    GF.db.healerMana = "raid"
+    NS.Modules:Refresh("groupframes")
+    eq(GF.manaUnits.party2, nil, "raid seulement : rien en groupe")
+    GF.db.healerMana = "none"
+    Disable()
 end)

@@ -1,10 +1,10 @@
--- Modules/Nameplates.lua
+-- AeonUI_Nameplates/Nameplates.lua
 -- Deux chevrons de part et d'autre de la barre de nom de la cible, pointés vers elle.
 -- Hostiles seulement (réglable). Pendant une incantation de la cible, le chevron gauche
 -- s'écarte pour ne pas masquer la barre d'incantation.
 -- L'état « incante » vient des events START/STOP : en combat, UnitCastingInfo peut rendre
 -- des valeurs secrètes, qu'on ne sait que tester pour « existe ».
-local _, NS = ...
+local NS = AeonUI
 local L = NS.L
 
 local CHEVRON = "Interface\\AddOns\\AeonUI\\Media\\Chevron"
@@ -80,16 +80,14 @@ local function HealthBar(plate)
     return (container and (container.healthBar or container.HealthBar)) or (unitFrame and unitFrame.healthBar) or plate
 end
 
---- Un autre tank a-t-il l'agro de la cible ? Toute réponse secrète vaut non.
+--- Un autre tank a-t-il l'agro de la cible ? Toute réponse secrète vaut non. Menace de chaque
+-- tank du groupe, pas « targettarget » (jeton composé, secret en combat).
 local function OtherTankHasAggro()
     if not _G.UnitThreatSituation then return false end
     local ok, status = pcall(UnitThreatSituation, "player", "target")
     -- 2 et 3 : c'est toi qui tanks.
     if not ok or NS.IsSecret(status) or (status or 0) >= 2 then return false end
-    local exists = UnitExists("targettarget")
-    if NS.IsSecret(exists) or not exists then return false end
-    local coTank = NS.Modules:Get("cotank")
-    return coTank ~= nil and coTank.IsTank("targettarget")
+    return NS.OtherTankHasAggro("target")
 end
 
 function Nameplates:Color()
@@ -180,10 +178,15 @@ function Nameplates:OnRefresh() self:Update() end
 function Nameplates:BuildOptions(o)
     o:Check("hostileOnly", L.OPT_NP_HOSTILE)
     o:Slider("size", L.OPT_NP_SIZE, 8, 48, 2)
+    o:Advanced()
     o:Slider("gap", L.OPT_NP_GAP, 0, 40, 1)
+    o:EndAdvanced()
     o:Color("color", L.OPT_NP_COLOR)
+    o:Advanced()
     o:Color("combatColor", L.OPT_NP_COMBAT_COLOR)
     o:Color("otherTankColor", L.OPT_NP_OTHER_TANK_COLOR)
+    o:EndAdvanced()
     o:Check("castNudge", L.OPT_NP_CAST_NUDGE)
+    o:Advanced()
     o:Slider("castKick", L.OPT_NP_CAST_KICK, 0, 30, 1, 36)
 end

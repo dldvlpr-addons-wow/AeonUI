@@ -183,3 +183,26 @@ test("réinitialisation annoncée au groupe, seulement pour ce message", functio
     eq(#Mock.chat, 1, "message secret (chat verrouillé) : ignoré sans erreur")
     NS.db.modules.automation.announceReset = false
 end)
+
+test("quêtes : anti double, une quête déjà choisie n'est pas reprise avant 30 s", function()
+    reset()
+    NS.db.modules.automation.autoQuests = true
+    Mock.Advance(60)
+    Mock.gossip = { active = { { questID = 17, isComplete = true } }, available = { { questID = 19 } } }
+    Mock.FireEvent("GOSSIP_SHOW")
+    Mock.FireEvent("GOSSIP_SHOW")
+    Mock.FireEvent("GOSSIP_SHOW")
+    eq(table.concat(Mock.questLog, ","), "gossip-turnin:17,gossip-accept:19", "chaque quête une fois")
+    Mock.Advance(31)
+    Mock.FireEvent("GOSSIP_SHOW")
+    eq(Mock.questLog[3], "gossip-turnin:17", "reprise après le délai")
+    Mock.questLog = {}
+    _G.GetQuestID = function() return 17 end
+    Mock.questChoices = 1
+    Mock.FireEvent("QUEST_COMPLETE")
+    Mock.FireEvent("QUEST_COMPLETE")
+    eq(table.concat(Mock.questLog, ","), "reward:1", "récompense prise une fois")
+    _G.GetQuestID = nil
+    Mock.gossip = { active = {}, available = {} }
+    NS.db.modules.automation.autoQuests = false
+end)

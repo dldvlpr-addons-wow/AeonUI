@@ -77,13 +77,13 @@ test("menu Voyage : sorts connus seulement, boutons sécurisés, fermé en comba
     Mock.FireEvent("SPELLS_CHANGED")
 end)
 
-test("masquer en combat : state driver sur la barre, retiré sinon", function()
+test("visibilité commune : state driver sur la barre, retiré sans condition", function()
     reset()
     local bar = TopBar:GetFrame()
-    NS.db.modules.topbar.hideInCombat = true
+    NS.db.modules.topbar.visibility = NS.Visibility.Spec({ combat = "no" })
     NS.Modules:Refresh("topbar")
-    eq(Mock.stateDrivers[bar].visibility, "[combat] hide; show")
-    NS.db.modules.topbar.hideInCombat = false
+    eq(Mock.stateDrivers[bar].visibility, "[nocombat] show; hide")
+    NS.db.modules.topbar.visibility = NS.Visibility.Spec()
     NS.Modules:Refresh("topbar")
     eq(Mock.stateDrivers[bar].visibility, nil)
 end)
@@ -93,13 +93,13 @@ test("perf en combat : reste visible par défaut, masquée sur option", function
     local bar, elements = TopBar:GetFrame()
     local db = NS.db.modules.topbar
     eq(elements.perf:GetParent(), UIParent, "pas fille de la barre")
-    db.hideInCombat = true
+    db.visibility = NS.Visibility.Spec({ combat = "no" })
     NS.Modules:Refresh("topbar")
     eq(Mock.stateDrivers[elements.perf] and Mock.stateDrivers[elements.perf].visibility, nil, "perf sans driver")
     db.perfInCombat = false
     NS.Modules:Refresh("topbar")
-    eq(Mock.stateDrivers[elements.perf].visibility, "[combat] hide; show")
-    db.hideInCombat, db.perfInCombat = false, true
+    eq(Mock.stateDrivers[elements.perf].visibility, "[nocombat] show; hide")
+    db.visibility, db.perfInCombat = NS.Visibility.Spec(), true
     NS.Modules:Refresh("topbar")
     eq(Mock.stateDrivers[elements.perf].visibility, nil)
     NS.Modules:SetEnabled("topbar", false)

@@ -88,23 +88,22 @@ end
 -- Tête parlante et capture d'écran
 --------------------------------------------------------------------------------
 
-local talkingHooked = false
-
-local function HookTalkingHead()
+-- Système Edit Mode : ni Hide ni CloseImmediately depuis l'addon (relayout contaminé du
+-- conteneur). On lui retire l'événement qui l'ouvre, et on le lui rend quand l'option est coupée.
+function Interface:ApplyTalkingHead()
     local frame = _G.TalkingHeadFrame
-    if talkingHooked or not frame or not frame.PlayCurrent then return end
-    talkingHooked = true
-    hooksecurefunc(frame, "PlayCurrent", function(self)
-        if active and Interface.db.hideTalkingHead then
-            if self.CloseImmediately then self:CloseImmediately() else self:Hide() end
-        end
-    end)
+    if not frame then return end
+    if active and self.db.hideTalkingHead then
+        frame:UnregisterEvent("TALKINGHEAD_REQUESTED")
+    else
+        NS.RegisterEventSafe(frame, "TALKINGHEAD_REQUESTED")
+    end
 end
 
 local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event, name)
     if event == "ADDON_LOADED" then
-        if name == "Blizzard_TalkingHeadUI" then HookTalkingHead() end
+        if name == "Blizzard_TalkingHeadUI" then Interface:ApplyTalkingHead() end
     elseif event == "SCREENSHOT_SUCCEEDED" or event == "SCREENSHOT_FAILED" then
         if Interface.db.hideScreenshotMessage then
             -- Le message s'affiche dans la même frame ; le cacher une frame plus tard.
@@ -136,12 +135,12 @@ end
 
 function Interface:OnEnable()
     active = true
-    HookTalkingHead()
     for _, event in ipairs({ "ADDON_LOADED", "SCREENSHOT_SUCCEEDED", "SCREENSHOT_FAILED" }) do
         NS.RegisterEventSafe(events, event)
     end
     self:ApplyCVars()
     self:ApplyErrors()
+    self:ApplyTalkingHead()
     self:ApplyCooldownText()
 end
 
@@ -150,12 +149,14 @@ function Interface:OnDisable()
     events:UnregisterAllEvents()
     self:ApplyCVars()
     self:ApplyErrors()
+    self:ApplyTalkingHead()
     self:ApplyCooldownText()
 end
 
 function Interface:OnRefresh()
     self:ApplyCVars()
     self:ApplyErrors()
+    self:ApplyTalkingHead()
     self:ApplyCooldownText()
 end
 
@@ -181,6 +182,7 @@ function Interface:BuildOptions(o)
     o:Check("cooldownNumbers", L.OPT_UI_COOLDOWN_NUMBERS)
     o:Check("cooldownColors", L.OPT_UI_COOLDOWN_COLORS)
     if not NS.CooldownText.Supported() then o:Note(L.OPT_UI_COOLDOWN_COLORS_MISSING, 36) end
+    o:Advanced()
     o:Slider("cooldownExpiring", L.OPT_UI_COOLDOWN_EXPIRING, 0, 10, 1, 36)
     o:Color("cooldownColorExpiring", L.OPT_UI_COOLDOWN_COLOR_EXPIRING, 36)
     o:Color("cooldownColorSeconds", L.OPT_UI_COOLDOWN_COLOR_SECONDS, 36)

@@ -117,7 +117,7 @@ Mock.units = {
 
 function _G.UnitExists(unit) return Mock.units[unit] ~= nil end
 function _G.UnitGUID(unit) local u = Mock.units[unit] return u and u.guid end
-function _G.UnitName(unit) local u = Mock.units[unit] return u and u.name end
+function _G.UnitName(unit) local u = Mock.units[unit] if u then return u.name, u.realm end end
 function _G.UnitClass(unit)
     local u = Mock.units[unit]
     return u and u.class, u and u.class
@@ -126,7 +126,15 @@ function _G.UnitIsPlayer(unit) local u = Mock.units[unit] return u ~= nil and u.
 function _G.UnitIsUnit(a, b) return Mock.units[a] ~= nil and Mock.units[a] == Mock.units[b] end
 function _G.UnitIsDead(unit) local u = Mock.units[unit] return u ~= nil and u.dead == true end
 function _G.UnitIsDeadOrGhost(unit) return UnitIsDead(unit) end
+function _G.UnitIsConnected(unit) local u = Mock.units[unit] return not (u and u.offline == true) end
 function _G.UnitAffectingCombat(unit) local u = Mock.units[unit] return u ~= nil and u.combat == true end
+function _G.UnitClassification(unit) local u = Mock.units[unit] return u and u.classification or "normal" end
+function _G.UnitIsPVP(unit) local u = Mock.units[unit] return u ~= nil and u.pvp == true end
+function _G.UnitIsPVPFreeForAll(unit) local u = Mock.units[unit] return u ~= nil and u.ffa == true end
+function _G.UnitFactionGroup(unit) local u = Mock.units[unit] return u and u.faction end
+-- Mock.petHappiness = { happiness, damage, loyalty } : familier de chasseur présent.
+function _G.HasPetUI() return Mock.petHappiness ~= nil, Mock.petHappiness ~= nil end
+_G.C_PetInfo = { GetPetHappiness = function() local p = Mock.petHappiness if p then return p[1], p[2], p[3] end end }
 function _G.UnitOnTaxi() return false end
 function _G.IsResting() return Mock.resting == true end
 function _G.IsMounted() return false end
@@ -173,8 +181,9 @@ function _G.IsPlayerSpell(id) return Mock.knownSpells[id] == true end
 Mock.buffs = {}            -- liste de noms de buffs du joueur
 _G.C_UnitAuras = {
     GetAuraDataByIndex = function(unit, index)
-        if unit ~= "player" then return nil end
-        local name = Mock.buffs[index]
+        -- Joueur : Mock.buffs ; autre unité : Mock.units[unit].buffs (liste de noms).
+        local list = unit == "player" and Mock.buffs or (Mock.units[unit] and Mock.units[unit].buffs)
+        local name = list and list[index]
         if not name then return nil end
         return { name = name, spellId = SpellId(name), icon = 1 }
     end,
@@ -182,6 +191,14 @@ _G.C_UnitAuras = {
 
 Mock.mainHandEnchant = false
 function _G.GetWeaponEnchantInfo() return Mock.mainHandEnchant end
+_G.ITEM_ENCHANT_TIME_LEFT_MIN = "%s (%d min)"
+Mock.mainHandTooltip = {}
+_G.C_TooltipInfo = _G.C_TooltipInfo or {}
+function _G.C_TooltipInfo.GetInventoryItem(unit, slot)
+    local lines = {}
+    for _, text in ipairs(Mock.mainHandTooltip) do lines[#lines + 1] = { leftText = text } end
+    return { lines = lines }
+end
 
 --------------------------------------------------------------------------------
 -- Sacs, objets, marchand
@@ -213,7 +230,24 @@ _G.C_Container = {
     GetItemCooldown = function() return 0, 0, 1 end,
     GetContainerItemCooldown = function() return 0, 0, 1 end,
     SortBags = function() Mock.sorted = (Mock.sorted or 0) + 1 end,
+    -- Prise puis pose : la pose remplit la pile cible jusqu'à Mock.items[id].maxStack, le reste
+    -- reste au curseur (Mock.cursorItem).
+    PickupContainerItem = function(bag, slot)
+        local held = Mock.heldSlot
+        if not held then Mock.heldSlot = { bag, slot } Mock.cursorItem = "item" return end
+        Mock.heldSlot, Mock.cursorItem = nil, nil
+        local source, target = Mock.bags[held[1]][held[2]], Mock.bags[bag][slot]
+        local max = Mock.items[source.itemID] and Mock.items[source.itemID].maxStack or 1
+        local moved = math.min(source.stackCount or 1, max - (target.stackCount or 1))
+        target.stackCount = (target.stackCount or 1) + moved
+        source.stackCount = (source.stackCount or 1) - moved
+        if source.stackCount == 0 then Mock.bags[held[1]][held[2]] = nil else Mock.cursorItem = "item" end
+    end,
 }
+function _G.ClearCursor() Mock.cursorItem = nil end
+-- Mock.newItems["bag:slot"] = true : objet arrivé depuis la dernière ouverture.
+Mock.newItems = {}
+_G.C_NewItems = { IsNewItem = function(bag, slot) return Mock.newItems[bag .. ":" .. slot] == true end }
 -- Fenêtres de sacs Blizzard : ContainerFrame1 (sac à dos) et ContainerFrame2.
 Mock.containerFrames = {}
 
@@ -224,10 +258,11 @@ _G.C_Item = {
         return "item" .. item, nil, 0, 1, 1, "Junk", "Junk", 20, "", 1, info.sellPrice
     end,
     GetItemCount = function(itemID) return itemID == 6948 and 1 or 0 end,
-    -- Mock.items[itemID].equipLoc
+    GetItemMaxStackSizeByID = function(itemID) return Mock.items[itemID] and Mock.items[itemID].maxStack or 1 end,
+    -- Mock.items[itemID].equipLoc, .classID
     GetItemInfoInstant = function(item)
         local info = Mock.items[item]
-        return item, nil, nil, info and info.equipLoc or ""
+        return item, nil, nil, info and info.equipLoc or "", nil, info and info.classID
     end,
 }
 
@@ -293,25 +328,53 @@ local function NoOp() end
 for _, name in ipairs({
     "SetMovable", "EnableMouse", "EnableMouseWheel", "SetClampedToScreen", "RegisterForDrag",
     "StartMoving", "StopMovingOrSizing", "SetFrameStrata", "SetFrameLevel",
-    "SetJustifyH", "SetAlpha", "RegisterForClicks", "SetFontObject",
+    "SetJustifyH", "SetAlpha", "RegisterForClicks",
     "SetScrollChild", "SetVerticalScroll", "SetMinMaxValues", "SetValueStep",
     "SetObeyStepOnDrag", "SetAutoFocus", "ClearFocus", "SetVertexColor", "ClearLines", "AddLine",
     "AddDoubleLine", "SetOwner", "SetMultiLine", "HighlightText", "SetClampRectInsets", "SetFocus",
-    "SetNormalTexture",
+    "SetNormalTexture", "SetThumbTexture", "SetMaxLines",
 }) do
     FrameMeta[name] = NoOp
 end
 function FrameMeta:SetTexture(texture) self.texture = texture end
+function FrameMeta:SetFontString(fontString) self.fontString = fontString end
+function FrameMeta:GetFontString() return self.fontString end
 
-function FrameMeta:SetText(text) self.text = text end
+function FrameMeta:SetText(text)
+    self.text = text
+    if self.fontString then self.fontString.text = text end
+end
 function FrameMeta:SetFormattedText(format, ...) self.text = string.format(format, ...) end
 function FrameMeta:GetText() return self.text end
-function FrameMeta:SetFont(path, size, flags) self.font, self.fontSize, self.fontFlags = path, size, flags end
+function FrameMeta:SetFont(path, size, flags) self.font, self.fontSize, self.fontFlags = path, size, flags return true end
+-- Famille de polices : le membre « roman » sert de police, les autres de repli par alphabet.
+function _G.CreateFontFamily(name, members)
+    local family = { name = name, members = members }
+    _G[name] = family
+    return family
+end
+function FrameMeta:SetFontObject(font)
+    if type(font) ~= "table" or not font.members then return end
+    local roman = font.members[1]
+    self.font, self.fontSize, self.fontFlags, self.fontFamily = roman.file, roman.height, roman.flags, font
+end
 function FrameMeta:GetFont() return self.font, self.fontSize, self.fontFlags end
 function FrameMeta:GetStringWidth() return #(self.text or "") * 6 end
 function FrameMeta:GetStringHeight() return 12 end
 function FrameMeta:SetTextColor(r, g, b) self.textColor = { r, g, b } end
-function FrameMeta:SetColorTexture(r, g, b, a) self.color = { r, g, b, a } end
+function FrameMeta:GetTextColor()
+    if self.textColor then return self.textColor[1], self.textColor[2], self.textColor[3], 1 end
+end
+function FrameMeta:GetJustifyH() return nil end
+function FrameMeta:GetJustifyV() return nil end
+function FrameMeta:SetJustifyV() end
+function FrameMeta:SetColorTexture(r, g, b, a)
+    -- Client : r, g, b obligatoires (« Usage: self:SetColorTexture(color [, a]) » sinon).
+    if type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then
+        error("bad argument #1 to 'SetColorTexture' (Usage: self:SetColorTexture(color [, a]))", 2)
+    end
+    self.color = { r, g, b, a }
+end
 function FrameMeta:GetName() return self.frameName end
 function FrameMeta:SetSize(w, h) self.width, self.height = w, h end
 function FrameMeta:SetWidth(w) self.width = w end
@@ -320,6 +383,9 @@ function FrameMeta:GetWidth() return self.width or 0 end
 function FrameMeta:GetHeight() return self.height or 0 end
 function FrameMeta:SetParent(parent) self.parent = parent end
 function FrameMeta:GetFrameLevel() return self.frameLevel or 1 end
+function FrameMeta:SetFrameStrata(strata) self.strata = strata end
+function FrameMeta:GetFrameStrata() return self.strata or "MEDIUM" end
+function FrameMeta:SetIgnoreParentAlpha(ignore) self.ignoreParentAlpha = ignore end
 function FrameMeta:SetClipsChildren(clips) self.clipsChildren = clips end
 function FrameMeta:GetStatusBarTexture()
     self.statusBarTexture = self.statusBarTexture or setmetatable({ shown = true }, { __index = FrameMeta })
@@ -410,17 +476,45 @@ Mock.unknownEvents = { COMBAT_LOG_EVENT_UNFILTERED = true }
 function _G.CreateFrame(frameType, name, parent, template)
     if frameType == "AuraContainer" then
         if not Mock.auraContainer then error("Unknown frame type 'AuraContainer'") end
+        -- Conteneur du moteur : groupes et emplacements déclarés, appels notés, un bouton par groupe.
         local container = NewObject(parent)
-        container.frameType, container.calls, container.groups = frameType, {}, {}
+        container.frameType, container.calls, container.groups, container.slots = frameType, {}, {}, {}
+        container.unit = "none"
+        local function Button(self, init)
+            local button = NewObject(self)
+            for _, method in ipairs({ "SetIcon", "SetDurationCooldown", "SetApplicationCount", "AddDispelTypeTexture",
+                                      "SetMouseClickEnabled", "SetMouseMotionEnabled", "SetCancelAuraButtons" }) do
+                button[method] = function(b, region) b[method] = region end
+            end
+            if init then init(button) end
+            return button
+        end
         for _, method in ipairs({ "SetFlowLayoutAnchorPoint", "SetFlowLayoutGrowthDirection",
-                                  "SetFlowLayoutMaximumLineSize", "SetAuraGroupLayout", "UpdateAllAuras" }) do
+                                  "SetFlowLayoutMaximumLineSize", "UpdateAllAuras" }) do
             container[method] = function(self, ...) self.calls[#self.calls + 1] = method end
         end
+        container.GetUnit = function(self) return self.unit end
         container.SetUnit = function(self, unit) self.unit = unit end
         container.AddAuraGroup = function(self, key, filter, options)
-            self.groups[#self.groups + 1] = { key = key, filter = filter, options = options }
-            if options and options.initializeFrame then options.initializeFrame(NewObject(self)) end
+            assert(not self.groups[key], "aura group already exists")
+            self.groups[#self.groups + 1] = key
+            self.groups[key] = { filter = filter, options = options, buttons = { Button(self, options.initializeFrame) } }
         end
+        for _, field in ipairs({ "FilterString", "CandidateFilters", "SortMethod", "Layout", "MaxFrameCount" }) do
+            container["SetAuraGroup" .. field] = function(self, key, value)
+                self.groups[key][field] = value
+            end
+        end
+        container.GetAuraGroupFrameCount = function(self, key) return #self.groups[key].buttons end
+        container.GetAuraGroupFrame = function(self, key, i) return self.groups[key].buttons[i] end
+        container.AddAuraSlot = function(self, key, filter, options)
+            local button = Button(self, options.initializeFrame)
+            self.slots[key] = { filter = filter, button = button, enabled = true, candidates = options.candidateFilters }
+            return button
+        end
+        container.SetAuraSlotFilterString = function(self, key, filter) self.slots[key].filter = filter end
+        container.SetAuraSlotCandidateFilters = function(self, key, candidates) self.slots[key].candidates = candidates end
+        container.SetAuraSlotEnabled = function(self, key, enabled) self.slots[key].enabled = enabled end
         Mock.frames[#Mock.frames + 1] = container
         return container
     end
@@ -439,6 +533,13 @@ function _G.CreateFrame(frameType, name, parent, template)
     end
     if Mock.combat and frame.secure then error("ADDON_ACTION_BLOCKED: frame sécurisée créée en combat") end
     if template == "ActionBarButtonTemplate" then Mock.SetupActionButton(frame) end
+    if template == "SecureHandlerBaseTemplate" then
+        function frame:WrapScript(target, script, body)
+            if InCombatLockdown() then error("ADDON_ACTION_BLOCKED WrapScript") end
+            target.wrapped = target.wrapped or {}
+            target.wrapped[script] = body
+        end
+    end
     Mock.frames[#Mock.frames + 1] = frame
     return frame
 end
@@ -446,7 +547,9 @@ end
 -- Bouton d'action Blizzard (mixin minimal) : OnLoad l'inscrit dans les diffuseurs, OnEvent met à jour.
 function Mock.SetupActionButton(button)
     button.HotKey, button.Name = NewObject(button), NewObject(button)
+    button.icon = button:CreateTexture(nil, "BACKGROUND")
     button.cooldown = NewObject(button)
+    button.cooldown.SetSwipeColor = function(self, r, g, b, a) self.swipe = { r, g, b, a } end
     button.cooldown.SetCooldown = function(self, start, duration)
         if issecretvalue(start) or issecretvalue(duration) then error("Secret values are only allowed during untainted execution") end
         self.painted = { start, duration }
@@ -462,6 +565,21 @@ function Mock.SetupActionButton(button)
     end
     tinsert(ActionBarButtonEventsFrame.frames, button)
     tinsert(ActionBarActionEventsFrame.frames, button)
+    -- Survol du modèle : NewActionTexture présente => UpdateAction(true) jusqu'à
+    -- SetAttribute("pressAndHoldAction"), bloqué en combat pour un bouton d'addon.
+    button.NewActionTexture = button:CreateTexture(nil, "OVERLAY")
+    button.UpdatePressAndHoldAction = function(self)
+        if InCombatLockdown() then error("ADDON_ACTION_BLOCKED " .. self:GetName() .. ":SetAttribute()") end
+        self.pressAndHoldAction = false
+    end
+    button.Update = function(self) self:UpdatePressAndHoldAction() end
+    button:SetScript("OnEnter", function(self)
+        if self.NewActionTexture then
+            if InCombatLockdown() then error("ADDON_ACTION_BLOCKED " .. self:GetName() .. ":SetAttribute()") end
+            self.pressAndHoldAction = false
+        end
+        self.tooltipShown = true
+    end)
 end
 local function NewDispatcher(name)
     local frame = CreateFrame("Frame", name, UIParent)
@@ -508,8 +626,40 @@ function _G.GetPhysicalScreenSize() return Mock.screen.width, Mock.screen.height
 Mock.loadedAddons = {}
 
 _G.UIParent = CreateFrame("Frame", "UIParent")
-for i = 1, 2 do CreateFrame("Frame", "ContainerFrame" .. i, UIParent):Hide() end
-function _G.OpenAllBags() ContainerFrame1:Show() ContainerFrame2:Show() end
+-- ContainerFrame1 : sacs réunis (0 à NUM_BAG_SLOTS), boutons d'un pool réutilisé à chaque ouverture.
+for i = 1, 2 do
+    local frame = CreateFrame("Frame", "ContainerFrame" .. i, UIParent)
+    frame.Items, frame.pool = {}, {}
+    function frame:EnumerateValidItems()
+        return function(items, index)
+            index = index + 1
+            if items[index] then return index, items[index] end
+        end, self.Items, 0
+    end
+    function frame:UpdateItemLayout()
+        for index, button in ipairs(self.Items) do
+            button:ClearAllPoints()
+            button:SetPoint("TOPLEFT", self, "TOPLEFT", index, 0)
+        end
+    end
+    frame:Hide()
+end
+function ContainerFrame1:Generate()
+    self.Items = {}
+    for bag = 0, (_G.NUM_BAG_SLOTS or 4) do
+        for slot = 1, Mock.bagSize do
+            local index = #self.Items + 1
+            local button = self.pool[index] or CreateFrame("Button", nil, self)
+            self.pool[index] = button
+            button.bagID = bag
+            button:SetID(slot)
+            function button:GetBagID() return self.bagID end
+            self.Items[index] = button
+        end
+    end
+    self:UpdateItemLayout()
+end
+function _G.OpenAllBags() ContainerFrame1:Generate() ContainerFrame1:Show() ContainerFrame2:Show() end
 function _G.CloseAllBags() ContainerFrame1:Hide() ContainerFrame2:Hide() end
 _G.LootFrame = CreateFrame("Frame", "LootFrame", UIParent)
 for _, event in ipairs({ "LOOT_OPENED", "LOOT_SLOT_CLEARED", "LOOT_CLOSED" }) do LootFrame:RegisterEvent(event) end
@@ -902,6 +1052,7 @@ function _G.GetInventoryItemLink(_, slot) local e = Mock.equipped[slot] return e
 function _G.GetInventoryItemQuality(_, slot) local e = Mock.equipped[slot] return e and e.quality end
 C_Item.GetDetailedItemLevelInfo = function(link)
     for _, e in pairs(Mock.equipped) do if e.link == link then return e.level end end
+    return Mock.items[link] and Mock.items[link].level   -- objet du sac (le lien du mock = son id)
 end
 for name in pairs(SLOT_IDS) do CreateFrame("Button", "Character" .. name, UIParent) end
 function _G.GetInventoryItemTexture(_, slot) local e = Mock.equipped[slot] return e and (e.texture or "icone") end
@@ -918,11 +1069,15 @@ _G.InitiateRolePoll = RaidAction("roles")
 _G.SetRaidTarget = RaidAction("mark")
 _G.C_PartyInfo = _G.C_PartyInfo or {}
 C_PartyInfo.DoCountdown = RaidAction("countdown")
+C_PartyInfo.ConvertToRaid = RaidAction("toraid")
+C_PartyInfo.ConvertToParty = RaidAction("toparty")
+C_PartyInfo.UninviteUnit = RaidAction("uninvite")
+C_PartyInfo.LeaveParty = RaidAction("leave")
 CreateFrame("Frame", "CharacterFrame", UIParent)
 CreateFrame("Frame", "PaperDollFrame", CharacterFrame)
 
 -- Curseur
-function _G.GetCursorPosition() return 500, 400 end
+function _G.GetCursorPosition() return Mock.cursorX or 500, Mock.cursorY or 400 end
 function FrameMeta:GetEffectiveScale() return 1 end
 
 -- Mémoire des addons
@@ -938,6 +1093,8 @@ _G.C_AddOns = {
 -- Régions et enfants (mode sombre des cadres)
 function FrameMeta:GetObjectType() return self.objectType or self.frameType or "Frame" end
 function FrameMeta:SetVertexColor(r, g, b, a) self.vertex = { r, g, b, a } end
+function FrameMeta:SetDesaturated(on) self.desaturatedTexture = on and true or false end
+function FrameMeta:IsDesaturated() return self.desaturatedTexture == true end
 function FrameMeta:GetVertexColor()
     local v = self.vertex or { 1, 1, 1, 1 }
     return v[1], v[2], v[3], v[4]
@@ -966,6 +1123,18 @@ function FrameMeta:CreateTexture(...)
     self.regions[#self.regions + 1] = texture
     return texture
 end
+-- Groupes d'animation : seul l'état joué est suivi ; réglages (durée, alpha, bouclage) ignorés.
+local AnimationGroupMeta = {}
+AnimationGroupMeta.__index = function(_, key)
+    return rawget(AnimationGroupMeta, key) or function() end
+end
+function AnimationGroupMeta:Play() self.playing = true end
+function AnimationGroupMeta:Stop() self.playing = false end
+function AnimationGroupMeta:IsPlaying() return self.playing == true end
+function AnimationGroupMeta:CreateAnimation() return setmetatable({}, AnimationGroupMeta) end
+function FrameMeta:CreateAnimationGroup() return setmetatable({ playing = false }, AnimationGroupMeta) end
+function FrameMeta:SetBlendMode(mode) self.blendMode = mode end
+
 local baseCreateFontString = FrameMeta.CreateFontString
 function FrameMeta:CreateFontString(...)
     local fontString = baseCreateFontString(self, ...)
@@ -983,6 +1152,7 @@ function FrameMeta:GetChildren()
     return unpack(children)
 end
 function FrameMeta:SetStatusBarColor(r, g, b) self.barColor = { r, g, b } end
+function FrameMeta:GetStatusBarColor() local c = self.barColor or { 1, 1, 1 } return c[1], c[2], c[3] end
 function FrameMeta:SetStatusBarDesaturated(v) self.desaturated = v end
 function FrameMeta:SetStatusBarTexture() end
 function FrameMeta:SetMinMaxValues(lo, hi) self.min, self.max = lo, hi end
@@ -1081,20 +1251,23 @@ Mock.cvars.cooldownViewerEnabled = "0"
 Mock.cvars.nameplateShowEnemies = "0"
 Mock.cvars.nameplateMotion = "0"
 Mock.cvars.nameplateMaxDistance = "40"
+Mock.cvars.nameplateShowFriendlyNpcs = "0"
+Mock.cvars.nameplateShowEnemyPets = "0"
+Mock.cvars.UnitNameNPC = "1"
 Mock.cvars.cameraDistanceMaxZoomFactor = "1.9"
 Mock.cvars.ffxGlow = "1"
 
 -- Liste des addons : état d'activation (0 = désactivé partout) et ordre d'arguments accepté.
 _G.Enum.AddOnEnableState = { None = 0, Some = 1, All = 2 }
 Mock.addonEnableState = 2
+Mock.childEnableStates = {}
 Mock.addonArgOrder = 1          -- 1 = (addon, perso), 2 = (perso, addon), 0 = aucun ne répond
 C_AddOns.GetAddOnEnableState = function(a, b)
     local expectAddonFirst = Mock.addonArgOrder == 1
     if Mock.addonArgOrder == 0 then return nil end
-    if (expectAddonFirst and a == "AeonUI") or (not expectAddonFirst and b == "AeonUI") then
-        return Mock.addonEnableState
-    end
-    return nil
+    local name = expectAddonFirst and a or b
+    if name == "AeonUI" then return Mock.addonEnableState end
+    return Mock.childEnableStates[name]   -- addons AeonUI_* : nil = pas de réponse
 end
 C_AddOns.DisableAddOn = function() end
 
@@ -1126,6 +1299,16 @@ C_UnitAuras.GetAuraDataByIndex = function(unit, index, filter)
     if filter == "HARMFUL" then
         local list = Mock.debuffs[unit]
         return list and list[index] or nil
+    end
+    if filter == "HARMFUL|CROWD_CONTROL" then   -- débuffs marqués cc = true
+        local n = 0
+        for _, aura in ipairs(Mock.debuffs[unit] or {}) do
+            if aura.cc then
+                n = n + 1
+                if n == index then return aura end
+            end
+        end
+        return nil
     end
     return baseGetAuraDataByIndex(unit, index, filter)
 end
@@ -1261,6 +1444,7 @@ ObjectiveTrackerFrame.Header = { Background = ObjectiveTrackerFrame:CreateTextur
 ObjectiveTrackerFrame.Header.Text:SetFont("Fonts\\MORPHEUS.TTF", 16, "")
 ObjectiveTrackerFrame.modules = { { Header = { Background = ObjectiveTrackerFrame:CreateTexture(), Text = ObjectiveTrackerFrame:CreateFontString() } } }
 function ObjectiveTrackerFrame:SetCollapsed(collapsed) self.isCollapsed = collapsed end
+function ObjectiveTrackerFrame:Update() end
 function ObjectiveTrackerFrame:IsCollapsed() return self.isCollapsed == true end
 CharacterFrame.NineSlice = CreateFrame("Frame", nil, CharacterFrame)
 CharacterFrame.NineSlice.TopEdge = CharacterFrame.NineSlice:CreateTexture()
@@ -1280,6 +1464,12 @@ _G.FACTION_STANDING_LABEL5 = "Amical"
 for _, name in ipairs({ "MainStatusTrackingBarContainer", "StatusTrackingBarManager" }) do CreateFrame("Frame", name, UIParent) end
 -- Chat (étape 6)
 _G.NUM_CHAT_WINDOWS = 3
+Mock.chatWindows = {}   -- [id] = { shown, docked } : fenêtres renvoyées par GetChatWindowInfo
+function _G.GetChatWindowInfo(id)
+    local w = Mock.chatWindows[id] or {}
+    return "Chat" .. id, 14, 1, 1, 1, 1, w.shown or false, false, w.docked or false, false
+end
+function _G.FCF_SavePositionAndDimensions() end
 _G.CHAT_FRAME_TEXTURES = { "Background", "TopLeftTexture", "BottomLeftTexture" }
 _G.ChatFontNormal = {}
 _G.ChatTypeInfo = { SAY = { colorNameByClass = false }, GUILD = { colorNameByClass = false } }
@@ -1294,6 +1484,9 @@ for i = 1, NUM_CHAT_WINDOWS do
     function frame:GetNumMessages() return #self.messages end
     function frame:GetMessageInfo(index) local m = self.messages[index] return m and m.text, m and m.r, m and m.g, m and m.b end
     function frame:SetFading(fading) self.fading = fading end
+    frame.timeVisible = 120
+    function frame:SetTimeVisible(seconds) self.timeVisible = seconds end
+    function frame:GetTimeVisible() return self.timeVisible end
     function frame:SetMaxLines(n) self.maxLines = n end
     function frame:GetMaxLines() return self.maxLines end
     for _, suffix in ipairs(CHAT_FRAME_TEXTURES) do _G[name .. suffix] = frame:CreateTexture() end
@@ -1380,6 +1573,11 @@ _G.C_CurveUtil = {
         local curve = { points = {} }
         function curve:AddPoint(x, color) self.points[#self.points + 1] = { x = x, color = color } end
         return curve
+    end,
+    -- Booléen peut-être secret -> une des deux valeurs, sans que le Lua le lise.
+    EvaluateColorValueFromBoolean = function(value, ifTrue, ifFalse)
+        if value then return ifTrue end
+        return ifFalse
     end,
 }
 --- Évalue une courbe comme le moteur (ici : le point le plus proche par valeur inférieure).

@@ -1,4 +1,4 @@
--- Modules/ActionBars.lua
+-- AeonUI_ActionBars/ActionBars.lua
 -- Barres d'action AeonUI : six barres de boutons Blizzard (ActionBarButtonTemplate : icône,
 -- recharge, compteur, portée, raccourci et glisser-déposer dessinés par le code Blizzard, donc
 -- sûrs face aux valeurs secrètes) posés sur des barres AeonUI protégées (SecureFrameTemplate).
@@ -9,14 +9,16 @@
 -- Blizzard (ID du bouton + (page - 1) * 12). Raccourcis : SetOverrideBindingClick depuis les
 -- touches Blizzard (ACTIONBUTTONn, MULTIACTIONBARnBUTTONn). Les barres Blizzard remplacées
 -- sont cachées et coupées de leurs événements (jamais reparentées : gérées par Edit Mode).
-local _, NS = ...
+local NS = AeonUI
 local L = NS.L
 local Movers = NS.Movers
 
 local NUM_BUTTONS = 12
+local GCD_MAX = 1.5   -- recharge globale la plus longue, en secondes
 
 local function Bar(enabled, overrides)
-    local cfg = { enabled = enabled, buttons = 12, perRow = 12, size = 36, spacing = 4, alpha = 1, mouseover = false }
+    local cfg = { enabled = enabled, buttons = 12, perRow = 12, size = 36, spacing = 4, alpha = 1, mouseover = false,
+                  visibility = NS.Visibility.Spec() }   -- conditions communes (Core/Visibility), survol à part
     for k, v in pairs(overrides or {}) do cfg[k] = v end
     return cfg
 end
@@ -37,7 +39,15 @@ local ActionBars = NS.Modules:Register("actionbars", {
         petBar = "move",
         hotkeys = true,           -- texte du raccourci sur les boutons
         macroNames = true,        -- nom de la macro sur les boutons
-        bars = { Bar(true), Bar(true), Bar(true), Bar(false, { perRow = 1 }), Bar(false, { perRow = 1 }), Bar(false) },
+        linkedMouseover = false,  -- survoler une barre « au survol » révèle toutes les autres
+        iconStyle = "blizzard",   -- "blizzard" : rendu d'origine ; "aeon" : icône recadrée, bordure fine, fond
+        iconZoom = 0.08,          -- recadrage de l'icône en style AeonUI (part de chaque bord)
+        classBorder = false,      -- bordure à la couleur de classe (style AeonUI)
+        cooldownDesaturate = true, -- icône grisée pendant une recharge (hors recharge globale)
+        cooldownColor = { r = 0, g = 0, b = 0 },   -- couleur du voile de recharge
+        procGlow = "blizzard",    -- lueur d'un sort en surbrillance : "blizzard" ou un style de NS.Glow
+        bars = { Bar(true), Bar(true), Bar(true), Bar(false, { perRow = 1 }), Bar(false, { perRow = 1 }), Bar(false),
+                 Bar(false), Bar(false) },
     },
 })
 
@@ -51,6 +61,8 @@ local BAR_DEFS = {
     { binding = "MULTIACTIONBAR3BUTTON%d", page = 3, blizzard = { "MultiBarRight" } },
     { binding = "MULTIACTIONBAR4BUTTON%d", page = 4, blizzard = { "MultiBarLeft" } },
     { binding = "MULTIACTIONBAR5BUTTON%d", page = 13, blizzard = { "MultiBar5" } },
+    { binding = "MULTIACTIONBAR6BUTTON%d", page = 14, blizzard = { "MultiBar6" } },
+    { binding = "MULTIACTIONBAR7BUTTON%d", page = 15, blizzard = { "MultiBar7" } },
 }
 
 -- Formes et furtivité (contenu Classic) : bonusbar 1 chat/furtif, 2 prowl, 3 ours, 4 lune.
@@ -62,7 +74,7 @@ local PAGE_DRIVER = SPECIAL_BAR .. " 12; [bar:2] 2; [bar:3] 3; [bar:4] 4; [bar:5
 
 local MOVER_DEFAULTS = {
     { "BOTTOM", 0, 40 }, { "BOTTOM", 0, 84 }, { "BOTTOM", 0, 128 },
-    { "RIGHT", -40, 0 }, { "RIGHT", -84, 0 }, { "BOTTOM", 0, 172 },
+    { "RIGHT", -40, 0 }, { "RIGHT", -84, 0 }, { "BOTTOM", 0, 172 }, { "BOTTOM", 0, 216 }, { "BOTTOM", 0, 260 },
 }
 
 local active = false
@@ -95,6 +107,12 @@ local BUTTON_EVENTS = {
     "UPDATE_BONUS_ACTIONBAR", "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "BAG_UPDATE_COOLDOWN",
     "ACTION_RANGE_CHECK_UPDATE", "ACTION_USABLE_CHANGED",
 }
+-- Événements après lesquels recharge et proc sont relus (ActionBars.UpdateButtonExtras).
+local EXTRAS_EVENTS = {
+    ACTIONBAR_UPDATE_COOLDOWN = true, ACTIONBAR_SLOT_CHANGED = true, ACTIONBAR_PAGE_CHANGED = true,
+    UPDATE_BONUS_ACTIONBAR = true, PLAYER_ENTERING_WORLD = true, UPDATE_SHAPESHIFT_FORM = true,
+    SPELL_ACTIVATION_OVERLAY_GLOW_SHOW = true, SPELL_ACTIVATION_OVERLAY_GLOW_HIDE = true,
+}
 local BUTTON_UNIT_EVENTS = {
     "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_CHANNEL_STOP",
     "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_SENT",
@@ -107,7 +125,9 @@ function ActionBars.PaintCooldown(button)
     if not cooldown or not action then return end
     if C_ActionBar and C_ActionBar.GetActionCooldownDuration and cooldown.SetCooldownFromDurationObject then
         local info = C_ActionBar.GetActionCooldown and C_ActionBar.GetActionCooldown(action)
-        local durationObject = info and info.isActive and C_ActionBar.GetActionCooldownDuration(action)
+        local isActive = info and info.isActive
+        if NS.IsSecret(isActive) then isActive = true end
+        local durationObject = isActive and C_ActionBar.GetActionCooldownDuration(action)
         if durationObject then cooldown:SetCooldownFromDurationObject(durationObject) else cooldown:Clear() end
         return
     end
@@ -125,6 +145,25 @@ end
 -- cadre caché (NS.HideBlizzardFrame ramène le parent si Blizzard le change). Les boutons sont
 -- coupés de leurs événements et marqués statehidden (Blizzard les cache lui-même).
 local mainBarHooked = {}
+local ownButtons = {}           -- [bouton] = true : nos boutons, entrée taintée dans tout diffuseur Blizzard
+local hiddenTwins = {}          -- [bouton] = true : boutons des barres Blizzard cachées
+
+--- Retire un cadre d'une liste de diffuseur sur place : ni tremove ni UnregisterFrame, qui
+-- décaleraient les entrées Blizzard suivantes en les réécrivant sous notre taint.
+local function RemoveInPlace(frames, frame)
+    if frames[frame] ~= nil then frames[frame] = nil return end
+    for key, value in pairs(frames) do
+        if value == frame then frames[key] = nil end
+    end
+end
+
+local function DetachFromBlizzardDispatch(button)
+    for _, name in ipairs({ "ActionBarButtonEventsFrame", "ActionBarActionEventsFrame" }) do
+        local dispatcher = _G[name]
+        if dispatcher and type(dispatcher.frames) == "table" then RemoveInPlace(dispatcher.frames, button) end
+    end
+end
+
 local function HideBlizzardBar(def)
     for _, name in ipairs(def.blizzard) do
         local frame = _G[name]
@@ -148,6 +187,8 @@ local function HideBlizzardBar(def)
             for _, button in ipairs(type(frame.actionButtons) == "table" and frame.actionButtons or {}) do
                 button:UnregisterAllEvents()
                 if button.SetAttributeNoHandler then button:SetAttributeNoHandler("statehidden", true) end
+                hiddenTwins[button] = true
+                DetachFromBlizzardDispatch(button)
             end
         end
     end
@@ -157,6 +198,9 @@ local function ShowBlizzardBar(def)
     for _, name in ipairs(def.blizzard) do
         local frame = _G[name]
         if frame then
+            for _, button in ipairs(type(frame.actionButtons) == "table" and frame.actionButtons or {}) do
+                hiddenTwins[button] = nil
+            end
             NS.ShowBlizzardFrame(frame)
             if def.main then frame:SetAlpha(1) frame:EnableMouse(true) end
         end
@@ -165,19 +209,39 @@ end
 
 --- Le code Blizzard du bouton (ActionButton_ApplyCooldown, fonction globale : pas de méthode à
 -- redéfinir) appelle cooldown:SetCooldown avec des valeurs secrètes : refusé sous notre taint.
--- La méthode est ombrée sur le Cooldown de nos boutons seulement : valeurs connues passées à
--- l'original, secrètes remplacées par la peinture par objet durée.
-local function ShadowSetCooldown(button)
+-- La méthode est ombrée à demeure sur le Cooldown de nos boutons : le code Blizzard tourne aussi
+-- hors de notre dispatch (fin d'animation d'incantation, qui cache son cadre : son OnHide repeint
+-- la recharge). Aucun taint ajouté : le bouton, créé par nous, a tous ses champs taintés depuis
+-- son OnLoad ; un diffuseur Blizzard qui le lit est tainté de toute façon.
+local function SecretSafeCooldown(button)
     local cooldown = button.cooldown
-    if not cooldown or cooldown.foreverOriginalSetCooldown then return end
-    cooldown.foreverOriginalSetCooldown = cooldown.SetCooldown
-    cooldown.SetCooldown = function(self, start, duration, modRate)
+    if not cooldown or button.aeonShadowSetCooldown then return end
+    local original = cooldown.SetCooldown
+    button.aeonShadowSetCooldown = function(self, start, duration, modRate)
         if issecretvalue and (issecretvalue(start) or issecretvalue(duration) or issecretvalue(modRate)) then
             ActionBars.PaintCooldown(button)
         else
-            self.foreverOriginalSetCooldown(self, start, duration, modRate)
+            original(self, start, duration, modRate)
         end
     end
+    cooldown.SetCooldown = button.aeonShadowSetCooldown
+end
+
+--- Pendant notre dispatch : UpdateCooldown du mixin remplacé par notre peinture. Rend la valeur
+-- propre du champ SetCooldown pour UnshadowCooldown.
+local function ShadowCooldown(button)
+    local cooldown = button.cooldown
+    if not cooldown then return nil end
+    SecretSafeCooldown(button)
+    local own = rawget(cooldown, "SetCooldown")
+    button.aeonOwnUpdateCooldown = rawget(button, "UpdateCooldown")   -- méthode du mixin, rendue ensuite
+    button.UpdateCooldown = ActionBars.PaintCooldown    -- si le mixin appelle self:UpdateCooldown()
+    return own
+end
+local function UnshadowCooldown(button, own)
+    if button.cooldown then button.cooldown.SetCooldown = own end
+    button.UpdateCooldown = button.aeonOwnUpdateCooldown
+    button.aeonOwnUpdateCooldown = nil
 end
 
 -- Micro-menu et sacs : systèmes Edit Mode, jamais reparentés ; posés sur un mover, ou cachés.
@@ -325,7 +389,16 @@ local function ApplyStyled(key, def, mode)
     Movers:Load(key .. "_styled")
 end
 
+-- Boutons Blizzard des postures et du familier : même style d'icône que nos barres.
+local SIDE_BUTTONS = { stance = "StanceButton%d", pet = "PetActionButton%d" }
+
 local function ApplySideFrames()
+    for key, pattern in pairs(SIDE_BUTTONS) do
+        for i = 1, 10 do
+            local button = _G[string.format(pattern, i)]
+            if button then ActionBars.StyleButton(button) end
+        end
+    end
     for key, def in pairs(SIDE_FRAMES) do
         local frame = SideFrame(def)
         if frame then
@@ -353,24 +426,31 @@ local function ReleaseSideFrames()
 end
 ActionBars.GetStyled = function(key) return styled[key] end
 
-local function DetachFromBlizzardDispatch(button)
-    for _, name in ipairs({ "ActionBarButtonEventsFrame", "ActionBarActionEventsFrame" }) do
-        local dispatcher = _G[name]
-        if dispatcher and dispatcher.UnregisterFrame then
-            dispatcher:UnregisterFrame(button)
-        elseif dispatcher and type(dispatcher.frames) == "table" then
-            for i = #dispatcher.frames, 1, -1 do
-                if dispatcher.frames[i] == button then tremove(dispatcher.frames, i) end
-            end
-            dispatcher.frames[button] = nil
-        end
-    end
-end
 
 -- Diffuseurs à clés (cadre -> cadre) : Update et CheckNeedsUpdate du modèle y réinscrivent le
 -- bouton à chaque changement d'action ou de clignotement. Retiré après chaque passage de notre
 -- dispatch : une clé écrite par nous rendrait taintée la boucle Blizzard (barre de véhicule).
 local KEYED_DISPATCHERS = { "ActionBarActionEventsFrame", "ActionBarButtonUpdateFrame" }
+
+-- L'Update Blizzard réinscrit aussi nos boutons hors de notre dispatch (page changée par un pilote
+-- d'état, en combat) : jusqu'au dispatch suivant, la boucle Blizzard lit l'entrée taintée et rend
+-- taintés les boutons qui la suivent, dont les jumeaux cachés, dont SetCooldown refuse alors les
+-- recharges secrètes (donjons). Retrait dès l'inscription. Les jumeaux cachés sortent de tous les
+-- diffuseurs : restés dans le principal, ils tournaient taintés en combat (taint.log : SetAttribute
+-- et SetShown bloqués sur ActionButton10, SetCooldown refusé). Leurs raccourcis sont les nôtres.
+local guardedDispatchers = {}
+local function GuardDispatchers()
+    for _, name in ipairs({ "ActionBarButtonEventsFrame", "ActionBarActionEventsFrame", "ActionBarButtonUpdateFrame" }) do
+        local dispatcher = _G[name]
+        if dispatcher and not guardedDispatchers[name] and type(dispatcher.RegisterFrame) == "function" then
+            guardedDispatchers[name] = true
+            hooksecurefunc(dispatcher, "RegisterFrame", function(self, frame)
+                if type(self.frames) ~= "table" then return end
+                if ownButtons[frame] or hiddenTwins[frame] then RemoveInPlace(self.frames, frame) end
+            end)
+        end
+    end
+end
 local function ReleaseFromKeyedDispatchers(button)
     for _, name in ipairs(KEYED_DISPATCHERS) do
         local dispatcher = _G[name]
@@ -378,6 +458,7 @@ local function ReleaseFromKeyedDispatchers(button)
         if type(frames) == "table" and frames[button] then frames[button] = nil end
     end
 end
+ActionBars.GuardDispatchers = GuardDispatchers
 
 -- Portée et utilisabilité : Blizzard range nos boutons dans des tables par action partagées avec
 -- ses propres boutons (même action que la barre de véhicule). Méthodes remplacées sur nos boutons :
@@ -401,13 +482,16 @@ function Dispatch(event, ...)
     for _, bar in pairs(ActionBars.bars) do
         if bar:IsShown() then
             for _, button in ipairs(bar.buttons) do
-                if button:IsShown() and button.OnEvent then
+                if button:IsShown() and button.OnEvent
+                    and (event ~= "ACTION_RANGE_CHECK_UPDATE" or button.action == ...) then
                     local ok, err = true, nil
+                    local own = ShadowCooldown(button)
                     if event == "ACTION_USABLE_CHANGED" then
                         if button.UpdateUsable then ok, err = pcall(button.UpdateUsable, button) end
-                    elseif event ~= "ACTION_RANGE_CHECK_UPDATE" or button.action == ... then
+                    else
                         ok, err = pcall(button.OnEvent, button, event, ...)
                     end
+                    UnshadowCooldown(button, own)
                     ReleaseFromKeyedDispatchers(button)
                     if not ok and not dispatchFailures[event] then
                         dispatchFailures[event] = true
@@ -417,9 +501,127 @@ function Dispatch(event, ...)
             end
         end
     end
+    for twin in pairs(hiddenTwins) do ReleaseFromKeyedDispatchers(twin) end   -- inscription sans RegisterFrame
+    if EXTRAS_EVENTS[event] then
+        for _, bar in pairs(ActionBars.bars) do
+            if bar:IsShown() then
+                for _, button in ipairs(bar.buttons) do
+                    if button:IsShown() then ActionBars.UpdateButtonExtras(button) end
+                end
+            end
+        end
+    end
     if event == "PLAYER_REGEN_ENABLED" and pendingFullUpdate then
         pendingFullUpdate = false
         Dispatch("PLAYER_ENTERING_WORLD")
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Style des boutons
+--------------------------------------------------------------------------------
+
+local function Icon(button)
+    return button.icon or button.Icon or _G[(button:GetName() or "") .. "Icon"]
+end
+
+--- Style d'icône : "aeon" recadre l'icône, retire cadre et masque Blizzard, pose une bordure fine
+-- (thème ou classe) et un fond sombre ; "blizzard" rend le rendu d'origine. Textures seulement :
+-- permis en combat, sur nos boutons comme sur ceux des postures et du familier.
+function ActionBars.StyleButton(button)
+    local db = ActionBars.db
+    local icon = Icon(button)
+    if not icon then return end
+    local aeon = db.iconStyle == "aeon"
+    local zoom = aeon and math.max(0, math.min(0.2, db.iconZoom or 0.08)) or 0
+    icon:SetTexCoord(zoom, 1 - zoom, zoom, 1 - zoom)
+    local normal = button.GetNormalTexture and button:GetNormalTexture()
+    if normal then normal:SetAlpha(aeon and 0 or 1) end
+    local mask = button.IconMask
+    if mask and icon.RemoveMaskTexture and button.aeonMasked ~= not aeon then
+        if aeon then icon:RemoveMaskTexture(mask) else icon:AddMaskTexture(mask) end
+        button.aeonMasked = not aeon
+    end
+    if aeon and not button.aeonBorder then
+        button.aeonBorderColor = {}
+        button.aeonBorder = NS.Media:CreateBorder(button, button.aeonBorderColor)
+        button.aeonBackground = button:CreateTexture(nil, "BACKGROUND", nil, -8)
+        button.aeonBackground:SetAllPoints(button)
+        NS.SetSolidColor(button.aeonBackground, 0, 0, 0, 0.5)
+    end
+    if not button.aeonBorder then return end
+    local color = button.aeonBorderColor
+    if db.classBorder then
+        local _, classFile = UnitClass("player")
+        color.r, color.g, color.b = NS.ClassColor(not NS.IsSecret(classFile) and classFile or nil)
+        color.a = 1
+    else
+        local c = NS.db.theme.border
+        color.r, color.g, color.b, color.a = c.r, c.g, c.b, c.a or 1
+    end
+    for _, edge in pairs(button.aeonBorder) do
+        NS.SetSolidColor(edge, color.r, color.g, color.b, color.a)
+        edge:SetShown(aeon)
+    end
+    button.aeonBackground:SetShown(aeon)
+end
+
+--- Sort de l'action en surbrillance (proc) ? false si illisible ou sans API.
+local function Overlayed(button)
+    if not button.action or not _G.GetActionInfo then return false end
+    local kind, id = GetActionInfo(button.action)
+    if NS.IsSecret(kind) or NS.IsSecret(id) or kind ~= "spell" or not id then return false end
+    local api = (C_SpellActivationOverlay and C_SpellActivationOverlay.IsSpellOverlayed) or _G.IsSpellOverlayed
+    if not api then return false end
+    local ok, on = pcall(api, id)
+    return ok and not NS.IsSecret(on) and on == true
+end
+
+--- Recharge grisée et colorée, lueur de proc AeonUI. Recharge illisible (secrète) : icône intacte.
+function ActionBars.UpdateButtonExtras(button)
+    local db = ActionBars.db
+    local icon = Icon(button)
+    if not (icon and button.action) then return end
+    local cooling = false
+    local info = db.cooldownDesaturate and C_ActionBar and C_ActionBar.GetActionCooldown
+        and C_ActionBar.GetActionCooldown(button.action)
+    -- isOnGCD n'est fiable qu'au SPELL_UPDATE_COOLDOWN (doc Blizzard) : souvent nil pendant la
+    -- recharge globale. Durée lisible : elle tranche ; secrète (combat) : seul isOnGCD == false grise.
+    if type(info) == "table" and not NS.IsSecret(info.isActive) and info.isActive == true and info.isOnGCD ~= true then
+        local duration = info.duration
+        if not NS.IsSecret(duration) and type(duration) == "number" then
+            cooling = duration > GCD_MAX
+        else
+            cooling = info.isOnGCD == false
+        end
+    end
+    icon:SetDesaturated(cooling)
+    local c = db.cooldownColor
+    if button.cooldown and button.cooldown.SetSwipeColor then button.cooldown:SetSwipeColor(c.r, c.g, c.b, 0.8) end
+    local alert = button.SpellActivationAlert or button.overlay
+    if db.procGlow == "blizzard" then
+        if alert and alert.SetAlpha then alert:SetAlpha(1) end
+        NS.Glow.Hide(button)
+    else
+        if alert and alert.SetAlpha then alert:SetAlpha(0) end
+        NS.Glow.Set(button, Overlayed(button), db.procGlow)
+    end
+end
+
+-- Glisser-déposer : le modèle Blizzard appelle PickupAction / PlaceAction sous notre taint,
+-- bloqués en combat. Un gestionnaire sécurisé fait la prise et la pose à sa place.
+local dragHeader = CreateFrame("Frame", nil, UIParent, "SecureHandlerBaseTemplate")
+local DRAG_SLOT = "return 'action', self:GetID() + (self:GetAttribute('actionpage') - 1) * " .. NUM_BUTTONS
+local ON_DRAG_START = "if self:GetAttribute('aeon-locked') and not IsModifiedClick('PICKUPACTION') then return false end "
+    .. DRAG_SLOT
+local ON_RECEIVE_DRAG = "if not kind then return false end " .. DRAG_SLOT
+
+--- Verrou des barres (réglage Blizzard) recopié sur les boutons : le code sécurisé ne lit pas les CVars.
+local function UpdateDragLock()
+    if NS.InCombat() then return end
+    local locked = NS.CVars:Get("lockActionBars") == "1"
+    for _, bar in pairs(ActionBars.bars) do
+        for _, button in ipairs(bar.buttons) do button:SetAttribute("aeon-locked", locked) end
     end
 end
 
@@ -433,13 +635,42 @@ local function NewBar(index)
         button.buttonType = BAR_DEFS[index].binding:sub(1, -3)   -- « ACTIONBUTTON » : texte du raccourci Blizzard
         button:SetAttribute("forever-button", true)
         button:SetAttribute("actionpage", BAR_DEFS[index].page or 1)
-        button.UpdateCooldown = ActionBars.PaintCooldown    -- si le mixin appelle self:UpdateCooldown()
-        ShadowSetCooldown(button)                           -- s'il passe par la fonction globale
+        SecretSafeCooldown(button)
         NS.RegisterCooldown(button.cooldown)                -- texte de recharge coloré (Interface)
         button.RegisterActionBarButtonCheckFrames = WatchAction
         button.UnregisterActionBarButtonCheckFrames = UnwatchAction
+        -- Update (OnShow, changement de page, SPELL_UPDATE_ICON…) finit par SetAttribute
+        -- (pressAndHoldAction), bloqué en combat sous notre taint : reposé à la sortie du combat.
+        local pressAndHold = button.UpdatePressAndHoldAction
+        if pressAndHold then
+            button.UpdatePressAndHoldAction = function(self)
+                if NS.InCombat() then pendingFullUpdate = true return end
+                return pressAndHold(self)
+            end
+        end
+        dragHeader:WrapScript(button, "OnDragStart", ON_DRAG_START)
+        dragHeader:WrapScript(button, "OnReceiveDrag", ON_RECEIVE_DRAG)
+        ownButtons[button] = true
         DetachFromBlizzardDispatch(button)
         ReleaseFromKeyedDispatchers(button)
+        -- Survol : le modèle Blizzard force UpdateAction quand NewActionTexture existe, jusqu'à
+        -- SetAttribute (pressAndHoldAction), bloqué en combat sous notre taint. Masquée le temps du survol.
+        local onEnter = button:GetScript("OnEnter")
+        if onEnter then
+            button:SetScript("OnEnter", function(self, ...)
+                if not NS.InCombat() then return onEnter(self, ...) end
+                local newAction = self.NewActionTexture
+                self.NewActionTexture = nil
+                local ok, err = pcall(onEnter, self, ...)
+                self.NewActionTexture = newAction
+                if not ok then error(err, 0) end
+            end)
+        end
+        -- Action changée par la page (formes) ou fin de recharge : teinte et lueur relues.
+        if button.Update then hooksecurefunc(button, "Update", ActionBars.UpdateButtonExtras) end
+        if button.cooldown and button.cooldown.HookScript then
+            button.cooldown:HookScript("OnCooldownDone", function() ActionBars.UpdateButtonExtras(button) end)
+        end
         -- Taille native du modèle : la taille voulue s'obtient par l'échelle (voir LayoutBar).
         local width = button:GetWidth()
         button.baseSize = (width and width > 0) and width or 36
@@ -460,6 +691,8 @@ local function LayoutBar(bar, cfg)
     for i, button in ipairs(bar.buttons) do
         if button.HotKey then button.HotKey:SetAlpha(db.hotkeys and 1 or 0) end
         if button.Name then button.Name:SetAlpha(db.macroNames and 1 or 0) end
+        ActionBars.StyleButton(button)
+        ActionBars.UpdateButtonExtras(button)
         if i <= count then
             -- Mise à l'échelle plutôt que SetSize : icône, bordure, masque, recharge et textes du
             -- modèle Blizzard ont des tailles fixes ; l'échelle les fait tous suivre le bouton.
@@ -492,16 +725,27 @@ end
 local function SetupBar(index)
     local cfg = ActionBars.db.bars[index]
     local bar = ActionBars.bars[index] or NewBar(index)
+    -- Show, page posée : le modèle se met à jour (recharge comprise) sous notre taint.
+    local owns = {}
+    for i, button in ipairs(bar.buttons) do owns[i] = ShadowCooldown(button) end
     LayoutBar(bar, cfg)
     if index == 1 then
         for _, button in ipairs(bar.buttons) do RegisterAttributeDriver(button, "actionpage", PAGE_DRIVER) end
     end
-    RegisterStateDriver(bar, "visibility", (index == 1 and (SPECIAL_BAR .. " hide; ") or "") .. "[petbattle] hide; show")
+    NS.Visibility:Register("actionbar" .. index, bar, function() return ActionBars.db.bars[index].visibility end, {
+        secure = true,
+        prefix = (index == 1 and (SPECIAL_BAR .. " hide; ") or "") .. "[petbattle] hide; ",
+        alpha = function() return ActionBars:BarAlpha(index) end,
+    })
     local d = MOVER_DEFAULTS[index]
     Movers:Register("bar" .. index, bar, string.format(L.MOVER_ACTIONBAR, index), d[1], d[2], d[3])
     Movers:Load("bar" .. index)
     BindBar(bar)
     bar:Show()
+    for i, button in ipairs(bar.buttons) do
+        UnshadowCooldown(button, owns[i])
+        ReleaseFromKeyedDispatchers(button)
+    end
     if ActionBars.db.hideBlizzard then
         HideBlizzardBar(BAR_DEFS[index])
     elseif index == 1 and NS.IsBlizzardFrameHidden(BAR_DEFS[1].blizzard[1]) then
@@ -512,7 +756,7 @@ end
 local function TeardownBar(index)
     local bar = ActionBars.bars[index]
     if bar then
-        UnregisterStateDriver(bar, "visibility")
+        NS.Visibility:Unregister("actionbar" .. index)
         if index == 1 then
             for _, button in ipairs(bar.buttons) do UnregisterAttributeDriver(button, "actionpage") end
         end
@@ -534,13 +778,30 @@ local FADE_INTERVAL = 0.1
 local fader = CreateFrame("Frame")
 fader.elapsed = 0
 
-function ActionBars:UpdateFade()
+local function Hovered(index)
+    if ActionBars.bars[index]:IsMouseOver() then return true end
+    if not ActionBars.db.linkedMouseover then return false end
+    for other, bar in pairs(ActionBars.bars) do
+        local cfg = ActionBars.db.bars[other]
+        if other ~= index and cfg.enabled and cfg.mouseover and bar:IsShown() and bar:IsMouseOver() then return true end
+    end
+    return false
+end
+
+--- Opacité voulue de la barre `index` : la sienne, ou 0 si « au survol » et ni survolée ni sort tenu.
+function ActionBars:BarAlpha(index)
+    local cfg = self.db.bars[index]
     local holding = _G.GetCursorInfo and GetCursorInfo() ~= nil
+    local visible = not cfg.mouseover or holding or self.binding or Hovered(index)
+    return visible and (cfg.alpha or 1) or 0
+end
+
+function ActionBars:UpdateFade()
     for index, bar in pairs(self.bars) do
-        local cfg = self.db.bars[index]
         if bar:IsShown() then
-            local visible = not cfg.mouseover or holding or self.binding or bar:IsMouseOver()
-            bar:SetAlpha(visible and (cfg.alpha or 1) or 0)
+            local alpha = self:BarAlpha(index)
+            local visible = alpha > 0
+            bar:SetAlpha(alpha)
             -- L'éclat de fin de recharge ignore l'alpha du parent : coupé sur une barre invisible.
             for _, button in ipairs(bar.buttons) do
                 local cooldown = button.cooldown
@@ -669,6 +930,7 @@ function ActionBars:Reconcile()
     end
     ApplySideFrames()
     RunFader()
+    UpdateDragLock()
 end
 
 function ActionBars:GetBar(index) return self.bars[index] end
@@ -681,6 +943,8 @@ local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event, ...)
     if not active then return end
     if event == "PLAYER_REGEN_DISABLED" and ActionBars.binding then ActionBars:SetKeyBindMode(false) end
+    if event == "PLAYER_REGEN_DISABLED" or event == "CVAR_UPDATE" then UpdateDragLock() end
+    if event == "CVAR_UPDATE" then return end
     if event == "UPDATE_BINDINGS" then
         NS:RunOutOfCombat(function()
             if not active then return end
@@ -696,7 +960,9 @@ events:SetScript("OnUpdate", function(_, elapsed)
     for _, bar in pairs(ActionBars.bars) do
         for _, button in ipairs(bar.buttons) do
             if button.needsUpdate and button.OnUpdate then
+                local own = ShadowCooldown(button)
                 pcall(button.OnUpdate, button, elapsed)
+                UnshadowCooldown(button, own)
                 ReleaseFromKeyedDispatchers(button)
             end
         end
@@ -705,8 +971,10 @@ end)
 
 function ActionBars:OnEnable()
     active = true
+    GuardDispatchers()
     self:Reconcile()
     for _, event in ipairs(BUTTON_EVENTS) do NS.RegisterEventSafe(events, event) end
+    NS.RegisterEventSafe(events, "CVAR_UPDATE")
     for _, event in ipairs(BUTTON_UNIT_EVENTS) do NS.RegisterEventSafe(events, event, "player") end
     Dispatch("PLAYER_ENTERING_WORLD")
 end
@@ -758,6 +1026,26 @@ function ActionBars:BuildOptions(o)
     o:Dropdown("petBar", L.OPT_AB_PET, SIDE_CHOICES)
     o:Check("hotkeys", L.OPT_AB_HOTKEYS)
     o:Check("macroNames", L.OPT_AB_MACRO_NAMES)
+    o:Advanced()
+    o:Check("linkedMouseover", L.OPT_AB_LINKED_MOUSEOVER)
+    o:EndAdvanced()
+    o:Title(L.OPT_AB_STYLE)
+    o:Dropdown("iconStyle", L.OPT_AB_ICON_STYLE, {
+        { name = L.AB_STYLE_BLIZZARD, value = "blizzard" }, { name = L.AB_STYLE_AEON, value = "aeon" },
+    })
+    o:Advanced()
+    o:Slider("iconZoom", L.OPT_AB_ICON_ZOOM, 0, 0.2, 0.01, 36, "%.2f")
+    o:Check("classBorder", L.OPT_AB_CLASS_BORDER, 36)
+    o:EndAdvanced()
+    o:Check("cooldownDesaturate", L.OPT_AB_COOLDOWN_DESATURATE)
+    o:Advanced()
+    o:Color("cooldownColor", L.OPT_AB_COOLDOWN_COLOR)
+    o:EndAdvanced()
+    o:Dropdown("procGlow", L.OPT_AB_PROC_GLOW, function()
+        local choices = NS.Glow.Choices()
+        table.insert(choices, 1, { name = L.AB_STYLE_BLIZZARD, value = "blizzard" })
+        return choices
+    end)
     o.layout:Button(L.OPT_AB_KEYBIND, function() ActionBars:ToggleKeyBind() end, 20)
     o:Hint(L.OPT_AB_KEYBIND_HINT)
     o.layout:Button(L.OPT_UF_UNLOCK, function() NS:SetUnlocked(not NS.unlocked) end, 20)
@@ -774,8 +1062,59 @@ function ActionBars:BuildOptions(o)
         o:Slider(key .. "buttons", L.OPT_AB_BUTTONS, 1, 12, 1, 36)
         o:Slider(key .. "perRow", L.OPT_AB_PER_ROW, 1, 12, 1, 36)
         o:Slider(key .. "size", L.OPT_AB_SIZE, 20, 64, 1, 36)
+        o:Advanced()
         o:Slider(key .. "spacing", L.OPT_AB_SPACING, 0, 16, 1, 36)
         o:Slider(key .. "alpha", L.OPT_AB_ALPHA, 0.1, 1, 0.1, 36, "%.1f")
+        o:EndAdvanced()
         o:Check(key .. "mouseover", L.OPT_AB_MOUSEOVER, 36)
+        o:Visibility(key .. "visibility", L.OPT_VISIBILITY, { secure = true, noMouseover = true })
+    end
+end
+
+--- Aperçu des options : barres actives empilées, boutons à leur taille et à leur espacement,
+-- icônes réelles de chaque page ; un clic sur une barre ouvre son onglet.
+ActionBars.previewHeight = 220
+
+function ActionBars:BuildPreview(p)
+    return function()
+        local db = p.DB()
+        p.Begin()
+        local shown, width, height = {}, 0, 0
+        for index, bar in ipairs(db.bars) do
+            if bar.enabled and BAR_DEFS[index] then
+                local buttons = math.max(1, bar.buttons)
+                local perRow = math.max(1, math.min(bar.perRow, buttons))
+                local rows = math.ceil(buttons / perRow)
+                local barWidth = perRow * bar.size + (perRow - 1) * bar.spacing
+                local barHeight = rows * bar.size + (rows - 1) * bar.spacing
+                shown[#shown + 1] = { index = index, bar = bar, buttons = buttons, perRow = perRow,
+                                      width = barWidth, height = barHeight, top = height }
+                width = math.max(width, barWidth)
+                height = height + barHeight + 8
+            end
+        end
+        if #shown == 0 then return end
+        local scale, originX, originY = p.Fit(width, height - 8, 8)
+        local aeon = db.iconStyle == "aeon"
+        local zoom = aeon and db.iconZoom or 0.07
+        local edgeR, edgeG, edgeB = 0, 0, 0
+        if aeon and db.classBorder then edgeR, edgeG, edgeB = p.ClassColor() end
+        for _, item in ipairs(shown) do
+            local bar = item.bar
+            local left = originX + (width - item.width) * scale / 2
+            local top = originY + item.top * scale
+            local page = BAR_DEFS[item.index].page or 1
+            local size, step = bar.size * scale, (bar.size + bar.spacing) * scale
+            for i = 1, item.buttons do
+                local x = left + ((i - 1) % item.perRow) * step
+                local y = top + math.floor((i - 1) / item.perRow) * step
+                local id = item.index .. ":" .. i
+                p.Edge("edge" .. id, x, y, size, size, edgeR, edgeG, edgeB, bar.alpha)
+                p.Icon("icon" .. id, x, y, size, NS.GetActionTexture((page - 1) * NUM_BUTTONS + i), zoom):SetAlpha(bar.alpha)
+                if db.hotkeys then p.Text("key" .. id, x + size - 2, y + 2, tostring(i), math.floor(size / 3), "TOPRIGHT") end
+            end
+            local region = p.Region("bar" .. item.index, left, top, item.width * scale, item.height * scale)
+            p.Hotspot(region, string.format(L.MOVER_ACTIONBAR, item.index))
+        end
     end
 end

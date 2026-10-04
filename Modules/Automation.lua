@@ -281,6 +281,23 @@ local function QuestsPaused()
     return not Automation.db.autoQuests or IsShiftKeyDown()
 end
 
+-- Anti double : une quête déjà choisie il y a moins de 30 s est laissée au joueur (journal
+-- plein, récompense à choisir) ; sans ça le PNJ la reproposerait en boucle. clé nil : pas de garde.
+local QUEST_RETRY_DELAY = 30
+local questTried = {}
+local function FirstTry(key)
+    if key == nil then return true end
+    local now = GetTime()
+    if questTried[key] and now - questTried[key] < QUEST_RETRY_DELAY then return false end
+    questTried[key] = now
+    return true
+end
+
+local function CurrentQuestKey(prefix)
+    local questID = _G.GetQuestID and GetQuestID()
+    return questID and questID ~= 0 and (prefix .. questID) or nil
+end
+
 -- Quête répétable (remise d'étoffes, réputation) : elle consommerait objets ou or à chaque
 -- passage, le joueur la fait à la main. frequency : 0 = normale, sinon journalière/hebdo.
 local function Repeatable(repeatable, frequency)
@@ -290,13 +307,14 @@ end
 function Automation:OnGossip()
     if QuestsPaused() or not C_GossipInfo then return nil end
     for _, quest in ipairs(C_GossipInfo.GetActiveQuests and C_GossipInfo.GetActiveQuests() or {}) do
-        if quest.isComplete and not Repeatable(quest.repeatable, quest.frequency) then
+        if quest.isComplete and not Repeatable(quest.repeatable, quest.frequency)
+            and FirstTry("turnin:" .. quest.questID) then
             C_GossipInfo.SelectActiveQuest(quest.questID)
             return "turnin"
         end
     end
     for _, quest in ipairs(C_GossipInfo.GetAvailableQuests and C_GossipInfo.GetAvailableQuests() or {}) do
-        if not Repeatable(quest.repeatable, quest.frequency) then
+        if not Repeatable(quest.repeatable, quest.frequency) and FirstTry("accept:" .. quest.questID) then
             C_GossipInfo.SelectAvailableQuest(quest.questID)
             return "accept"
         end
@@ -308,8 +326,8 @@ end
 function Automation:OnQuestGreeting()
     if QuestsPaused() then return nil end
     for i = 1, (GetNumActiveQuests and GetNumActiveQuests() or 0) do
-        local _, isComplete = GetActiveTitle(i)
-        if isComplete then
+        local title, isComplete = GetActiveTitle(i)
+        if isComplete and not NS.IsActiveQuestRepeatable(i) and FirstTry("turnin:" .. tostring(title)) then
             SelectActiveQuest(i)
             return "turnin"
         end
@@ -317,7 +335,8 @@ function Automation:OnQuestGreeting()
     for i = 1, (GetNumAvailableQuests and GetNumAvailableQuests() or 0) do
         local frequency, isRepeatable
         if _G.GetAvailableQuestInfo then _, frequency, isRepeatable = GetAvailableQuestInfo(i) end
-        if not Repeatable(isRepeatable, frequency) then
+        local title = _G.GetAvailableTitle and GetAvailableTitle(i)
+        if not Repeatable(isRepeatable, frequency) and FirstTry("accept:" .. tostring(title)) then
             SelectAvailableQuest(i)
             return "accept"
         end
@@ -326,17 +345,18 @@ function Automation:OnQuestGreeting()
 end
 
 local QUEST_HANDLERS = {
-    QUEST_DETAIL = function() AcceptQuest() end,
+    QUEST_DETAIL = function() if FirstTry(CurrentQuestKey("detail:")) then AcceptQuest() end end,
     QUEST_ACCEPT_CONFIRM = function() ConfirmAcceptQuest() end,
     QUEST_PROGRESS = function()
         -- Quête qui demande de l'or : c'est au joueur de payer.
         if _G.GetQuestMoneyToGet and (GetQuestMoneyToGet() or 0) > 0 then return end
+        if NS.IsCurrentQuestRepeatable() then return end
         if IsQuestCompletable() then CompleteQuest() end
     end,
     -- Plusieurs récompenses au choix : c'est au joueur de trancher.
     QUEST_COMPLETE = function()
         local choices = GetNumQuestChoices()
-        if choices <= 1 then GetQuestReward(choices) end
+        if choices <= 1 and FirstTry(CurrentQuestKey("reward:")) then GetQuestReward(choices) end
     end,
     GOSSIP_SHOW = function() Automation:OnGossip() end,
     QUEST_GREETING = function() Automation:OnQuestGreeting() end,
@@ -465,7 +485,9 @@ function Automation:BuildOptions(o)
     o:Title(L.OPT_AUTO_DEATH)
     o:Check("releaseGuard", L.OPT_AUTO_RELEASE)
     o:Check("releaseInstanceOnly", L.OPT_AUTO_RELEASE_INSTANCE, 36)
+    o:Advanced()
     o:Slider("releaseHold", L.OPT_AUTO_RELEASE_HOLD, 0.5, 3, 0.5, 36, "%.1f s")
+    o:EndAdvanced()
     o:Title(L.OPT_AUTO_MISC)
     o:Check("acceptInvites", L.OPT_AUTO_INVITES)
     o:Check("fastDelete", L.OPT_AUTO_DELETE)

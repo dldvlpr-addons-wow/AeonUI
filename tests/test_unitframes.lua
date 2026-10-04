@@ -200,7 +200,7 @@ test("unitframes : castbar démarre, s'arrête, s'interrompt", function()
     eq(bar.timer.direction, Enum.StatusBarTimerDirection.ElapsedTime)
     target.casting.notInterruptible = Mock.SetSecret(true)
     Mock.FireEvent("UNIT_SPELLCAST_NOT_INTERRUPTIBLE", "target")
-    eq(bar.barColor[1], NS.db.theme.accent.r, "secret : couleur d'accent gardée")
+    eq(bar.barColor[1], 0.6, "secret : le moteur choisit le gris")
     target.casting = nil
     Mock.FireEvent("UNIT_SPELLCAST_STOP", "target")
     eq(bar:IsShown(), false)
@@ -214,6 +214,38 @@ test("unitframes : castbar démarre, s'arrête, s'interrompt", function()
     Mock.Advance(0.6)
     eq(bar:IsShown(), false, "cachée après la tenue")
     target.channel = nil
+    Disable()
+end)
+
+test("unitframes : castbar du joueur : tops de canalisation, latence, fin de recharge globale", function()
+    reset()
+    Enable()
+    local player = Mock.units.player
+    local bar = Frame("player").castbar
+    local function Lines()
+        local n = 0
+        for _, line in ipairs(bar.hashLines or {}) do if line:IsShown() then n = n + 1 end end
+        return n
+    end
+    player.channel = { name = "Blizzard", spellID = 10, duration = 8, startTime = 1000000, endTime = 1008000 }
+    Mock.FireEvent("UNIT_SPELLCAST_CHANNEL_START", "player")
+    eq(Lines(), 7, "huit tops : sept repères")
+    eq(bar.latency:IsShown(), false, "pas de latence sur une canalisation")
+    player.channel = nil
+    player.casting = { name = "Éclair de givre", duration = 3, startTime = 1000000, endTime = 1003000 }
+    UF.db.castGCD = true
+    Mock.FireEvent("UNIT_SPELLCAST_START", "player")
+    eq(Lines(), 1, "repère de fin de recharge globale")
+    truthy(bar.latency:IsShown(), "zone de latence")
+    UF.db.castGCD, UF.db.castLatency = false, false
+    Mock.FireEvent("UNIT_SPELLCAST_START", "player")
+    eq(Lines(), 0)
+    eq(bar.latency:IsShown(), false)
+    player.casting.startTime = Mock.SetSecret(1000000)
+    UF.db.castLatency = true
+    Mock.FireEvent("UNIT_SPELLCAST_START", "player")
+    eq(bar.latency:IsShown(), false, "durée secrète : aucun repère")
+    player.casting = nil
     Disable()
 end)
 
@@ -290,6 +322,106 @@ test("unitframes : points de combo = une barre graduée, cachée sans ressource"
     Disable()
 end)
 
+test("unitframes : points de combo en pastilles, bornées de i-1 à i, valeur secrète passée telle quelle", function()
+    reset()
+    UF.db.units.player.comboPips = true
+    Enable()
+    Mock.units.player.comboMax, Mock.units.player.combo = 5, Mock.SetSecret(3)
+    Mock.FireEvent("UNIT_POWER_UPDATE", "player")
+    local frame = Frame("player")
+    eq(frame.combo:IsShown(), false, "barre graduée remplacée")
+    truthy(frame.comboPips:IsShown())
+    eq(#frame.comboPips.pips, 5)
+    local low, high = frame.comboPips.pips[4]:GetMinMaxValues()
+    eq(low, 3) eq(high, 4)
+    eq(frame.comboPips.pips[4]:GetValue(), 3, "pastille 4 vide, sans comparaison en Lua")
+    Mock.units.player.comboMax = 0
+    Mock.FireEvent("UNIT_POWER_UPDATE", "player")
+    eq(frame.comboPips:IsShown(), false, "sans ressource : cachées")
+    Disable()
+end)
+
+test("unitframes : couleur de réaction réglable, engagé par un autre prioritaire", function()
+    reset()
+    local hostile = UF.db.reactionColors.hostile
+    UF.db.reactionColors.hostile = { r = 0.1, g = 0.2, b = 0.3 }
+    Target({ reaction = 2 })
+    local r, g, b = Elements.HealthColor("target", true)
+    eq(r, 0.1) eq(g, 0.2) eq(b, 0.3)
+    local original = _G.UnitIsTapDenied
+    _G.UnitIsTapDenied = function() return true end
+    r = Elements.HealthColor("target", true)
+    eq(r, UF.db.reactionColors.tapped.r, "engagé par un autre")
+    _G.UnitIsTapDenied = original
+    UF.db.reactionColors.hostile = hostile
+end)
+
+test("unitframes : visibilité commune = pilote d'état qui exige aussi l'unité", function()
+    reset()
+    UF.db.units.target.visibility.combat = "yes"
+    Enable()
+    eq(Mock.stateDrivers[Frame("target")].visibility, "[@target,noexists] hide; [nocombat] hide; show")
+    UF.db.units.target.visibility.combat = "ignore"
+    NS.Modules:Refresh("unitframes")
+    eq(Mock.stateDrivers[Frame("target")].visibility, nil, "sans condition : RegisterUnitWatch")
+    Disable()
+end)
+
+test("unitframes : texte central libre, jetons [name] et [level]", function()
+    reset()
+    UF.db.units.target.centerFormat = "[name] ([level])"
+    Enable()
+    Target({ name = "Loup", level = 12 })
+    Mock.FireEvent("PLAYER_TARGET_CHANGED")
+    eq(Frame("target").health.centerText:GetText(), "Loup (12)")
+    Target({ name = "Boss", level = -1 })
+    Mock.FireEvent("PLAYER_TARGET_CHANGED")
+    eq(Frame("target").health.centerText:GetText(), "Boss (??)")
+    Disable()
+end)
+
+test("unitframes : couleur et hauteur des absorptions réglables", function()
+    reset()
+    UF.db.absorbColor = { r = 0.1, g = 0.2, b = 0.3, a = 0.4 }
+    UF.db.absorbHeight = 50
+    Enable()
+    local absorb = Frame("player").absorb
+    local r, _, b = absorb:GetStatusBarColor()
+    eq(r, 0.1) eq(b, 0.3)
+    truthy(absorb:GetHeight() < Frame("player"):GetHeight(), "moitié de la vie")
+    Disable()
+end)
+
+test("unitframes : portée d'attaque atténue la cible, jamais le joueur", function()
+    reset()
+    UF.db.units.target.rangeFade = true
+    UF.db.rangeAlpha = 0.5
+    Enable()
+    Target()
+    local original = C_Spell.IsSpellInRange
+    Mock.spells[133] = "Boule de feu"
+    C_Spell.IsSpellInRange = function() return false end
+    UF:UpdateFade()
+    eq(Frame("target"):GetAlpha(), 0.5, "hors de portée")
+    C_Spell.IsSpellInRange = function() return true end
+    UF:UpdateFade()
+    eq(Frame("target"):GetAlpha(), 1, "à portée")
+    C_Spell.IsSpellInRange = function() return Mock.SetSecret(false) end
+    Target({ hostile = false })
+    UF:UpdateFade()
+    eq(Frame("target"):GetAlpha(), 1, "allié : jamais atténué, même réponse secrète")
+    C_Spell.IsSpellInRange, Mock.spells[133] = original, nil
+    Disable()
+end)
+
+test("visibilité : clauses de masquage, toutes ou au moins une", function()
+    local V = NS.Visibility
+    eq(V.HideClauses(V.Spec()), "")
+    eq(V.HideClauses(V.Spec({ combat = "yes", mounted = "no" })), "[nocombat] hide; [mounted] hide; ")
+    eq(V.HideClauses(V.Spec({ combat = "yes", mounted = "no", match = "any" })), "[nocombat,mounted] hide; ")
+    eq(V.HideClauses(V.Spec({ instance = "yes" })), "", "instance : pas de condition macro")
+end)
+
 --------------------------------------------------------------------------------
 -- Auras
 --------------------------------------------------------------------------------
@@ -320,22 +452,71 @@ test("unitframes : auras en repli maison (débuffs, secret sans spirale)", funct
     Disable()
 end)
 
-test("unitframes : conteneur d'auras du moteur quand le client l'offre", function()
+test("unitframes : débuffs priorisés (boss, contrôle) et lueur des contrôles", function()
+    reset()
+    Enable()
+    Target()
+    Mock.debuffs.target = {
+        { icon = "plain", auraInstanceID = 1 },
+        { icon = "stun", auraInstanceID = 2, cc = true },
+        { icon = "boss", auraInstanceID = 3, isBossAura = true },
+        { icon = "hidden", auraInstanceID = Mock.SetSecret(4), cc = true },
+    }
+    Mock.FireEvent("PLAYER_TARGET_CHANGED")
+    local buttons = Frame("target").auras.buttons
+    eq(buttons[1].icon.texture, "boss", "boss en tête")
+    eq(buttons[2].icon.texture, "stun", "contrôle ensuite")
+    eq(NS.Glow.Current(buttons[2]), "pixel", "lueur du contrôle")
+    eq(NS.Glow.Current(buttons[1]), nil)
+    eq(buttons[3].icon.texture, "plain")
+    eq(NS.Glow.Current(buttons[4]), nil, "identifiant secret : pas de contrôle signalé")
+    NS.db.auraLists.prioritize, NS.db.auraLists.ccGlow = false, "none"
+    Mock.FireEvent("UNIT_AURA", "target")
+    eq(buttons[1].icon.texture, "plain", "ordre du jeu sans priorité")
+    eq(NS.Glow.Current(buttons[2]), nil, "lueur coupée")
+    NS.db.auraLists.prioritize, NS.db.auraLists.ccGlow = true, "pixel"
+    Mock.debuffs.target = {}
+    Disable()
+end)
+
+test("unitframes : conteneur du moteur quand le client l'offre ; vie verticale", function()
     reset()
     Mock.auraContainer = true
     NS.auraContainerProbe = nil
     truthy(NS.AuraContainerAvailable())
     Enable()
-    NS.db.modules.unitframes.units.pet.auras = true
+    local cfg = NS.db.modules.unitframes.units.pet
+    cfg.auras, cfg.vertical, cfg.auraFilter = true, true, "mine"
+    NS.db.auraLists.blacklist = "123"
     NS.Modules:Refresh("unitframes")
-    local auras = Frame("pet").auras
-    truthy(auras and auras.native, "voie moteur")
-    eq(auras.unit, "pet")
-    eq(#auras.groups, 2)
-    eq(auras.groups[1].filter, "HARMFUL")
-    eq(auras.groups[2].filter, "HELPFUL")
-    eq(auras.groups[1].options.layout.elementWidth, 22)
+    local frame = Frame("pet")
+    local engine = frame.auras and frame.auras.engine
+    eq(frame.auras.native, true, "voie du moteur")
+    eq(engine.groups.debuffs.filter, "HARMFUL|PLAYER|!CROWD_CONTROL", "filtre « les miens », contrôles à part")
+    eq(engine.groups.crowdControl.filter, "HARMFUL|CROWD_CONTROL|PLAYER")
+    eq(engine.groups.debuffs.options.candidateFilters.excludeSpellIDs[123], true, "liste noire")
+    eq(engine.groups.listed, nil, "liste blanche vide : groupe non déclaré")
+    eq(engine.groups.buffs.options.layout.forceNewLine, true, "buffs sur une ligne neuve")
+    local button = engine.groups.debuffs.buttons[1]
+    truthy(button.SetIcon and button.SetDurationCooldown and button.SetApplicationCount, "régions confiées au moteur")
+    eq(button.SetMouseClickEnabled, false, "clics laissés au cadre")
+    Elements.UpdateAll(frame)
+    eq(engine:GetUnit(), frame.unit, "unité posée")
+    local refreshes = #engine.calls
+    Elements.OnEvent(frame, "UNIT_AURA")
+    eq(#engine.calls, refreshes, "UNIT_AURA : le moteur s'en charge")
+    Elements.UpdateAll(frame)
+    eq(engine.calls[#engine.calls], "UpdateAllAuras", "changement d'unité : tout relu")
+    cfg.debuffsOnly = true
+    NS.Modules:Refresh("unitframes")
+    eq(engine.groups.buffs.MaxFrameCount, 0, "débuffs seuls : buffs vidés")
+    cfg.debuffsOnly, cfg.auraFilter, NS.db.auraLists.blacklist = nil, "all", ""
+    eq(frame.health.orientation, "VERTICAL")
+    eq(frame.healPrediction.orientation, "VERTICAL")
     NS.db.modules.unitframes.units.pet.auras = false
+    NS.db.modules.unitframes.units.pet.vertical = false
+    NS.Modules:Refresh("unitframes")
+    eq(frame.health.orientation, "HORIZONTAL")
     Frame("pet").auras = nil
     Disable()
 end)
@@ -410,4 +591,71 @@ test("unitframes : barre de totems, emplacement vide transparent, secret affich�
     Disable()
     eq(bar:IsShown(), false, "module coupé : barre retirée")
     _G.GetTotemInfo = nil
+end)
+
+test("unitframes : élite, écusson JcJ, bordure de menace, humeur du familier", function()
+    reset()
+    Enable()
+    Target({ classification = "elite", pvp = true, faction = "Horde" })
+    Mock.FireEvent("PLAYER_TARGET_CHANGED")
+    local target = Frame("target")
+    truthy(target.classification:IsShown(), "élite")
+    eq(target.classification.atlas, "nameplates-icon-elite-gold")
+    truthy(target.pvp:IsShown(), "écusson")
+    eq(target.pvp.texture, "Interface\\TargetingFrame\\UI-PVP-Horde")
+    Mock.units.target.pvp = false
+    Mock.FireEvent("UNIT_FACTION", "target")
+    eq(target.pvp:IsShown(), false, "plus marqué JcJ")
+    local player = Frame("player")
+    Mock.units.player.threat = 3
+    Mock.FireEvent("UNIT_THREAT_SITUATION_UPDATE", "player")
+    eq(player.border.top.color[1], 0.9, "agro ferme : rouge")
+    Mock.units.player.threat = nil
+    Mock.FireEvent("UNIT_THREAT_SITUATION_UPDATE", "player")
+    eq(player.border.top.color[1], NS.db.theme.border.r, "menace retombée")
+    Mock.units.pet = { name = "Loup", health = 50, healthMax = 50 }
+    Mock.petHappiness = { 3, 125, 1 }
+    Mock.FireEvent("UNIT_PET", "player")
+    local pet = Frame("pet")
+    truthy(pet.happiness:IsShown(), "humeur visible")
+    eq(pet.happiness.texture.atlas, "UI-PetHappiness")
+    Mock.petHappiness = nil
+    Mock.FireEvent("UNIT_HAPPINESS", "pet")
+    eq(pet.happiness:IsShown(), false, "pas de familier de chasseur")
+    Mock.units.pet = nil
+    Disable()
+end)
+
+test("unitframes : castbar avec cible du sort, interruption prête, éclair à l'interruption", function()
+    reset()
+    Enable()
+    local target = Target()
+    Mock.units.targettarget = { name = "Testeur" }
+    Mock.FireEvent("PLAYER_TARGET_CHANGED")
+    local bar = Frame("target").castbar
+    Mock.spells[2139], Mock.knownSpells[2139] = "Contresort", true
+    local ready = true
+    C_Spell.GetSpellCooldownDuration = function(spell)
+        if spell == 2139 then return { IsZero = function() return ready end } end
+    end
+    Mock.FireEvent("SPELLS_CHANGED")
+    target.casting = { name = "Soins", startTime = 1000000, endTime = 1002500 }
+    Mock.FireEvent("UNIT_SPELLCAST_START", "target")
+    eq(bar.text:GetText(), "Soins > Testeur", "cible du sort")
+    eq(bar.barColor[2], UF.db.interruptReadyColor.g, "interruption prête")
+    ready = false
+    Mock.Advance(0.15)
+    eq(bar.barColor[1], NS.db.theme.accent.r, "interruption en recharge : accent")
+    target.casting.notInterruptible = Mock.SetSecret(true)
+    Mock.FireEvent("UNIT_SPELLCAST_NOT_INTERRUPTIBLE", "target")
+    eq(bar.barColor[1], 0.6, "non interruptible secret : le moteur choisit le gris")
+    Mock.FireEvent("UNIT_SPELLCAST_INTERRUPTED", "target")
+    truthy(bar.flash:IsShown(), "éclair")
+    Mock.Advance(0.6)
+    eq(bar.flash:IsShown(), false)
+    target.casting, Mock.units.targettarget = nil, nil
+    C_Spell.GetSpellCooldownDuration = nil
+    Mock.spells[2139], Mock.knownSpells[2139] = nil, nil
+    Mock.FireEvent("SPELLS_CHANGED")
+    Disable()
 end)

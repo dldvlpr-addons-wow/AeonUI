@@ -13,17 +13,7 @@ require("wow_mock")
 --------------------------------------------------------------------------------
 
 local NS = {}
-for raw in io.lines("AeonUI.toc") do
-    local line = raw:gsub("\r", ""):gsub("%s+$", "")
-    if line:match("%.lua$") then
-        local chunk = assert(loadfile((line:gsub("\\", "/"))))
-        chunk("AeonUI", NS)
-    end
-end
-
-Mock.FireEvent("ADDON_LOADED", "AeonUI")
-Mock.FireEvent("PLAYER_LOGIN")
-Mock.FireEvent("PLAYER_ENTERING_WORLD")
+require("load_addons")(NS)
 
 --------------------------------------------------------------------------------
 -- Boîte à outils
@@ -62,6 +52,7 @@ function T.reset()
     Mock.instanceType = "none"
     Mock.buffs, Mock.knownSpells = {}, {}
     Mock.bags = { [0] = {}, {}, {}, {}, {} }
+    Mock.newItems, Mock.heldSlot, Mock.cursorItem = {}, nil, nil
     Mock.used, Mock.repairs, Mock.looted, Mock.questLog, Mock.chat = {}, {}, {}, {}, {}
     Mock.durability, Mock.equipped = {}, {}
     Mock.secret = {}
@@ -73,8 +64,10 @@ function T.reset()
     Mock.namePlates = {}
     Mock.shapeshiftForm, Mock.formID = 0, nil
     Mock.mainHandEnchant = false
+    Mock.mainHandTooltip = {}
     Mock.debuffs = {}
     Mock.addonEnableState, Mock.addonArgOrder = 2, 1
+    Mock.childEnableStates = {}
     Mock.editMode = { layouts = { layouts = {}, activeLayout = 1 }, added = {} }
     Mock.cooldownLayouts = { created = {}, active = nil, saved = 0, exportable = "CDM-BLOB" }
     Mock.loadedAddons = {}

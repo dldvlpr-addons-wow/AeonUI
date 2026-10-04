@@ -1,4 +1,4 @@
--- Modules/UnitFrames.lua
+-- AeonUI_UnitFrames/UnitFrames.lua
 -- Cadres d'unité AeonUI : joueur, cible, cible de la cible, focus, cible du focus, familier,
 -- boss 1 à 5 (un bloc de réglages commun). Remplacent
 -- les cadres Blizzard (masqués, rendus au /reload après désactivation).
@@ -7,7 +7,7 @@
 -- droit menu, visibilité par RegisterUnitWatch), enfant d'UIParent, créé et dimensionné hors
 -- combat. Ses éléments (NS.UnitFrameElements) sont des régions libres : mises à jour en combat.
 -- Le module se déplace par les movers (clés uf_<unité>).
-local _, NS = ...
+local NS = AeonUI
 local L = NS.L
 local Elements = NS.UnitFrameElements
 local Movers = NS.Movers
@@ -17,14 +17,20 @@ local function Unit(width, height, overrides)
         enabled = true, width = width, height = height, powerHeight = 6,
         castbar = true, castbarHeight = 18, castbarDetached = false, castbarWidth = 260,
         auras = false, auraSize = 22, aurasAbove = false,
-        buffs = false,            -- voie maison (filtre autre que tout/les miens) : buffs après les débuffs
+        vertical = false,         -- barre de vie remplie de bas en haut
         auraFilter = "all",       -- NS.AURA_FILTERS
         healthFormat = "",        -- format à jetons propre au cadre, prime sur healthText
         powerFormat = "",
+        centerFormat = "",        -- texte libre au centre de la vie (mêmes jetons, plus [name] et [level])
         power = true, name = true, level = true, combo = false,
         fader = false,            -- estompé hors combat quand rien ne se passe
+        rangeFade = false,        -- atténué hors de portée d'attaque du joueur (rangeAlpha)
         portrait = false,         -- portrait 2D hors du cadre
         portraitSide = "RIGHT",   -- "LEFT" | "RIGHT"
+        classification = false,   -- icône élite ou rare
+        pvp = false,              -- écusson de faction si marqué JcJ
+        threatBorder = false,     -- bordure à la couleur de la menace de l'unité
+        visibility = NS.Visibility.Spec(),   -- conditions communes (Core/Visibility), en plus de l'existence de l'unité
     }
     for k, v in pairs(overrides or {}) do cfg[k] = v end
     return cfg
@@ -39,19 +45,38 @@ local UnitFrames = NS.Modules:Register("unitframes", {
         enabled = false,          -- allumé par l'installation un clic (étape 7)
         classColor = true,
         healthGradient = false,   -- vie rouge-jaune-vert selon le pourcentage (prime sur la classe)
+        lowHealth = 0,            -- vie sous ce % : couleur lowHealthColor (0 : coupé)
+        lowHealthColor = { r = 0.9, g = 0.15, b = 0.15 },
         healPrediction = true,    -- soins entrants et absorptions au bout de la vie
+        -- Couleurs de vie par réaction des unités non joueurs ; lues aussi par les plaques et les
+        -- cadres de groupe (réglages présents même module coupé).
+        reactionColors = NS.Database.DeepCopy(NS.UnitFrameElements.REACTION_COLORS),
+        healPredictionColor = { r = 0.2, g = 0.9, b = 0.3, a = 0.45 },
+        absorbColor = { r = 1, g = 1, b = 1, a = 0.35 },
+        healAbsorbColor = { r = 0.8, g = 0.15, b = 0.15, a = 0.6 },
+        absorbHeight = 100,       -- % de la hauteur de vie, collée en bas (barre horizontale)
         healthText = "current",   -- préréglage : UnitFrameElements.TEXT_PRESETS
         powerText = "none",
         fadeAlpha = 0.35,         -- opacité d'un cadre estompé (option fader par unité)
+        rangeAlpha = 0.5,         -- facteur d'opacité hors de portée (option rangeFade par unité)
+        castTarget = true,        -- barre d'incantation : cible du sort après son nom
+        castLatency = true,       -- barre du joueur : zone de latence au bout de l'incantation
+        castTicks = true,         -- barre du joueur : tops des canalisations connues
+        castGCD = false,          -- barre du joueur : repère de fin de la recharge globale
+        interruptReady = true,    -- barre d'incantation colorée quand ton interruption est prête
+        interruptReadyColor = { r = 0.2, g = 0.85, b = 0.35 },
         units = {
-            player       = Unit(220, 42, { combo = true, portraitSide = "LEFT", auras = true, aurasAbove = true, buffs = true,
-                                             totems = true, totemSize = 30 }),
-            target       = Unit(220, 42, { auras = true }),
+            player       = Unit(220, 42, { combo = true, comboPips = false, comboSpacing = 2,
+                                             comboColor = { r = 1, g = 0.82, b = 0 },
+                                             portraitSide = "LEFT", auras = true, aurasAbove = true,
+                                             totems = true, totemSize = 30, pvp = true, threatBorder = true }),
+            target       = Unit(220, 42, { auras = true, classification = true, pvp = true }),
             targettarget = Unit(110, 24, { powerHeight = 0, castbar = false, power = false, level = false, name = true }),
-            focus        = Unit(180, 36, { auras = true }),
-            pet          = Unit(110, 24, { powerHeight = 4, castbar = false, level = false, portraitSide = "LEFT" }),
+            focus        = Unit(180, 36, { auras = true, classification = true }),
+            pet          = Unit(110, 24, { powerHeight = 4, castbar = false, level = false, portraitSide = "LEFT",
+                                             happiness = true }),   -- humeur du familier de chasseur
             focustarget  = Unit(110, 24, { enabled = false, powerHeight = 0, castbar = false, power = false, level = false }),
-            boss         = Unit(200, 36, { auras = true, auraSize = 20 }),   -- boss1 à boss5
+            boss         = Unit(200, 36, { auras = true, auraSize = 20, classification = true }),   -- boss1 à boss5
         },
     },
 })
@@ -123,7 +148,8 @@ local function Create(unit)
     frame:SetAttribute("*type2", "togglemenu")
     frame:RegisterForClicks("AnyUp")
     frame:SetFrameStrata("LOW")
-    NS.Media:CreateBackdrop(frame)
+    local _, edges = NS.Media:CreateBackdrop(frame)
+    frame.border = edges   -- bordure de menace (cfg.threatBorder)
     frame.cfg, frame.global = Settings(unit), UnitFrames.db
     Elements.Build(frame)
 
@@ -161,7 +187,9 @@ local function Setup(unit)
     Elements.BuildAuras(frame)
     Elements.LayoutAuras(frame)
     local d = MOVER_DEFAULTS[unit]
-    Movers:Register("uf_" .. unit, frame, MoverLabel(unit), d[1], d[2], d[3])
+    -- Clic droit sur le mover : l'onglet de l'unité (boss1..5 partagent l'onglet « boss »).
+    local tab = L["UF_UNIT_" .. unit:gsub("^boss%d$", "boss"):upper()]
+    Movers:Register("uf_" .. unit, frame, MoverLabel(unit), d[1], d[2], d[3]).revealHint = tab
     Movers:Load("uf_" .. unit)
     if frame.cfg.castbar and frame.cfg.castbarDetached then
         local c = CASTBAR_MOVER_DEFAULTS[unit] or CASTBAR_MOVER_DEFAULTS.player
@@ -170,10 +198,16 @@ local function Setup(unit)
     else
         Movers:Unregister("uf_castbar_" .. unit)
     end
-    if not frame.watched then
-        frame.watched = true
+    -- Sans condition : RegisterUnitWatch ; avec conditions : pilote d'état qui exige aussi l'unité.
+    local clauses = NS.Visibility.HideClauses(frame.cfg.visibility)
+    UnregisterUnitWatch(frame)
+    UnregisterStateDriver(frame, "visibility")
+    if clauses == "" then
         RegisterUnitWatch(frame)
+    else
+        RegisterStateDriver(frame, "visibility", "[@" .. unit .. ",noexists] hide; " .. clauses .. "show")
     end
+    frame.watched = true
     Elements.UpdateAll(frame)
     -- Systèmes Edit Mode : événements coupés et cachés, jamais reparentés (taint).
     for _, name in ipairs(BLIZZARD[unit]) do NS.HideBlizzardFrame(name, true) end
@@ -189,6 +223,7 @@ local function Teardown(unit)
     local frame = UnitFrames.frames[unit]
     if frame and frame.watched then
         UnregisterUnitWatch(frame)
+        UnregisterStateDriver(frame, "visibility")
         frame.watched = false
     end
     if frame then frame:Hide() end
@@ -229,8 +264,10 @@ local function Busy(frame)
     if NS.InCombat() or frame:IsMouseOver() then return true end
     local hasTarget = UnitExists("target")
     if NS.IsSecret(hasTarget) or hasTarget then return true end
-    for _, info in ipairs({ UnitCastingInfo, _G.UnitChannelInfo }) do
-        local spell = info("player")
+    local spell = UnitCastingInfo("player")
+    if NS.IsSecret(spell) or spell ~= nil then return true end
+    if _G.UnitChannelInfo then
+        spell = UnitChannelInfo("player")
         if NS.IsSecret(spell) or spell ~= nil then return true end
     end
     local health, maxHealth = UnitHealth(frame.unit), UnitHealthMax(frame.unit)
@@ -242,8 +279,18 @@ UnitFrames.Busy = Busy
 function UnitFrames:UpdateFade()
     for unit, frame in pairs(self.frames) do
         if frame.watched then
-            local faded = active and Settings(unit).fader and not Busy(frame)
-            frame:SetAlpha(faded and self.db.fadeAlpha or 1)
+            local cfg = Settings(unit)
+            local faded = active and cfg.fader and not Busy(frame)
+            local base = faded and self.db.fadeAlpha or 1
+            -- Portée d'attaque : sans réponse (allié, soi-même), le cadre reste à `base`.
+            -- Unité amie : jamais atténuée (en combat, la réponse vide arrive secrète).
+            local canAttack = _G.UnitCanAttack and UnitCanAttack("player", unit)
+            local friendly = canAttack ~= nil and not NS.IsSecret(canAttack) and not canAttack
+            if active and cfg.rangeFade and unit ~= "player" and not friendly then
+                NS.SetAttackRangeAlpha(frame, unit, base, base * self.db.rangeAlpha)
+            else
+                frame:SetAlpha(base)
+            end
         end
     end
 end
@@ -252,7 +299,7 @@ function RunFader()
     local needed = false
     for _, unit in ipairs(UnitFrames.SETTINGS_UNITS) do
         local cfg = Settings(unit)
-        if cfg.enabled and cfg.fader then needed = true end
+        if cfg.enabled and (cfg.fader or cfg.rangeFade) then needed = true end
     end
     if active and needed then
         fader:SetScript("OnUpdate", function(self, dt)
@@ -411,6 +458,11 @@ local function Relayout()
     NS:RunOutOfCombat(function() if active then UnitFrames:Reconcile() end end)
 end
 NS:On("PIXEL_CHANGED", Relayout)
+-- Le thème repeint les bordures : la couleur de menace est reposée par-dessus.
+NS:On("THEME_CHANGED", function()
+    if not active then return end
+    for _, frame in pairs(UnitFrames.frames) do Elements.UpdateThreatBorder(frame) end
+end)
 
 --------------------------------------------------------------------------------
 -- Options
@@ -423,18 +475,57 @@ function UnitFrames:BuildOptions(o)
     layout:Note(L.NOTE_UF_RELOAD, 20)
     o:Check("classColor", L.OPT_UF_CLASS_COLOR)
     o:Check("healthGradient", L.OPT_UF_HEALTH_GRADIENT)
+    o:Advanced()
+    o:Slider("lowHealth", L.OPT_BAND_LOW, 0, 90, 5, 36)
+    o:Color("lowHealthColor", L.OPT_BAND_COLOR, 52)
+    o:EndAdvanced()
     o:Check("healPrediction", L.OPT_UF_HEAL_PREDICTION)
+    o:Advanced()
+    o:Color("healPredictionColor", L.OPT_UF_HEAL_PREDICTION_COLOR, 36)
+    o:Color("absorbColor", L.OPT_UF_ABSORB_COLOR, 36)
+    o:Color("healAbsorbColor", L.OPT_UF_HEAL_ABSORB_COLOR, 36)
+    o:Slider("absorbHeight", L.OPT_UF_ABSORB_HEIGHT, 10, 100, 5, 36)
+    for _, reaction in ipairs({ "hostile", "neutral", "friendly", "tapped" }) do
+        layout:Color(L["OPT_REACTION_" .. reaction:upper()], function() return self.db.reactionColors[reaction] end,
+            function() NS.Modules:RefreshAll() end, 20)
+    end
+    o:EndAdvanced()
     o:Dropdown("healthText", L.OPT_UF_HEALTH_TEXT, TEXT_MODES)
     o:Dropdown("powerText", L.OPT_UF_POWER_TEXT, TEXT_MODES)
+    o:Advanced()
     o:Slider("fadeAlpha", L.OPT_UF_FADE_ALPHA, 0, 0.9, 0.05, nil, "%.2f")
+    o:Slider("rangeAlpha", L.OPT_SWING_RANGE_ALPHA, 0.1, 0.9, 0.05, nil, "%.2f")
+    o:EndAdvanced()
+    o:Check("castTarget", L.OPT_CAST_TARGET)
+    o:Advanced()
+    o:Check("castLatency", L.OPT_CAST_LATENCY)
+    o:Check("castTicks", L.OPT_CAST_TICKS)
+    o:Check("castGCD", L.OPT_CAST_GCD)
+    o:EndAdvanced()
+    o:Check("interruptReady", L.OPT_CAST_INTERRUPT_READY)
+    o:Advanced()
+    o:Color("interruptReadyColor", L.OPT_CAST_INTERRUPT_READY_COLOR, 36)
     layout:Note(L.NOTE_UF_TEXT_TOKENS, 20)
+    o:EndAdvanced()
     layout:Title(L.OPT_AURA_LISTS)
-    layout:Note(L.NOTE_AURA_LISTS, 20)
     local function ListSetter(field)
         return function(value) NS.db.auraLists[field] = value or "" NS.Modules:RefreshAll() end
     end
+    o:Advanced()
+    layout:Note(L.NOTE_AURA_LISTS, 20)
     layout:EditBox(L.OPT_AURA_WHITELIST, function() return NS.db.auraLists.whitelist end, ListSetter("whitelist"), 1, 20)
     layout:EditBox(L.OPT_AURA_BLACKLIST, function() return NS.db.auraLists.blacklist end, ListSetter("blacklist"), 1, 20)
+    o:EndAdvanced()
+    layout:Check(L.OPT_AURA_PRIORITIZE, function() return NS.db.auraLists.prioritize end,
+        function(value) NS.db.auraLists.prioritize = value NS.Modules:RefreshAll() end, 20)
+    o:Advanced()
+    layout:Dropdown(L.OPT_AURA_CC_GLOW, function()
+            local choices = NS.Glow.Choices()
+            table.insert(choices, 1, { name = L.OPT_CDM_GLOW_NONE, value = "none" })
+            return choices
+        end,
+        function() return NS.db.auraLists.ccGlow end, ListSetter("ccGlow"), 20)
+    o:EndAdvanced()
     layout:Button(L.OPT_UF_UNLOCK, function() NS:SetUnlocked(not NS.unlocked) end, 20)
     -- Un onglet par unité ; « Copier depuis » reprend les réglages d'une autre unité.
     local sources = {}
@@ -448,28 +539,125 @@ function UnitFrames:BuildOptions(o)
         o:CopyFrom("units." .. unit, sources, 36)
         o:Slider(key .. "width", L.OPT_UF_WIDTH, 60, 400, 2, 36)
         o:Slider(key .. "height", L.OPT_UF_HEIGHT, 12, 80, 1, 36)
+        o:Advanced()
+        o:Check(key .. "vertical", L.OPT_UF_VERTICAL, 36)
+        o:EndAdvanced()
         o:Check(key .. "name", L.OPT_UF_UNIT_NAME, 36)
         o:Check(key .. "level", L.OPT_UF_UNIT_LEVEL, 36)
+        o:Advanced()
         o:Check(key .. "fader", L.OPT_UF_UNIT_FADER, 36)
+        if unit ~= "player" then o:Check(key .. "rangeFade", L.OPT_NPF_RANGE_FADE, 36) end
+        o:EndAdvanced()
         o:Check(key .. "portrait", L.OPT_UF_UNIT_PORTRAIT, 36)
+        o:Advanced()
+        o:Check(key .. "classification", L.OPT_UF_UNIT_CLASSIFICATION, 36)
+        o:Check(key .. "pvp", L.OPT_UF_UNIT_PVP, 36)
+        o:Check(key .. "threatBorder", L.OPT_UF_UNIT_THREAT_BORDER, 36)
+        if unit == "pet" then o:Check(key .. "happiness", L.OPT_UF_UNIT_HAPPINESS, 36) end
+        o:EndAdvanced()
         if unit == "player" then
             o:Check(key .. "combo", L.OPT_UF_UNIT_COMBO, 36)
+            o:Advanced()
+            o:Check(key .. "comboPips", L.OPT_UF_COMBO_PIPS, 52)
+            o:Slider(key .. "comboSpacing", L.OPT_UF_COMBO_SPACING, 0, 10, 1, 52)
+            o:Color(key .. "comboColor", L.OPT_UF_COMBO_COLOR, 52)
+            o:EndAdvanced()
             o:Check(key .. "totems", L.OPT_UF_UNIT_TOTEMS, 36)
+            o:Advanced()
             o:Slider(key .. "totemSize", L.OPT_UF_TOTEM_SIZE, 16, 60, 2, 52)
+            o:EndAdvanced()
         end
         o:Check(key .. "power", L.OPT_UF_UNIT_POWER, 36)
         o:Slider(key .. "powerHeight", L.OPT_UF_POWER_HEIGHT, 0, 16, 1, 52)
         o:Check(key .. "castbar", L.OPT_UF_UNIT_CASTBAR, 36)
         o:Slider(key .. "castbarHeight", L.OPT_UF_CASTBAR_HEIGHT, 8, 30, 1, 52)
+        o:Advanced()
         o:Check(key .. "castbarDetached", L.OPT_UF_CASTBAR_DETACHED, 52)
         o:Slider(key .. "castbarWidth", L.OPT_UF_CASTBAR_WIDTH, 100, 500, 2, 68)
+        o:EndAdvanced()
         o:Check(key .. "auras", L.OPT_UF_UNIT_AURAS, 36)
         o:Check(key .. "aurasAbove", L.OPT_UF_AURAS_ABOVE, 52)
+        o:Advanced()
         o:Slider(key .. "auraSize", L.OPT_UF_AURA_SIZE, 12, 40, 1, 52)
         o:Dropdown(key .. "auraFilter", L.OPT_AURA_FILTER, NS.AuraFilterChoices, 52)
         o:EditBox(key .. "healthFormat", L.OPT_UF_HEALTH_FORMAT, 1, 36)
+        o:EditBox(key .. "centerFormat", L.OPT_UF_CENTER_FORMAT, 1, 36)
         if unit ~= "targettarget" and unit ~= "focustarget" then
             o:EditBox(key .. "powerFormat", L.OPT_UF_POWER_FORMAT, 1, 36)
+        end
+        o:Visibility(key .. "visibility", L.OPT_VISIBILITY, { secure = true, noMouseover = true })
+    end
+end
+
+--- Aperçu des options : joueur, cible et cible de la cible, puis familier et focus, à leur taille,
+-- avec portrait, ressource et barre d'incantation ; un clic ouvre l'onglet de l'unité (ou le
+-- réglage de sa barre d'incantation).
+UnitFrames.previewHeight = 320
+local PREVIEW_ROWS = { { "player" }, { "target" }, { "targettarget", "focus" }, { "pet" } }
+local PREVIEW_FILL = { player = 0.86, target = 0.62, targettarget = 0.4, pet = 0.75, focus = 0.52 }
+local PREVIEW_REACTION = { target = "hostile", targettarget = "friendly", pet = "friendly", focus = "neutral" }
+
+function UnitFrames:BuildPreview(p)
+    local function castbarSpace(cfg) return (cfg.castbar and not cfg.castbarDetached) and (cfg.castbarHeight + 3) or 0 end
+    return function()
+        local db = p.DB()
+        p.Begin()
+        local rows, width, height = {}, 0, 0
+        for _, units in ipairs(PREVIEW_ROWS) do
+            local row, x = { top = height, height = 0, units = {} }, 0
+            for _, unit in ipairs(units) do
+                local cfg = db.units[unit]
+                if cfg and cfg.enabled then
+                    row.units[#row.units + 1] = { unit = unit, cfg = cfg, x = x }
+                    x = x + cfg.width + 16
+                    row.height = math.max(row.height, cfg.height + castbarSpace(cfg))
+                end
+            end
+            if #row.units > 0 then
+                rows[#rows + 1] = row
+                width, height = math.max(width, x - 16), height + row.height + 12
+            end
+        end
+        if #rows == 0 then return end
+        local scale, originX, originY = p.Fit(width, height - 12, 8)
+        for _, row in ipairs(rows) do
+            for _, item in ipairs(row.units) do
+                local unit, cfg = item.unit, item.cfg
+                local tab = L["UF_UNIT_" .. unit:upper()]
+                local x, y = originX + item.x * scale, originY + row.top * scale
+                local w, h = cfg.width * scale, cfg.height * scale
+                p.Edge(unit .. ":edge", x, y, w, h, 0, 0, 0, 1)
+                local left, barWidth = x, w
+                if cfg.portrait then
+                    local portraitLeft = cfg.portraitSide == "LEFT"
+                    p.Box(unit .. ":portrait", portraitLeft and x or (x + w - h), y, h, h, 0.15, 0.15, 0.18, 1)
+                    barWidth = w - h - 1
+                    if portraitLeft then left = x + h + 1 end
+                end
+                local power = (cfg.power and cfg.powerHeight > 0) and cfg.powerHeight * scale or 0
+                local healthHeight = h - (power > 0 and power + 1 or 0)
+                local r, g, b
+                if unit == "player" and db.classColor then
+                    r, g, b = p.ClassColor()
+                else
+                    local c = db.reactionColors[PREVIEW_REACTION[unit] or "friendly"]
+                    r, g, b = c.r, c.g, c.b
+                end
+                p.Bar(unit .. ":health", left, y, barWidth, healthHeight, r, g, b, PREVIEW_FILL[unit])
+                if power > 0 then p.Bar(unit .. ":power", left, y + healthHeight + 1, barWidth, power, 0, 0.44, 0.87, 0.7) end
+                if cfg.name then
+                    local name = p.Text(unit .. ":name", left + 4, y + healthHeight / 2, tab, math.min(12, healthHeight * 0.6), "LEFT")
+                    name:SetWidth(math.max(1, barWidth - 8))
+                    name:SetJustifyH("LEFT")
+                    if name.SetWordWrap then name:SetWordWrap(false) end
+                end
+                p.Hotspot(p.Region(unit .. ":spot", x, y, w, h), tab)
+                if cfg.castbar and not cfg.castbarDetached then
+                    local castTop, castHeight = y + h + 3, cfg.castbarHeight * scale
+                    p.Bar(unit .. ":cast", x, castTop, w, castHeight, 1, 0.7, 0, 0.55)
+                    p.Hotspot(p.Region(unit .. ":castspot", x, castTop, w, castHeight), L.OPT_UF_UNIT_CASTBAR, tab)
+                end
+            end
         end
     end
 end

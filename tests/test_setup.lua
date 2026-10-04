@@ -19,7 +19,7 @@ test("zone de texte : la saisie remonte au setter, Refresh ne le redéclenche pa
     eq(calls, 1, "Refresh ne rappelle pas le setter")
 end)
 
-test("assistant : cinq pages, Précédent/Suivant bornés, une seule page visible", function()
+test("assistant : six pages, Précédent/Suivant bornés, une seule page visible", function()
     reset()
     NS.FirstRun:Show()
     local frame = NS.FirstRun:GetFrame()
@@ -30,15 +30,16 @@ test("assistant : cinq pages, Précédent/Suivant bornés, une seule page visibl
     frame.next:Click()
     frame.next:Click()
     frame.next:Click()
-    eq(NS.FirstRun:GetPage(), 5)
-    eq(frame.next:IsEnabled(), false, "Suivant grisé en page 5")
     frame.next:Click()
-    eq(NS.FirstRun:GetPage(), 5, "borné")
+    eq(NS.FirstRun:GetPage(), 6)
+    eq(frame.next:IsEnabled(), false, "Suivant grisé en page 6")
+    frame.next:Click()
+    eq(NS.FirstRun:GetPage(), 6, "borné")
     frame.previous:Click()
-    eq(NS.FirstRun:GetPage(), 4)
-    truthy(frame.progress:GetText():find("4"), "compteur")
+    eq(NS.FirstRun:GetPage(), 5)
+    truthy(frame.progress:GetText():find("5"), "compteur")
     NS.FirstRun:SetPage(0)
-    eq(NS.FirstRun:GetPage(), 4, "index hors bornes ignoré")
+    eq(NS.FirstRun:GetPage(), 5, "index hors bornes ignoré")
     NS.FirstRun:Finish()
 end)
 
@@ -121,7 +122,7 @@ end)
 test("assistant : la CVar du Cooldown Manager et les CVars recommandées sont réversibles", function()
     reset()
     NS.FirstRun:Show()
-    NS.FirstRun:SetPage(4)
+    NS.FirstRun:SetPage(5)
     local cdm
     for _, frame in ipairs(Mock.frames) do
         -- case > contenu > ScrollFrame de page > fenêtre
@@ -138,15 +139,16 @@ test("assistant : la CVar du Cooldown Manager et les CVars recommandées sont r�
     cdm.scripts.OnClick(cdm)
     eq(Mock.cvars.cooldownViewerEnabled, "0", "rendue")
     eq(AeonUIDB.cvarBackup.cooldownViewerEnabled, nil)
-    -- Page 5 : toutes appliquées puis rendues.
-    NS.FirstRun:SetPage(5)
+    -- Page 6 : toutes appliquées puis rendues.
+    NS.FirstRun:SetPage(6)
     for _, entry in ipairs(NS.FirstRun.RECOMMENDED_CVARS) do
         truthy(NS.Modules:Get("interface").CVAR_RULES[entry.name] == nil, entry.name .. " déjà gérée par Interface")
+        truthy(NS.Modules:Get("nameplateframes").CVAR_RULES[entry.name] == nil, entry.name .. " déjà gérée par les plaques")
         NS.CVars:Set(entry.name, entry.value)
         eq(Mock.cvars[entry.name], entry.value, entry.name)
         NS.CVars:Restore(entry.name)
     end
-    eq(Mock.cvars.nameplateMaxDistance, "40", "rendue")
+    eq(Mock.cvars.cameraDistanceMaxZoomFactor, "1.9", "rendue")
     NS.FirstRun:Finish()
 end)
 
@@ -213,6 +215,31 @@ test("déconnexion : addon désactivé => CVars rendues et modules coupés ; act
     for _, name in ipairs({ "topbar", "automation", "reminders", "alerts", "nameplates", "gear", "skin", "interface" }) do
         NS.Modules:SetEnabled(name, true)
     end
+end)
+
+test("addons AeonUI_* : modules rattachés, décoché => seuls ses modules coupés, réglages gardés", function()
+    reset()
+    eq(NS.Modules:Get("bags").addon, "AeonUI_Bags")
+    eq(NS.Modules:Get("clickcast").addon, "AeonUI_GroupFrames")
+    eq(NS.Modules:Get("topbar").addon, "AeonUI")
+    NS.Modules:SetEnabled("chat", true)
+    Mock.childEnableStates.AeonUI_Chat = 0
+    Mock.FireEvent("PLAYER_LOGOUT")
+    eq(NS.Modules:Get("chat").enabled, false, "chat coupé")
+    eq(NS.db.modules.chat.enabled, true, "réglage gardé pour la réactivation")
+    eq(NS.Modules:Get("chatbubbles").addon, "AeonUI_Chat")
+    eq(NS.Modules:Get("topbar").enabled, true, "cœur intact")
+    Mock.childEnableStates.AeonUI_Chat = nil
+    NS.Modules:SetEnabled("chat", false)
+end)
+
+test("cadres d'unité absents : couleurs de réaction par défaut pour plaques et groupe", function()
+    reset()
+    local saved = NS.db.modules.unitframes
+    NS.db.modules.unitframes = nil
+    local r, g, b = NS.UnitFrameElements.HealthColor("target", false)
+    NS.db.modules.unitframes = saved
+    truthy(type(r) == "number" and type(g) == "number" and type(b) == "number", "couleur rendue sans erreur")
 end)
 
 test("déconnexion : sans ordre d'arguments reconnu au login, l'interrupteur reste désarmé", function()

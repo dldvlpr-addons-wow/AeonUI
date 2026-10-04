@@ -73,18 +73,18 @@ test("style : incantation colore et allume la lueur, puis tout revient", functio
     local frame = Enemy("nameplate1")
     Rule(1, { enabled = true, casting = "yes", color = true, glow = true, colorValue = { r = 0.1, g = 0.2, b = 0.9 } })
     NS.Modules:Refresh("nameplateframes")
-    eq(frame.styleGlow:IsShown(), false, "n'incante pas")
+    eq(NS.Glow.Current(frame), nil, "n'incante pas")
     Mock.units.nameplate1.casting = { name = "Hurlement", startTime = 0, endTime = 1000 }
     Mock.FireEvent("UNIT_SPELLCAST_START", "nameplate1")
     eq(frame.health.barColor[3], 0.9, "barre colorée")
-    truthy(frame.styleGlow:IsShown(), "lueur")
+    truthy(NS.Glow.Current(frame), "lueur")
     Mock.units.nameplate1.casting = nil
     Mock.FireEvent("UNIT_SPELLCAST_STOP", "nameplate1")
-    eq(frame.styleGlow:IsShown(), false, "fin d'incantation : lueur éteinte")
+    eq(NS.Glow.Current(frame), nil, "fin d'incantation : lueur éteinte")
     truthy(frame.health.barColor[3] ~= 0.9, "couleur rendue")
     Mock.units.nameplate1.casting = Mock.SetSecret("sort?")
     Mock.FireEvent("UNIT_SPELLCAST_START", "nameplate1")
-    truthy(frame.styleGlow:IsShown(), "nom de sort secret : une incantation existe")
+    truthy(NS.Glow.Current(frame), "nom de sort secret : une incantation existe")
     Mock.units.nameplate1.casting = nil
     ResetRules()
     Disable()

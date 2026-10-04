@@ -219,12 +219,25 @@ test("movers : en combat, le clavier des calques se coupe et OnKeyDown ne touche
     eq(overlay.keyboard, true)
     Mock.SetCombat(true)
     eq(overlay.keyboard, false, "clavier coupé à l'entrée en combat")
+    eq(overlay:IsShown(), false, "mode déplacement suspendu : calques cachés")
+    eq(NS.unlocked, true, "déverrouillage gardé pour la reprise")
+    truthy(Mock.FindPrinted(NS.L.MSG_MOVERS_SUSPENDED))
     overlay.propagateKeyboard = nil
     overlay:GetScript("OnKeyDown")(overlay, "LEFT")
     eq(overlay.propagateKeyboard, nil, "SetPropagateKeyboardInput jamais appelé en combat")
     eq(NS.db.anchors.testF, nil, "rien déplacé")
-    -- Glisser refusé sur un cadre protégé : le lâcher ne sauve rien.
+    Movers.filter = "unitframes"
     Mock.SetCombat(false)
+    eq(Movers.filter, "unitframes", "filtre gardé pendant la suspension")
+    Movers.filter = nil
+    Movers:SetUnlocked(true)
+    eq(overlay:IsShown(), true, "repris à la sortie du combat")
+    -- Verrouillé pendant le combat : pas de reprise.
+    Mock.SetCombat(true)
+    NS:SetUnlocked(false)
+    Mock.SetCombat(false)
+    eq(overlay:IsShown(), false, "verrouillé en combat : rien repris")
+    -- Glisser refusé sur un cadre protégé : le lâcher ne sauve rien.
     NS:SetUnlocked(false)
     Movers:Unregister("testF")
     local secure = newFrame("AeonUITestMoverG", true)
@@ -467,9 +480,117 @@ test("profil importé : la touche du menu radial reste celle du joueur", functio
     NS.db.modules.quickdraw.key = "SHIFT-Q"
     local copy = NS.Database.DeepCopy(NS.db)
     copy.modules.quickdraw.key = "W"
+    copy.modules.raidutility.countdownKey = "W"
     -- Même chemin que ImportProfile, sans remplacer le profil actif (les modules gardent leur table).
     local imported = NS.Database.Deserialize(NS.Database.Export(copy))
     local profile = NS.Database.Sanitize(NS.Database.FillProfile(imported), NS.db)
     eq(profile.modules.quickdraw.key, "SHIFT-Q")
+    eq(profile.modules.raidutility.countdownKey, "", "touche du compte à rebours gardée")
     NS.db.modules.quickdraw.key = ""
+end)
+
+test("movers : aimant en direct pendant le glisser, lignes guides, interrupteur", function()
+    reset()
+    Mock.SetRect(UIParent, 0, 0, 1920, 1080)
+    local frame = newFrame("AeonUITestMoverLive")
+    Movers:Register("testLive", frame, "Live", "CENTER", 0, 0)
+    NS:SetUnlocked(true)
+    local o = Movers.registry.testLive.overlay
+    Mock.SetRect(o, 100, 500, 100, 20)
+    Mock.cursorX, Mock.cursorY = 150, 510
+    o:GetScript("OnDragStart")(o)
+    Mock.cursorX = 56                      -- bord gauche à 6 px de l'écran
+    Mock.Advance(0.05)
+    eq(o.dragLeft, 0, "collé en direct")
+    local guides = Movers:GetGuides()
+    truthy(guides:IsShown() and guides.vertical:IsShown(), "ligne guide verticale")
+    eq(guides.horizontal:IsShown(), false)
+    NS.db.theme.snap = false
+    Mock.Advance(0.05)
+    eq(o.dragLeft, 6, "aimant coupé : position brute")
+    eq(guides:IsShown(), false, "sans accroche : pas de guide")
+    Mock.cursorX = -500
+    Mock.Advance(0.05)
+    eq(o.dragLeft, 0, "gardé à l'écran")
+    Mock.cursorX = 56
+    Mock.Advance(0.05)
+    o:GetScript("OnDragStop")(o)
+    eq(o:GetScript("OnUpdate"), nil, "suivi arrêté")
+    eq(NS.db.anchors.testLive.x, 6)
+    NS.db.theme.snap = true
+    Mock.cursorX, Mock.cursorY = nil, nil
+    NS:SetUnlocked(false)
+    Movers:Unregister("testLive")
+    NS.db.anchors.testLive = nil
+end)
+
+test("movers : session photographiée au déverrouillage, Annuler rend tout, même après un combat", function()
+    reset()
+    local frame = newFrame("AeonUITestMoverSession")
+    Movers:Register("testSession", frame, "Session", "CENTER", 0, 0)
+    NS.db.anchors.testSession = { point = "CENTER", relPoint = "CENTER", x = 10, y = 0 }
+    NS:SetUnlocked(true)
+    Movers:Nudge("testSession", 5, 0)
+    eq(NS.db.anchors.testSession.x, 15)
+    Mock.SetCombat(true)
+    Mock.SetCombat(false)
+    truthy(NS.unlocked and Movers.unlocked, "repris après le combat")
+    Movers:Nudge("testSession", 5, 0)
+    Mock.acceptPopups = true
+    local toolbar = Movers:GetToolbar()
+    toolbar.cancel:Click()
+    Mock.acceptPopups = false
+    eq(NS.db.anchors.testSession.x, 10, "position d'avant la session")
+    eq(NS.unlocked, false, "verrouillé")
+    eq(Movers.session, nil)
+    local _, _, _, x = frame:GetPoint()
+    eq(x, 10, "cadre reposé")
+    -- Enregistrer : garde les déplacements.
+    NS:SetUnlocked(true)
+    Movers:Nudge("testSession", 5, 0)
+    toolbar.save:Click()
+    eq(NS.db.anchors.testSession.x, 15)
+    eq(Movers.session, nil, "session close")
+    Movers:Unregister("testSession")
+    NS.db.anchors.testSession = nil
+end)
+
+test("movers : point d'écran épinglé, coin gardé quand la taille change, écart de taille", function()
+    reset()
+    Mock.SetRect(UIParent, 0, 0, 1920, 1080)
+    local point, relPoint, x, y = Movers.ScreenAnchor({ left = 900, bottom = 500, width = 100, height = 40 }, 1920, 1080, "TOPRIGHT", "TOP")
+    eq(point, "TOP"); eq(relPoint, "TOPRIGHT"); eq(x, -970); eq(y, -540)
+    local frame = newFrame("AeonUITestMoverPin")
+    Movers:Register("testPin", frame, "Pin", "CENTER", 0, 0)
+    NS:SetUnlocked(true)
+    local overlay = Movers.registry.testPin.overlay
+    Mock.SetRect(overlay, 900, 500, 100, 20)
+    eq(Movers:SetPin("testPin", "TOPRIGHT"), true)
+    local a = NS.db.anchors.testPin
+    eq(a.relPoint, "TOPRIGHT", "épinglé au coin de l'écran")
+    eq(a.x, -920)
+    Movers:SetGrow("testPin", "BOTTOM")
+    a = NS.db.anchors.testPin
+    eq(a.point, "BOTTOM", "bas du cadre gardé")
+    eq(a.relPoint, "TOPRIGHT", "épingle gardée")
+    eq(a.x, -970); eq(a.y, -580)
+    -- Lâcher au centre : l'épingle et le coin restent.
+    Movers:Drop("testPin", 910, 530)
+    a = NS.db.anchors.testPin
+    eq(a.relPoint, "TOPRIGHT"); eq(a.point, "BOTTOM"); eq(a.x, -960)
+    Movers:SetPin("testPin", nil)
+    eq(NS.db.anchors.testPin.relPoint, "CENTER", "épingle retirée : tiers d'écran")
+    -- Écart de taille sur une taille reprise.
+    local target = newFrame("AeonUITestMoverPinTarget")
+    target:SetSize(200, 30)
+    Movers:Register("testPinTarget", target, "Cible", "CENTER", 0, 100)
+    Mock.SetRect(Movers.registry.testPinTarget.overlay, 860, 600, 200, 30)
+    eq(Movers:AttachTo("testPin", "testPinTarget"), true)
+    Movers:SetMatch("testPin", "width", true)
+    Movers:SetSizeOffset("testPin", "width", "-20")
+    eq(frame:GetWidth(), 180, "largeur de la cible moins 20")
+    eq(Movers:SetSizeOffset("testPin", "width", "abc"), false)
+    NS:SetUnlocked(false)
+    Movers:Unregister("testPin"); Movers:Unregister("testPinTarget")
+    NS.db.anchors.testPin, NS.db.anchors.testPinTarget = nil, nil
 end)

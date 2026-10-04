@@ -30,6 +30,10 @@ test("rien en combat, en ville, ni sur valeur secrète", function()
     Mock.buffs = { "Buff secret" }
     Mock.secret["Buff secret"] = true
     eq(Keys(Reminders:Collect()).mageArmor, nil, "secret")
+    local original = C_UnitAuras.GetAuraDataByIndex
+    C_UnitAuras.GetAuraDataByIndex = function() error("Auras cannot be accessed when secret while tainted") end
+    eq(NS.PlayerHasBuff({ ["Ice Armor"] = true }), nil, "accès refusé par le moteur : abstention, pas d'erreur")
+    C_UnitAuras.GetAuraDataByIndex = original
 end)
 
 test("règles optionnelles : Forme d'Ombre seulement si demandée", function()
@@ -103,6 +107,17 @@ test("poison : arme enchantée ou non", function()
     eq(Keys(Reminders:Collect()).roguePoison, nil)
 end)
 
+test("arme de chaman vue seulement dans l'infobulle", function()
+    reset()
+    Mock.units.player.class = "SHAMAN"
+    Mock.knownSpells[8017] = true
+    Mock.spells[8017] = "Rockbiter Weapon"
+    Mock.mainHandTooltip = { "Masse", "+5 Agility" }
+    eq(Keys(Reminders:Collect()).shamanWeapon, "Missing: Weapon imbue")
+    Mock.mainHandTooltip = { "Masse", "Rockbiter 3 (30 min)" }
+    eq(Keys(Reminders:Collect()).shamanWeapon, nil)
+end)
+
 test("durabilité et sacs pleins, un seul son à l'apparition", function()
     reset()
     Mock.Advance(2.1)
@@ -162,4 +177,46 @@ test("posture : gabarit personnalisé, gabarit invalide ignoré", function()
     db.stanceText = "%d"
     eq(Keys(Reminders:Collect()).stance, "Wrong stance: Defensive Stance expected", "repli locale")
     db.expectedStance, db.stanceText = "none", ""
+end)
+
+test("rappels : membres sans buff de groupe, buffs choisis, icône cliquable hors combat", function()
+    reset()
+    Mock.spells[1459], Mock.spells[23028] = "Arcane Intellect", "Arcane Brilliance"
+    Mock.knownSpells[1459] = true
+    Mock.buffs = { "Arcane Intellect" }
+    Mock.SetGroup(3, false)
+    Mock.units.party1.buffs = { "Arcane Brilliance" }
+    local entry
+    for _, item in ipairs(Reminders:Collect()) do if item.key == "coverage:arcaneIntellect" then entry = item end end
+    truthy(entry, "un membre sans")
+    eq(entry.text, "Arcane Intellect: 1 member(s) without")
+    eq(entry.unit, "party2", "cible : le membre sans")
+    Mock.units.party2.dead = true
+    eq(Keys(Reminders:Collect())["coverage:arcaneIntellect"], nil, "mort : ne compte pas")
+    Mock.units.party2.dead = nil
+    -- Buff choisi par identifiant.
+    Mock.spells[6117] = "Mage Armor"
+    Mock.knownSpells[6117] = true
+    Reminders.db.customBuffs = "6117, 99999"
+    eq(Keys(Reminders:Collect())["custom:6117"], "Missing: Mage Armor")
+    eq(Keys(Reminders:Collect())["custom:99999"], nil, "sort inconnu : rien")
+    -- Icône : sort et cible posés, lueur.
+    NS.Modules:SetEnabled("reminders", true)
+    Reminders:Evaluate()
+    local _, lines = Reminders:GetFrame()
+    local button
+    for _, line in ipairs(lines) do
+        if line.castButton and line.castButton:GetAttribute("unit") == "party2" then button = line.castButton end
+    end
+    truthy(button and button:IsShown(), "icône du buff de groupe")
+    eq(button:GetAttribute("spell"), "Arcane Intellect")
+    eq(NS.Glow.Current(button), "pixel")
+    eq(Mock.stateDrivers[button].visibility, "[combat] hide", "caché par le moteur en combat")
+    Mock.SetCombat(true)
+    Reminders:Evaluate()
+    Mock.SetCombat(false)
+    Reminders.db.customBuffs = ""
+    Mock.SetGroup(1, false)
+    NS.Modules:SetEnabled("reminders", false)
+    eq(button:IsShown(), false, "désactivé : icônes cachées")
 end)

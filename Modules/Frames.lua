@@ -112,6 +112,8 @@ local function IsArtTexture(region)
     return true
 end
 
+local combatIcon   -- indicateur de combat de la cible, construit plus bas ; jamais assombri
+
 local function Darken(frame, depth)
     if not frame or depth > 4 then return end
     for _, region in ipairs({ frame:GetRegions() }) do
@@ -123,7 +125,9 @@ local function Darken(frame, depth)
     -- Ni les barres, ni les boutons (icônes d'aura, menus), ni les cooldowns.
     local skip = { StatusBar = true, Button = true, CheckButton = true, Cooldown = true }
     for _, child in ipairs({ frame:GetChildren() }) do
-        if child.GetObjectType and not skip[child:GetObjectType()] then Darken(child, depth + 1) end
+        if child ~= combatIcon and child.GetObjectType and not skip[child:GetObjectType()] then
+            Darken(child, depth + 1)
+        end
     end
 end
 
@@ -168,8 +172,6 @@ end
 --------------------------------------------------------------------------------
 -- Indicateur de combat de la cible
 --------------------------------------------------------------------------------
-
-local combatIcon
 
 local function BuildCombatIcon()
     local target = _G.TargetFrame
@@ -255,5 +257,6 @@ function Frames:BuildOptions(o)
     o:Check("darkMode", L.OPT_FRAMES_DARK)
     o:Check("classHealth", L.OPT_FRAMES_CLASS_HEALTH)
     o:Check("classNamesRaid", L.OPT_FRAMES_CLASS_NAMES)
+    o:Advanced()
     o:Check("targetCombat", L.OPT_FRAMES_TARGET_COMBAT)
 end

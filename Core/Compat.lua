@@ -54,7 +54,7 @@ function NS.GetSpellName(id)
 end
 
 function NS.GetSpellTexture(id)
-    if C_Spell and C_Spell.GetSpellTexture then return C_Spell.GetSpellTexture(id) end
+    if C_Spell and C_Spell.GetSpellTexture then return (C_Spell.GetSpellTexture(id)) end
     if C_Spell and C_Spell.GetSpellInfo then
         local info = C_Spell.GetSpellInfo(id)
         return info and info.iconID
@@ -76,35 +76,101 @@ function NS.KnowsSpell(id)
     return _G.GetSpellInfo ~= nil and GetSpellInfo(name) ~= nil
 end
 
+--- Identifiant du rang appris de `id` (Classic : un id par rang), à passer aux API de
+-- recharge, qui ne cherchent que par identifiant. `id` lui-même si le grimoire ne répond pas.
+-- Par le nom d'abord : le grimoire rend le rang le plus haut (portée, recharge), alors que les
+-- rangs inférieurs restent connus (IsPlayerSpell vrai sur le rang 1).
+function NS.KnownSpellID(id)
+    local name = NS.GetSpellName(id)
+    local info = name and C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(name)
+    local known = type(info) == "table" and info.spellID
+    if not known or isSecret(known) then return id end
+    return known
+end
+
+--- Quête répétable (remise d'étoffes, réputation) ? false si l'API manque ou refuse.
+function NS.IsRepeatableQuest(questID)
+    if not questID or not (C_QuestLog and C_QuestLog.IsRepeatableQuest) then return false end
+    local ok, repeatable = pcall(C_QuestLog.IsRepeatableQuest, questID)
+    return ok and not isSecret(repeatable) and repeatable == true
+end
+
+--- Quête active n° `index` de la liste d'un PNJ (QuestGreeting) : répétable ?
+function NS.IsActiveQuestRepeatable(index)
+    return NS.IsRepeatableQuest(_G.GetActiveQuestID and GetActiveQuestID(index))
+end
+
+--- Objet utilisable d'une quête du journal (lien) : quêtes suivies d'abord ; nil sinon.
+function NS.GetQuestItemLink()
+    local itemInfo = _G.GetQuestLogSpecialItemInfo
+    if not (itemInfo and C_QuestLog and C_QuestLog.GetNumQuestLogEntries) then return nil end
+    local fallback
+    for index = 1, C_QuestLog.GetNumQuestLogEntries() or 0 do
+        local link = itemInfo(index)
+        if link then
+            local info = C_QuestLog.GetInfo and C_QuestLog.GetInfo(index)
+            if info and C_QuestLog.GetQuestWatchType and C_QuestLog.GetQuestWatchType(info.questID) then return link end
+            fallback = fallback or link
+        end
+    end
+    return fallback
+end
+
+--- Quête affichée dans QuestFrame (QUEST_PROGRESS, QUEST_DETAIL) : répétable ?
+function NS.IsCurrentQuestRepeatable()
+    return NS.IsRepeatableQuest(_G.GetQuestID and GetQuestID())
+end
+
+--- Type PvP de la zone ("sanctuary", "contested", "hostile"…) ; nil si le client ne le donne pas.
+function NS.GetZonePVPInfo()
+    if C_PvP and C_PvP.GetZonePVPInfo then return (C_PvP.GetZonePVPInfo()) end
+    if _G.GetZonePVPInfo then return (GetZonePVPInfo()) end
+    return nil
+end
+
+--- Unité en Feindre la mort ? false si l'API manque, nil si la valeur est secrète (l'appelant s'abstient).
+function NS.IsFeignDeath(unit)
+    if not _G.UnitIsFeignDeath then return false end
+    local feign = UnitIsFeignDeath(unit)
+    if isSecret(feign) then return nil end
+    return feign == true
+end
+
 --------------------------------------------------------------------------------
 -- Auras du joueur
 --------------------------------------------------------------------------------
 
-local function AuraName(index)
+local function AuraName(unit, index)
     if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
-        local aura = C_UnitAuras.GetAuraDataByIndex("player", index, "HELPFUL")
+        -- Aura secrète (en combat) : le moteur lève une erreur au lieu de répondre.
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, unit, index, "HELPFUL")
+        if not ok then return nil, true end
+        if isSecret(aura) then return aura end
         if not aura then return nil end
         return aura.name
     end
-    if _G.UnitBuff then return (UnitBuff("player", index)) end
-    if _G.UnitAura then return (UnitAura("player", index, "HELPFUL")) end
+    if _G.UnitBuff then return (UnitBuff(unit, index)) end
+    if _G.UnitAura then return (UnitAura(unit, index, "HELPFUL")) end
     return nil
 end
 
---- Le joueur porte-t-il un buff dont le nom est dans `names` (table [nom] = true) ?
+--- `unit` porte-t-il un buff dont le nom est dans `names` (table [nom] = true) ?
 -- Retourne nil quand le client refuse de répondre (nom secret) : l'appelant s'abstient.
-function NS.PlayerHasBuff(names)
+function NS.UnitHasBuff(unit, names)
     for index = 1, 40 do
-        local name = AuraName(index)
-        if isSecret(name) then return nil end
+        local name, refused = AuraName(unit, index)
+        if refused or isSecret(name) then return nil end
         if name == nil then return false end
         if names[name] then return true end
     end
     return false
 end
 
+--- Comme NS.UnitHasBuff, pour le joueur.
+function NS.PlayerHasBuff(names) return NS.UnitHasBuff("player", names) end
+
 --- Débuff n° `index` de `unit` : icône, durée, fin, stacks, type de dissipation, débuff de
--- boss, identifiant du sort, posé par le joueur (ou son familier). Tout peut être SECRET sur le moteur 12.x : l'appelant vérifie NS.IsSecret avant de
+-- boss, identifiant du sort, posé par le joueur (ou son familier), identifiant d'instance. Tout peut être SECRET sur le moteur 12.x : l'appelant vérifie NS.IsSecret avant de
 -- comparer, et passe le reste aux widgets tel quel.
 -- nil quand il n'y en a plus, ou quand le client refuse de répondre.
 function NS.GetDebuff(unit, index) return NS.GetAura(unit, index, "HARMFUL") end
@@ -115,17 +181,41 @@ function NS.GetAura(unit, index, filter)
         local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, unit, index, filter)
         if not ok or isSecret(aura) or aura == nil then return nil end
         return aura.icon, aura.duration, aura.expirationTime, aura.applications, aura.dispelName, aura.isBossAura,
-            aura.spellId, aura.isFromPlayerOrPlayerPet
+            aura.spellId, aura.isFromPlayerOrPlayerPet, aura.auraInstanceID, aura.name
     end
     local legacy = filter == "HELPFUL" and _G.UnitBuff or _G.UnitDebuff
     if legacy then
-        local _, icon, count, dispelType, duration, expirationTime, source, _, _, spellId, _, isBossDebuff = legacy(unit, index)
+        local name, icon, count, dispelType, duration, expirationTime, source, _, _, spellId, _, isBossDebuff = legacy(unit, index)
         local isMine
         if isSecret(source) then isMine = source
         else isMine = source == "player" or source == "pet" end
-        return icon, duration, expirationTime, count, dispelType, isBossDebuff, spellId, isMine
+        return icon, duration, expirationTime, count, dispelType, isBossDebuff, spellId, isMine, nil, name
     end
     return nil
+end
+
+--- Le client refuse-t-il de lire les auras de `unit` (auras secrètes en combat, code tainted) ?
+-- NS.GetAura rend alors nil comme pour « plus d'aura » : l'appelant garde son affichage.
+function NS.AurasRefused(unit)
+    if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return false end
+    return not pcall(C_UnitAuras.GetAuraDataByIndex, unit, 1, "HELPFUL")
+end
+
+local crowdControl = {}
+--- Débuffs de contrôle (étourdissement, peur, métamorphose…) de `unit` : { [auraInstanceID] = true }.
+-- Table réutilisée, à lire tout de suite. Le moteur les désigne lui-même (filtre CROWD_CONTROL),
+-- sans lire d'identifiant de sort, donc aussi en combat.
+-- ponytail: filtre supposé présent avec les valeurs secrètes (moteur 12.x) ; sans lui, aucun contrôle signalé.
+function NS.CrowdControlAuras(unit)
+    wipe(crowdControl)
+    if not (_G.issecretvalue and C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return crowdControl end
+    for index = 1, 40 do
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, unit, index, "HARMFUL|CROWD_CONTROL")
+        if not ok or isSecret(aura) or aura == nil then break end
+        local id = aura.auraInstanceID
+        if id ~= nil and not isSecret(id) then crowdControl[id] = true end
+    end
+    return crowdControl
 end
 
 --- Aura `spellID` sur `unit` (filtre "HELPFUL", "HARMFUL|PLAYER"…) : icône, durée, fin, stacks.
@@ -147,6 +237,63 @@ function NS.GetTotem(slot)
     return have, icon, start, duration
 end
 
+--- Anime `bar` par le moteur (SetTimerDuration sur un objet durée) de `start` à `start + duration`,
+-- qui se vide (`remaining`) ou se remplit. false sans l'API : l'appelant anime lui-même.
+function NS.SetBarTimer(bar, start, duration, remaining)
+    local util, dirs = _G.C_DurationUtil, Enum and Enum.StatusBarTimerDirection
+    if not (util and util.CreateDuration and bar.SetTimerDuration and dirs) then return false end
+    bar.durationObject = bar.durationObject or util.CreateDuration()
+    bar.durationObject:SetTimeFromStart(start, duration)
+    local immediate = Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.Immediate or nil
+    bar:SetTimerDuration(bar.durationObject, immediate, remaining and dirs.RemainingTime or dirs.ElapsedTime)
+    return true
+end
+
+--- Anime `bar` sur la durée restante d'une aura par l'objet durée du moteur (valable même
+-- secrète, en combat). false sans l'API : l'appelant lit les valeurs brutes s'il le peut.
+-- ponytail: C_UnitAuras.GetAuraDuration supposé présent avec le moteur 12.x.
+function NS.SetAuraBarTimer(bar, unit, auraInstanceID)
+    local api, dirs = C_UnitAuras and C_UnitAuras.GetAuraDuration, Enum and Enum.StatusBarTimerDirection
+    if not (api and bar.SetTimerDuration and dirs) or auraInstanceID == nil or isSecret(auraInstanceID) then return false end
+    local ok, duration = pcall(api, unit, auraInstanceID)
+    if not ok or not duration then return false end
+    local immediate = Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.Immediate or nil
+    bar:SetTimerDuration(duration, immediate, dirs.RemainingTime)
+    return true
+end
+
+--- Portée d'attaque suivie par le moteur pour ce type de coup (Enum.PlayerSwingType).
+-- L'événement PLAYER_SWING_RANGE_UPDATE signale ensuite chaque changement.
+function NS.SetSwingRangeCheck(swingType, on)
+    local api = _G.C_SwingTimer and C_SwingTimer.EnableRangeCheck
+    if api then pcall(api, swingType, on and true or false) end
+end
+
+--- La cible est-elle à portée de ce type de coup ? nil : aucune vérification possible (pas de
+-- cible, pas d'arme, API absente, valeur secrète).
+function NS.IsSwingTargetInRange(swingType)
+    local api = _G.C_SwingTimer and C_SwingTimer.IsTargetWithinSwingRange
+    if not api then return nil end
+    local ok, inRange = pcall(api, swingType)
+    if not ok or isSecret(inRange) or type(inRange) ~= "boolean" then return nil end
+    return inRange
+end
+
+--- Humeur du familier de chasseur : bonheur (1 mécontent, 2 content, 3 heureux), part des dégâts
+-- en %, tendance de loyauté. nil sans familier de chasseur, sans l'API ou valeur secrète.
+-- Forever : C_PetInfo.GetPetHappiness ; clients Classic : GetPetHappiness globale.
+function NS.GetPetHappiness()
+    local api = (_G.C_PetInfo and C_PetInfo.GetPetHappiness) or _G.GetPetHappiness
+    if not api or not _G.HasPetUI then return nil end
+    local _, hunterPet = HasPetUI()
+    if isSecret(hunterPet) or not hunterPet then return nil end
+    local ok, happiness, damage, loyalty = pcall(api)
+    if not ok or isSecret(happiness) or type(happiness) ~= "number" then return nil end
+    if isSecret(damage) then damage = nil end
+    if isSecret(loyalty) then loyalty = nil end
+    return happiness, damage, loyalty
+end
+
 --- Pose la recharge du sort `spellID` sur `cooldown`. Objet durée d'abord (le moteur l'affiche
 -- même secret, en combat), sinon valeurs brutes quand elles sont lisibles.
 function NS.SetSpellCooldown(cooldown, spellID)
@@ -163,6 +310,73 @@ function NS.SetSpellCooldown(cooldown, spellID)
     end
     if isSecret(start) or isSecret(duration) then return end
     if start and duration and duration > 0 then cooldown:SetCooldown(start, duration) else cooldown:Clear() end
+end
+
+--- L'unité est-elle tank : rôle choisi, ou tank principal du raid ? Valeur secrète : non.
+function NS.IsTankUnit(unit)
+    if _G.UnitGroupRolesAssigned then
+        local role = UnitGroupRolesAssigned(unit)
+        if not isSecret(role) and role == "TANK" then return true end
+    end
+    if _G.GetPartyAssignment then
+        local assigned = GetPartyAssignment("MAINTANK", unit)
+        if not isSecret(assigned) and assigned then return true end
+    end
+    return false
+end
+
+--- Un autre tank du groupe tient-il l'agro de `mob` ? Sans jeton composé (`nameplate1target` est
+-- secret) : menace de chaque tank du groupe sur `mob`. Valeur secrète : non.
+function NS.OtherTankHasAggro(mob)
+    if not (_G.UnitThreatSituation and _G.GetNumGroupMembers) then return false end
+    local inRaid = _G.IsInRaid and IsInRaid()
+    local prefix, count = "raid", GetNumGroupMembers()
+    if not inRaid then prefix, count = "party", count - 1 end
+    for i = 1, count do
+        -- Le joueur lui-même n'y passe pas : l'appelant a déjà écarté sa propre agro (statut 2 ou 3).
+        local unit = prefix .. i
+        if NS.IsTankUnit(unit) then
+            local ok, status = pcall(UnitThreatSituation, unit, mob)
+            if ok and not isSecret(status) and status and status >= 2 then return true end
+        end
+    end
+    return false
+end
+
+--- Points de combo du joueur sur sa cible, tels quels (peut-être secrets) : pour StatusBar:SetValue.
+function NS.ComboPointsRaw()
+    if _G.GetComboPoints then return (GetComboPoints("player", "target")) end
+    return UnitPower("player", Enum and Enum.PowerType and Enum.PowerType.ComboPoints or 4)
+end
+
+--- Points de combo du joueur sur sa cible, et leur maximum ; nil pour une classe qui n'en a pas ou si secrets.
+-- GetComboPoints d'abord : UnitPower rend parfois 0 sur Forever pour ce type de puissance.
+function NS.GetComboPoints()
+    local points = NS.ComboPointsRaw()
+    local max = UnitPowerMax("player", Enum and Enum.PowerType and Enum.PowerType.ComboPoints or 4)
+    if isSecret(points) or isSecret(max) or type(points) ~= "number" then return nil end
+    if type(max) ~= "number" or max <= 0 then return nil end   -- classe sans points de combo
+    return points, max
+end
+
+local GLOBAL_COOLDOWN_SPELL = 61304   -- sort « Recharge globale » du moteur
+
+--- Recharge globale en cours : début, durée (en s) ; nil hors recharge, sans l'API ou si secrète.
+function NS.GetGlobalCooldown()
+    if not (C_Spell and C_Spell.GetSpellCooldown) then return nil end
+    local ok, info = pcall(C_Spell.GetSpellCooldown, GLOBAL_COOLDOWN_SPELL)
+    if not ok or type(info) ~= "table" then return nil end
+    local start, duration = info.startTime, info.duration
+    if isSecret(start) or isSecret(duration) or not start or not duration or duration <= 0 then return nil end
+    return start, duration
+end
+
+--- Latence du monde en secondes (GetNetStats), 0 si inconnue.
+function NS.WorldLatency()
+    if not _G.GetNetStats then return 0 end
+    local _, _, _, world = GetNetStats()
+    if isSecret(world) or type(world) ~= "number" then return 0 end
+    return world / 1000
 end
 
 --- Sort hors recharge ? Charges : prêt au maximum de charges. Sinon : pas de vraie recharge
@@ -182,7 +396,7 @@ function NS.IsSpellReady(spellID)
 end
 
 --- Charges d'un sort : current, max, début, durée de recharge ; nil si le sort n'a pas de
--- charges ou si une valeur est secrète.
+-- charges ou si le nombre de charges est secret. Recharge secrète : début et durée à 0.
 function NS.GetSpellCharges(spellID)
     local info
     if C_Spell and C_Spell.GetSpellCharges then
@@ -194,8 +408,9 @@ function NS.GetSpellCharges(spellID)
     if type(info) ~= "table" then return nil end
     local current, max = info.currentCharges, info.maxCharges
     local start, duration = info.cooldownStartTime, info.cooldownDuration
-    if isSecret(current) or isSecret(max) or isSecret(start) or isSecret(duration) then return nil end
+    if isSecret(current) or isSecret(max) then return nil end
     if type(current) ~= "number" or type(max) ~= "number" then return nil end
+    if isSecret(start) or isSecret(duration) then start, duration = 0, 0 end
     return current, max, start or 0, duration or 0
 end
 
@@ -223,7 +438,7 @@ end
 --- Spécialisations du personnage : { { index, name } }, vide si le client n'en expose pas.
 function NS.GetSpecList()
     local list = {}
-    if _G.GetNumSpecializations and _G.GetSpecializationInfo then
+    if _G.GetNumSpecializations and _G.GetSpecializationInfo and _G.GetSpecialization then
         local ok, count = pcall(GetNumSpecializations)
         for i = 1, (ok and type(count) == "number") and count or 0 do
             local infoOk, _, name = pcall(GetSpecializationInfo, i)
@@ -340,12 +555,51 @@ function NS.AuraPasses(mode, spellId, dispelName, isBoss, isMine)
     return isSecret(isBoss) or isBoss == true or dispellable   -- "important"
 end
 
+-- Motifs des lignes « Nom (30 min) » d'un enchantement temporaire, tirés des formats localisés.
+local tempEnchantPatterns
+local function TempEnchantPatterns()
+    if tempEnchantPatterns then return tempEnchantPatterns end
+    tempEnchantPatterns = {}
+    for _, key in ipairs({ "ITEM_ENCHANT_TIME_LEFT_DAYS", "ITEM_ENCHANT_TIME_LEFT_HOURS",
+                           "ITEM_ENCHANT_TIME_LEFT_MIN", "ITEM_ENCHANT_TIME_LEFT_SEC" }) do
+        local format = _G[key]
+        if type(format) == "string" then
+            local pattern = format:gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1")
+                :gsub("|4[^;]*;", ".-")
+                :gsub("%%%d?%$?s", ".+")
+                :gsub("%%%d?%$?d", "%%d+")
+            tempEnchantPatterns[#tempEnchantPatterns + 1] = "^" .. pattern .. "$"
+        end
+    end
+    return tempEnchantPatterns
+end
+
+--- Ligne d'enchantement temporaire dans l'infobulle de l'arme principale. nil si texte secret.
+local function MainHandTooltipHasTempEnchant()
+    local info = _G.C_TooltipInfo
+    local data = info and info.GetInventoryItem and info.GetInventoryItem("player", 16)
+    if not (data and data.lines) then return false end
+    for _, line in ipairs(data.lines) do
+        local text = line.leftText
+        if isSecret(text) then return nil end
+        if type(text) == "string" then
+            for _, pattern in ipairs(TempEnchantPatterns()) do
+                if text:match(pattern) then return true end
+            end
+        end
+    end
+    return false
+end
+
 --- Arme principale enchantée (poison, arme de chaman…). nil si le client ne sait pas répondre.
+-- Forever ne remonte pas l'arme de chaman dans GetWeaponEnchantInfo (false alors que l'infobulle
+-- affiche « Croque-roc (30 min) ») : repli sur l'infobulle.
 function NS.HasMainHandEnchant()
-    if not _G.GetWeaponEnchantInfo then return nil end
+    if not _G.GetWeaponEnchantInfo then return MainHandTooltipHasTempEnchant() end
     local has = GetWeaponEnchantInfo()
     if isSecret(has) then return nil end
-    return has and true or false
+    if has then return true end
+    return MainHandTooltipHasTempEnchant()
 end
 
 --------------------------------------------------------------------------------
@@ -354,6 +608,8 @@ end
 
 local Container = _G.C_Container or {}
 NS.NUM_BAGS = _G.NUM_BAG_SLOTS or 4
+-- Sac de réactifs (moteur retail) ; nil si le client n'en a pas.
+NS.REAGENT_BAG = _G.Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag or nil
 
 function NS.GetBagSlots(bag)
     local fn = Container.GetContainerNumSlots or _G.GetContainerNumSlots
@@ -389,6 +645,25 @@ end
 function NS.UseBagItem(bag, slot)
     local fn = Container.UseContainerItem or _G.UseContainerItem
     if fn then fn(bag, slot) end
+end
+
+--- Prend (ou pose, curseur chargé) l'objet de la case. Hors combat seulement pour l'appelant.
+function NS.PickupBagItem(bag, slot)
+    local fn = Container.PickupContainerItem or _G.PickupContainerItem
+    if fn then fn(bag, slot) end
+end
+
+--- Objet arrivé depuis la dernière ouverture des sacs ? false sans l'API.
+function NS.IsNewBagItem(bag, slot)
+    local api = _G.C_NewItems and C_NewItems.IsNewItem
+    return api and api(bag, slot) == true or false
+end
+
+--- Taille de pile maximale d'un objet, ou nil tant que le client ne la connaît pas.
+function NS.GetItemMaxStack(itemID)
+    if C_Item and C_Item.GetItemMaxStackSizeByID then return C_Item.GetItemMaxStackSizeByID(itemID) end
+    local getInfo = (C_Item and C_Item.GetItemInfo) or _G.GetItemInfo
+    return getInfo and select(8, getInfo(itemID)) or nil
 end
 
 --- Prix de vente unitaire en cuivre (0 si inconnu ou pas encore en cache).
@@ -434,13 +709,16 @@ function NS.GetLowestDurability()
 end
 
 --- Lien et qualité de la pièce portée à l'emplacement `slotName` ("Head", "Chest"…).
-function NS.GetEquipped(slotName)
+--- Lien et qualité portés dans un emplacement ; unit = "player" par défaut (inspection sinon).
+function NS.GetEquipped(slotName, unit)
+    unit = unit or "player"
     if not (_G.GetInventorySlotInfo and _G.GetInventoryItemLink) then return nil end
-    local slotID = GetInventorySlotInfo(slotName .. "Slot")
-    if not slotID then return nil end
-    local link = GetInventoryItemLink("player", slotID)
+    -- Emplacement inconnu du client (AmmoSlot hors Classic) : erreur, pas nil.
+    local ok, slotID = pcall(GetInventorySlotInfo, slotName .. "Slot")
+    if not ok or not slotID then return nil end
+    local link = GetInventoryItemLink(unit, slotID)
     if not link then return nil end
-    return link, _G.GetInventoryItemQuality and GetInventoryItemQuality("player", slotID) or nil
+    return link, _G.GetInventoryItemQuality and GetInventoryItemQuality(unit, slotID) or nil
 end
 
 function NS.GetItemLevel(link)
@@ -1019,10 +1297,19 @@ end
 function NS.HideRegion(object)
     if type(object) == "string" then object = _G[object] end
     if type(object) ~= "table" or not object.Hide then return false end
+    -- Barre Edit Mode (postures, familier) : réaffichée par ShowBase, hors du hook de Show ; un
+    -- hook sur ses méthodes contamine la mise en page (LayoutFrame « attempt to call a nil
+    -- value »). Rendue transparente à la place, sans hook.
+    if object.UpdateVisibility then
+        hiddenRegions[object] = true
+        object:SetAlpha(0)
+        HideRegionNow(object)
+        return true
+    end
     if hiddenRegions[object] == nil then
         hooksecurefunc(object, "Show", HideRegionNow)
-        -- Barre Edit Mode (postures, familier) : réaffichée par ShowBase, hors du hook de Show.
-        if object.UpdateVisibility then hooksecurefunc(object, "UpdateVisibility", HideRegionNow) end
+        -- SetShown(true) ne passe pas par Show (bouton d'extension de la minimap).
+        hooksecurefunc(object, "SetShown", function(self, shown) if shown then HideRegionNow(self) end end)
     end
     hiddenRegions[object] = true
     HideRegionNow(object)
@@ -1033,13 +1320,18 @@ function NS.ShowRegion(object)
     if type(object) == "string" then object = _G[object] end
     if type(object) ~= "table" or not hiddenRegions[object] then return false end
     hiddenRegions[object] = false
+    if object.UpdateVisibility then object:SetAlpha(1) end
     -- Barre Edit Mode : ShowOverride relancerait la mise en page contaminée. ShowBase seulement
     -- si Blizzard la veut visible (lire isShownExternal ne contamine rien).
-    if object.ShowBase then
-        if object.isShownExternal then object:ShowBase() end
-    else
-        object:Show()
+    local function show()
+        if hiddenRegions[object] then return end
+        if object.ShowBase then
+            if object.isShownExternal then object:ShowBase() end
+        else
+            object:Show()
+        end
     end
+    if object.IsProtected and object:IsProtected() and NS.InCombat() then NS:RunOutOfCombat(show) else show() end
     return true
 end
 
@@ -1089,6 +1381,208 @@ function NS.AuraContainerAvailable()
         NS.auraContainerProbe = true
     end
     return NS.auraContainerProbe
+end
+
+--- Conteneur d'auras du moteur sous `parent`, ou nil si le client n'en a pas. Les boutons sont
+-- posés par le moteur (flux) ; l'appelant ancre le conteneur. L'unité se pose en dernier
+-- (NS.SetAuraContainerUnit) : le moteur n'écoute UNIT_AURA que pour des groupes déclarés.
+function NS.CreateAuraContainer(parent)
+    if not NS.AuraContainerAvailable() then return nil end
+    local ok, container = pcall(CreateFrame, "AuraContainer", nil, parent, "CustomAuraContainerTemplate")
+    if not ok or type(container) ~= "table" then return nil end
+    container:SetSize(1, 1)   -- rect affichable dès le premier passage de mise en page
+    container.declared = {}
+    return container
+end
+
+--- Sens de remplissage : point d'ancrage, croissance horizontale ("LEFT"/"RIGHT") et verticale
+-- ("UP"/"DOWN"), longueur de ligne en pixels (nil : sans retour à la ligne). `column` : les
+-- éléments s'empilent verticalement (barres).
+function NS.SetAuraContainerFlow(container, anchor, horizontal, vertical, lineSize, column)
+    local direction = _G.AnchorUtil and AnchorUtil.FlowDirection
+    local axis = _G.AnchorUtil and AnchorUtil.FlowLayoutAxis
+    if axis then pcall(container.SetFlowLayoutAxis, container, column and axis.Vertical or axis.Horizontal) end
+    pcall(container.SetFlowLayoutAnchorPoint, container, anchor)
+    if direction then
+        pcall(container.SetFlowLayoutGrowthDirection, container,
+            horizontal == "LEFT" and direction.Left or direction.Right,
+            vertical == "UP" and direction.Up or direction.Down)
+    end
+    pcall(container.SetFlowLayoutMaximumLineSize, container, lineSize)
+end
+
+--- Tri du moteur : `sort` = "expiration" (la plus courte d'abord), sinon priorité des débuffs
+-- (boss, dissipables) si `prioritize`, sinon l'ordre du jeu.
+local function AuraSort(sort, prioritize)
+    local methods, directions = _G.AuraContainerSortMethod, _G.AuraContainerSortDirection
+    if not (methods and directions) then return nil, nil end
+    if sort == "expiration" then return methods.Expiration, directions.Normal end
+    return prioritize and methods.UnitFrameDebuff or methods.Default, directions.Normal
+end
+
+--- Filtre du moteur pour un mode d'AeonUI (NS.AURA_FILTERS). « important » (boss ou dissipable)
+-- ne s'exprime pas en un filtre : tout passe, trié boss et dissipables d'abord (prioritize).
+function NS.AuraEngineFilter(kind, mode)
+    if mode == "mine" then return kind .. "|PLAYER" end
+    if mode == "dispellable" then return kind .. "|RAID" end
+    return kind
+end
+
+--- Filtres candidats d'un mode (boss) et des identifiants à écarter (liste noire). Le moteur
+-- n'écarte par identifiant que là où il le permet (buffs d'alliés, débuffs d'ennemis, sorts jamais secrets).
+function NS.AuraEngineCandidates(mode, exclude)
+    return { isBossAura = mode == "boss" or nil, excludeSpellIDs = exclude }
+end
+
+--- Déclare ou met à jour le groupe `key`. Un groupe ne se retire pas et crée ses boutons par
+-- lots de 10 : tant que `spec.max` vaut 0, il n'est pas déclaré ; ensuite, 0 le vide.
+-- spec : { filter, max, index (ordre dans le flux), newLine, size (ou width, height), spacing, sort,
+-- prioritize, candidates, init }.
+-- Rend false si le moteur refuse la déclaration (filtre invalide).
+function NS.SetAuraGroup(container, key, spec)
+    local max = spec.max or 0
+    local sortMethod, sortDirection = AuraSort(spec.sort, spec.prioritize)
+    local layout = { elementSpacing = spec.spacing or 0, lineSpacing = spec.spacing or 0, groupSpacing = 0,
+                     groupLineSpacing = spec.spacing or 0, forceNewLine = spec.newLine == true,
+                     elementWidth = spec.width or spec.size, elementHeight = spec.height or spec.size,
+                     layoutIndex = spec.index }
+    if not container.declared[key] then
+        if max == 0 then return true end
+        local ok = pcall(container.AddAuraGroup, container, key, spec.filter, {
+            maxFrameCount = max, sortMethod = sortMethod, sortDirection = sortDirection,
+            candidateFilters = spec.candidates, layout = layout, initializeFrame = spec.init,
+        })
+        container.declared[key] = ok or nil
+        return ok
+    end
+    pcall(container.SetAuraGroupFilterString, container, key, spec.filter)
+    pcall(container.SetAuraGroupCandidateFilters, container, key, spec.candidates)
+    if sortMethod then pcall(container.SetAuraGroupSortMethod, container, key, sortMethod, sortDirection) end
+    pcall(container.SetAuraGroupLayout, container, key, layout)
+    pcall(container.SetAuraGroupMaxFrameCount, container, key, max)
+    return true
+end
+
+--- Emplacement d'une seule aura (le moteur ne le place pas : `init` l'ancre). Déclaré au premier
+-- `enabled`, ensuite seulement activé ou coupé. Rend son bouton.
+function NS.SetAuraSlot(container, key, filter, enabled, init, candidates)
+    if not container.declared[key] then
+        if not enabled then return nil end
+        local ok, button = pcall(container.AddAuraSlot, container, key, filter,
+            { initializeFrame = init, candidateFilters = candidates })
+        container.declared[key] = ok and button or nil
+        return container.declared[key]
+    end
+    pcall(container.SetAuraSlotFilterString, container, key, filter)
+    pcall(container.SetAuraSlotCandidateFilters, container, key, candidates)
+    pcall(container.SetAuraSlotEnabled, container, key, enabled == true)
+    return container.declared[key]
+end
+
+--- Unité suivie ("none" : aucune). `refresh` : tout relire même sans changement d'unité
+-- (le moteur ne relit pas seul au changement de cible).
+function NS.SetAuraContainerUnit(container, unit, refresh)
+    unit = unit or "none"
+    if container:GetUnit() ~= unit then
+        container:SetUnit(unit)
+        refresh = true
+    end
+    if refresh then container:UpdateAllAuras() end
+end
+
+--- Boutons déjà créés du groupe `key` (pour les retailler).
+function NS.AuraGroupButtons(container, key)
+    local buttons = {}
+    if not container.declared[key] then return buttons end
+    local ok, count = pcall(container.GetAuraGroupFrameCount, container, key)
+    for i = 1, ok and count or 0 do
+        local found, button = pcall(container.GetAuraGroupFrame, container, key, i)
+        if found and button then buttons[#buttons + 1] = button end
+    end
+    return buttons
+end
+
+local DISPEL_EDGES = { "TOP", "BOTTOM", "LEFT", "RIGHT" }
+
+--- Texture blanche que le moteur teinte à la couleur du type de dissipation de l'aura de `button`
+-- (débuffs seulement) et montre ou cache. `always` : texture gardée (remplissage d'une barre),
+-- montrée aussi sans type (couleur « aucun »). false si le client n'offre pas ce style.
+function NS.AddDispelTexture(button, texture, always)
+    local styles = _G.Enum and Enum.CustomAuraButtonDispelTypeTextureStyle
+    if not always then
+        texture:SetColorTexture(1, 1, 1, 1)
+        texture:Hide()   -- écrit avant l'enregistrement : ensuite, l'alpha et l'affichage sont au moteur
+    end
+    if not (styles and styles.PreserveAsset) then return false end
+    return (pcall(button.AddDispelTypeTexture, button, texture, { style = styles.PreserveAsset,
+        showWhenHarmful = true, showWhenHelpful = false, showWithoutDispelType = always == true }))
+end
+
+--- Quatre bords d'épaisseur `px` autour de `host` (écartés de `inset`), teintés comme ci-dessus.
+-- `host` descend de `button`.
+function NS.AddDispelEdges(button, host, px, inset)
+    local o = inset or 0
+    for _, side in ipairs(DISPEL_EDGES) do
+        local edge = host:CreateTexture(nil, "OVERLAY", nil, 1)
+        if side == "TOP" or side == "BOTTOM" then
+            local y = side == "TOP" and o or -o
+            edge:SetPoint(side .. "LEFT", host, side .. "LEFT", -o, y)
+            edge:SetPoint(side .. "RIGHT", host, side .. "RIGHT", o, y)
+            edge:SetHeight(px)
+        else
+            local x = side == "LEFT" and -o or o
+            edge:SetPoint("TOP" .. side, host, "TOP" .. side, x, o)
+            edge:SetPoint("BOTTOM" .. side, host, "BOTTOM" .. side, x, -o)
+            edge:SetWidth(px)
+        end
+        NS.AddDispelTexture(button, edge)
+    end
+end
+
+--- Prépare un bouton du moteur (appelé par initializeFrame, seule fenêtre où le bouton se touche
+-- librement). Les régions vivent dans `holder`, enfant du bouton ancré ici une fois : ensuite le
+-- rect du bouton est refusé tant que les auras sont secrètes. opts : { size, dispel (bordure
+-- teintée par le type de dissipation), highlight (couleur d'un liseré fixe : groupe de contrôles),
+-- noNumbers (balayage sans chiffres), durationText (temps restant écrit sous l'icône) }.
+function NS.InitAuraButton(button, opts)
+    if opts.size then pcall(button.SetSize, button, opts.size, opts.size) end
+    pcall(button.SetMouseClickEnabled, button, false)   -- les clics vont au cadre dessous
+    pcall(button.SetMouseMotionEnabled, button, false)
+    local holder = CreateFrame("Frame", nil, button)
+    holder:SetAllPoints(button)
+    holder:EnableMouse(false)
+    local icon = holder:CreateTexture(nil, "ARTWORK")
+    icon:SetAllPoints(holder)
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    local cooldown = CreateFrame("Cooldown", nil, holder, "CooldownFrameTemplate")
+    cooldown:SetAllPoints(holder)
+    if opts.noNumbers then
+        if cooldown.SetHideCountdownNumbers then cooldown:SetHideCountdownNumbers(true) end
+    else
+        NS.RegisterCooldown(cooldown)
+    end
+    local top = CreateFrame("Frame", nil, holder)   -- bordure et compteur au-dessus du balayage
+    top:SetAllPoints(holder)
+    top:SetFrameLevel(cooldown:GetFrameLevel() + 1)
+    NS.Media:CreateBorder(top)
+    local count = NS.Media:CreateText(top, "OVERLAY", -2, "OUTLINE")   -- police posée avant l'enregistrement
+    count:SetPoint("BOTTOMRIGHT", top, "BOTTOMRIGHT", 0, 0)
+    pcall(button.SetIcon, button, icon)
+    pcall(button.SetDurationCooldown, button, cooldown)
+    pcall(button.SetApplicationCount, button, count)
+    if opts.durationText then
+        local text = NS.Media:CreateText(top, "OVERLAY", 0, "OUTLINE")
+        text:SetPoint("TOP", top, "BOTTOM", 0, -2)
+        pcall(button.SetDurationText, button, text, {})
+    end
+    if opts.dispel then NS.AddDispelEdges(button, top, NS.Pixel:Scale(NS.db and NS.db.theme.borderSize or 1)) end
+    if opts.highlight then
+        local ring = CreateFrame("Frame", nil, top)   -- un cadre par bordure : le thème les repeint chacune
+        ring:SetAllPoints(top)
+        NS.Media:CreateBorder(ring, opts.highlight, 1)
+    end
+    holder.count = count   -- alpha libre (le moteur tient le texte et l'affichage)
+    return holder
 end
 
 --------------------------------------------------------------------------------
@@ -1212,6 +1706,137 @@ function NS.HealthGradient(unit)
     return true, NS.GradientRGB(cur / max)
 end
 
+local stepCurves, stepCurveCount = {}, 0
+--- Courbe du moteur en paliers (deux points à chaque bord), mise en cache par clé ; nil sans API.
+local function StepCurve(key, steps, r, g, b)
+    local curve = stepCurves[key]
+    if curve ~= nil then return curve or nil end
+    if stepCurveCount >= 64 then stepCurves, stepCurveCount = {}, 0 end
+    curve = false
+    local api = _G.C_CurveUtil and C_CurveUtil.CreateColorCurve
+    if api and _G.CreateColor then
+        local ok, made = pcall(api)
+        if ok and made and made.AddPoint then
+            local previous = 0
+            for _, step in ipairs(steps) do
+                made:AddPoint(previous, CreateColor(step[2], step[3], step[4]))
+                made:AddPoint(math.max(previous, step[1] - 0.0001), CreateColor(step[2], step[3], step[4]))
+                previous = step[1]
+            end
+            made:AddPoint(previous, CreateColor(r, g, b))
+            made:AddPoint(1, CreateColor(r, g, b))
+            curve = made
+        end
+    end
+    stepCurves[key], stepCurveCount = curve, stepCurveCount + 1
+    return curve or nil
+end
+
+--- Couleur par paliers de `kind` ("health" ou "power") : applied, r, g, b. `steps` = liste croissante
+-- de { fraction, r, g, b } : sous `fraction`, cette couleur ; au-dessus du dernier palier, r, g, b.
+-- Comme NS.HealthGradient : composantes peut-être secrètes, l'appelant ne teste que `applied`.
+function NS.StepColor(unit, kind, steps, r, g, b)
+    if #steps == 0 or isSecret(r) or isSecret(g) or isSecret(b) then return false end
+    local parts = { kind, r, g, b }
+    for _, step in ipairs(steps) do parts[#parts + 1] = table.concat(step, ",") end
+    local curve = StepCurve(table.concat(parts, ";"), steps, r, g, b)
+    local percent = kind == "health" and _G.UnitHealthPercent or _G.UnitPowerPercent
+    if curve and percent then
+        local ok, color
+        if kind == "health" then ok, color = pcall(percent, unit, true, curve)
+        else ok, color = pcall(percent, unit, nil, false, curve) end
+        if ok and type(color) == "table" and color.GetRGB then return true, color:GetRGB() end
+    end
+    local cur, max
+    if kind == "health" then cur, max = UnitHealth(unit), UnitHealthMax(unit)
+    else cur, max = UnitPower(unit), UnitPowerMax(unit) end
+    if isSecret(cur) or isSecret(max) or type(max) ~= "number" or max <= 0 then return false end
+    local fraction = cur / max
+    for _, step in ipairs(steps) do
+        if fraction < step[1] then return true, step[2], step[3], step[4] end
+    end
+    return true, r, g, b
+end
+
+-- Sort de référence par classe pour la portée d'une unité hostile : portée d'attaque habituelle
+-- (sort à distance, sinon coup de mêlée). Appelé par l'identifiant du rang appris (NS.KnownSpellID).
+local ATTACK_RANGE_SPELL = {
+    MAGE = 133, WARLOCK = 686, PRIEST = 585, DRUID = 5176, SHAMAN = 403, HUNTER = 75,
+    PALADIN = 20271, WARRIOR = 78, ROGUE = 1752,
+}
+
+--- Alpha d'une plaque hostile d'après la portée d'attaque du joueur : `inside` à portée, `outside`
+-- au-delà. Booléen secret (combat) : le moteur choisit (SetAlphaFromBoolean). Aucun sort de
+-- référence ou pas de réponse : `inside`.
+function NS.SetAttackRangeAlpha(frame, unit, inside, outside)
+    local _, classFile = UnitClass("player")
+    local spell = not isSecret(classFile) and ATTACK_RANGE_SPELL[classFile or ""]
+    local api = C_Spell and C_Spell.IsSpellInRange
+    if not (spell and api) then frame:SetAlpha(inside) return end
+    local ok, inRange = pcall(api, NS.KnownSpellID(spell), unit)
+    if not ok then frame:SetAlpha(inside) return end
+    if isSecret(inRange) then
+        if frame.SetAlphaFromBoolean then frame:SetAlphaFromBoolean(inRange, inside, outside)
+        else frame:SetAlpha(inside) end
+        return
+    end
+    frame:SetAlpha(inRange == false and outside or inside)
+end
+
+-- Interruptions des classes Classic ; démoniste : Verrou magique du chasseur corrompu (grimoire du familier).
+local INTERRUPT_SPELLS = {
+    WARRIOR = { 6552, 72 }, ROGUE = { 1766 }, MAGE = { 2139 }, SHAMAN = { 8042 }, PRIEST = { 15487 },
+    WARLOCK = { 19244, 19647 },
+}
+local interruptSpell   -- identifiant du rang appris de l'interruption ; false : aucun ; nil : à relire
+
+local function KnownInterrupt()
+    if interruptSpell ~= nil then return interruptSpell end
+    interruptSpell = false
+    local _, classFile = UnitClass("player")
+    local book = _G.C_SpellBook and C_SpellBook.IsSpellKnownOrInSpellBook
+    local petBank = Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Pet
+    for _, id in ipairs(not isSecret(classFile) and INTERRUPT_SPELLS[classFile or ""] or {}) do
+        local known = (_G.IsPlayerSpell and IsPlayerSpell(id))
+            or (book and (book(id) or (petBank and book(id, petBank))))
+        -- Autre rang que celui de la table : le nom est trouvé dans le grimoire.
+        local name = NS.GetSpellName(id)
+        if not known and name and C_Spell and C_Spell.GetSpellInfo then known = C_Spell.GetSpellInfo(name) ~= nil end
+        if known then interruptSpell = NS.KnownSpellID(id) break end
+    end
+    return interruptSpell
+end
+
+local interruptEvents = CreateFrame("Frame")
+interruptEvents:SetScript("OnEvent", function() interruptSpell = nil end)
+NS.RegisterEventSafe(interruptEvents, "SPELLS_CHANGED")
+NS.RegisterEventSafe(interruptEvents, "UNIT_PET", "player")
+
+--- Couleur d'une barre d'incantation interruptible : `ready` si l'interruption du joueur est
+-- disponible, sinon (r, g, b). Recharge secrète : le moteur choisit (EvaluateColorValueFromBoolean).
+function NS.InterruptReadyColor(ready, r, g, b)
+    local spell = KnownInterrupt()
+    local api = C_Spell and C_Spell.GetSpellCooldownDuration
+    local pick = _G.C_CurveUtil and C_CurveUtil.EvaluateColorValueFromBoolean
+    if not (spell and api and pick) then return r, g, b end
+    local ok, duration = pcall(api, spell)
+    if not ok or not duration or not duration.IsZero then return r, g, b end
+    local available = duration:IsZero()
+    return pick(available, ready.r, r), pick(available, ready.g, g), pick(available, ready.b, b)
+end
+
+--- Deux couleurs selon un booléen peut-être secret (vrai : première). Sans l'API, un secret
+-- donne la seconde.
+function NS.ColorFromBoolean(value, r1, g1, b1, r2, g2, b2)
+    if not isSecret(value) then
+        if value then return r1, g1, b1 end
+        return r2, g2, b2
+    end
+    local pick = _G.C_CurveUtil and C_CurveUtil.EvaluateColorValueFromBoolean
+    if not pick then return r2, g2, b2 end
+    return pick(value, r1, r2), pick(value, g1, g2), pick(value, b1, b2)
+end
+
 --- Alpha d'après la portée. Moteur : SetAlphaFromBoolean (booléen secret accepté).
 -- Repli : test en Lua, plein si la portée est secrète. Portée non vérifiée (soi-même) : plein.
 function NS.SetRangeAlpha(frame, unit, outsideAlpha)
@@ -1278,9 +1903,12 @@ function NS.StyleCooldown(cooldown)
     if not CanFormat(cooldown) then return end
     local cfg = NS.CooldownText.config
     if cfg then
-        cooldown.foreverFormatter = cooldown.foreverFormatter or C_StringUtil.CreateNumericRuleFormatter()
-        cooldown.foreverFormatter:SetBreakpoints(NS.CooldownBreakpoints(cfg))
-        cooldown:SetCountdownFormatter(cooldown.foreverFormatter)
+        local ok = pcall(function()
+            cooldown.foreverFormatter = cooldown.foreverFormatter or C_StringUtil.CreateNumericRuleFormatter()
+            cooldown.foreverFormatter:SetBreakpoints(NS.CooldownBreakpoints(cfg))
+            cooldown:SetCountdownFormatter(cooldown.foreverFormatter)
+        end)
+        if not ok then return end
         if cooldown.SetHideCountdownNumbers then cooldown:SetHideCountdownNumbers(false) end
         cooldown.foreverStyled = true
     elseif cooldown.foreverStyled then
@@ -1361,6 +1989,8 @@ function NS.Diagnostic()
     probe("Menace", NS.DiagnosticThreat)
     probe("Unit frames", NS.DiagnosticUnitFrames)
     probe("Midnight", NS.DiagnosticMidnight)
+    local failed = NS.Database and NS.Database.migrationErrors or {}
+    lines[#lines + 1] = "Migrations en échec : " .. (#failed > 0 and table.concat(failed, " ; ") or "-")
     local thirdParty = NS.Modules and NS.Modules:LoadedThirdParty() or {}
     lines[#lines + 1] = "Addons tiers chargés : " .. (#thirdParty > 0 and table.concat(thirdParty, ", ") or "-")
     return lines
@@ -1457,4 +2087,30 @@ function NS.DiagnosticUnitFrames()
     else missing[#missing + 1] = "CustomAuraContainerTemplate" end
     return "ok : " .. (#present > 0 and table.concat(present, ", ") or "-")
         .. " ; absentes : " .. (#missing > 0 and table.concat(missing, ", ") or "-")
+end
+
+--- Charge d'AeonUI : temps moyen récent par image en ms (profileur d'addons du moteur récent,
+-- nil sans lui) et mémoire en Ko (nil si le client ne la donne pas). Relevé à la demande.
+function NS.AddOnUsage()
+    local cpu, memory
+    local profiler, metrics = _G.C_AddOnProfiler, _G.Enum and Enum.AddOnProfilerMetric
+    if profiler and profiler.GetAddOnMetric and metrics and metrics.RecentAverageTime then
+        local ok, value = pcall(profiler.GetAddOnMetric, "AeonUI", metrics.RecentAverageTime)
+        if ok and type(value) == "number" and not NS.IsSecret(value) then cpu = value end
+    end
+    if _G.UpdateAddOnMemoryUsage and _G.GetAddOnMemoryUsage then
+        pcall(UpdateAddOnMemoryUsage)
+        local ok, value = pcall(GetAddOnMemoryUsage, "AeonUI")
+        if ok and type(value) == "number" then memory = value end
+    end
+    return cpu, memory
+end
+
+--- Icône de l'emplacement d'action `slot` (nil si vide ou illisible).
+function NS.GetActionTexture(slot)
+    local get = (C_ActionBar and C_ActionBar.GetActionTexture) or _G.GetActionTexture
+    if not get then return nil end
+    local ok, texture = pcall(get, slot)
+    if ok and texture and not NS.IsSecret(texture) then return texture end
+    return nil
 end

@@ -105,6 +105,8 @@ loader:SetScript("OnEvent", function(self, event, name)
         self:UnregisterEvent("PLAYER_LOGIN")
         -- Garde-fou : la globale remplacée entre ADDON_LOADED et PLAYER_LOGIN (NS.global orphelin).
         if AeonUIDB ~= NS.global then BindSaved() end
+        -- Les addons AeonUI_* enregistrent leurs modules après ADDON_LOADED du cœur : leurs défauts ici.
+        for _, profile in pairs(NS.global.profiles) do NS.Database.FillProfile(profile) end
         NS.db = NS.Database:ActiveProfile()
         NS:Fire("PROFILE_READY")
         NS:Fire("LOGIN")
@@ -144,22 +146,53 @@ function NS:ResetProfile()
     Reload(function() return NS.Database:ResetActiveProfile() end)
 end
 
---- Importe une chaîne de profil (voir Database.Serialize) dans le profil actif.
-function NS:ImportProfile(text)
-    if not NS.Database.Deserialize(text) then
+--- Importe une chaîne de profil (voir Database.Serialize) dans le profil actif. Un export du
+-- compte (tous les profils) n'est accepté qu'avec `allowAccount`.
+function NS:ImportProfile(text, allowAccount)
+    local parsed = NS.Database.Deserialize(text, NS.Database.PastedLimit(allowAccount))
+    if not parsed or (parsed.account and not allowAccount) then
         NS.Print(L.MSG_IMPORT_FAILED)
         return false
     end
     Reload(function()
-        local profile = NS.Database:ImportProfile(text)
+        local profile = NS.Database:ImportProfile(text, allowAccount)
         NS.Print(L.MSG_IMPORT_OK)
         return profile
     end)
     return true
 end
 
---- Changement de spé (ou spé enfin connue après la connexion) : rebranche le profil qui lui
--- est lié s'il n'est pas déjà actif.
+-- Raccourci par profil : une touche liée au bouton caché, le bouton de souris transmis ("P1",
+-- "P2"…) désigne le profil (un nom peut contenir espaces et deux-points, pas ce paramètre).
+local hotkeyButton = CreateFrame("Button", "AeonUIProfileHotkey", UIParent)
+hotkeyButton:Hide()
+local hotkeyTargets = {}
+hotkeyButton:SetScript("OnClick", function(_, button)
+    local name = hotkeyTargets[button]
+    if name and NS.global.profiles[name] and name ~= NS.Database:ActiveProfileName() then NS:SwitchProfile(name) end
+end)
+
+--- Relie les raccourcis de profil (hors combat : SetOverrideBindingClick est protégé).
+function NS:BindProfileHotkeys()
+    NS:RunOutOfCombat(function()
+        ClearOverrideBindings(hotkeyButton)
+        hotkeyTargets = {}
+        local count = 0
+        for name, key in pairs(NS.global.profileHotkeys) do
+            if type(key) == "string" and key ~= "" and NS.global.profiles[name] then
+                count = count + 1
+                hotkeyTargets["P" .. count] = name
+                SetOverrideBindingClick(hotkeyButton, false, key:upper(), hotkeyButton:GetName(), "P" .. count)
+            end
+        end
+    end)
+end
+
+NS:On("PROFILE_READY", function() NS:BindProfileHotkeys() end)
+
+--- Changement de spé (ou spé enfin connue après la connexion) ou de contexte (écran de
+-- chargement : donjon, raid, champ de bataille) : rebranche le profil lié s'il n'est pas déjà
+-- actif. Reload attend la fin du combat.
 function NS:CheckSpecProfile()
     if not (NS.global and NS.db) then return end
     local spec = NS.GetActiveSpec()
@@ -192,9 +225,9 @@ function NS:Uninstall(silent)
         -- restent, l'addon ne se charge plus de toute façon.
         if not silent then
             for _, profile in pairs(NS.global.profiles) do
-                for _, module in ipairs(NS.Modules:List()) do
-                    local settings = profile.modules and profile.modules[module.name]
-                    if settings then settings.enabled = false end
+                -- Toutes les entrées, y compris celles d'un AeonUI_* décoché (module non chargé).
+                for _, settings in pairs(profile.modules or {}) do
+                    if type(settings) == "table" then settings.enabled = false end
                 end
                 if profile.theme then profile.theme.pixelPerfect, profile.theme.uiScale = false, 1 end
             end
@@ -228,9 +261,9 @@ StaticPopupDialogs["AEONUI_UNINSTALL"] = {
 -- on sonde les deux contre nous-même au login ; sans réponse cohérente, on ne fait rien.
 local ENABLED_STATE_NONE = 0
 
-local function EnableState(order)
+local function EnableState(order, addon)
     if not (C_AddOns and C_AddOns.GetAddOnEnableState) then return nil end
-    local a, b = ADDON_NAME, (UnitName("player"))
+    local a, b = addon or ADDON_NAME, (UnitName("player"))
     if order == 2 then a, b = b, a end
     local ok, state = pcall(C_AddOns.GetAddOnEnableState, a, b)
     if ok and type(state) == "number" then return state end
@@ -257,6 +290,16 @@ watch:SetScript("OnEvent", function(_, event)
         end
     elseif argumentOrder and NS.db and EnableState(argumentOrder) == ENABLED_STATE_NONE then
         NS:Uninstall(true)
+    elseif argumentOrder and NS.db then
+        -- AeonUI_* décoché : ses modules rendent ce qu'ils ont changé, leurs réglages restent.
+        local checked = {}
+        for _, module in ipairs(NS.Modules:List()) do
+            local addon = module.addon
+            if addon and addon ~= ADDON_NAME and not checked[addon] then
+                checked[addon] = true
+                if EnableState(argumentOrder, addon) == ENABLED_STATE_NONE then NS.Modules:DisableAll(addon) end
+            end
+        end
     end
     if event == "PLAYER_LOGOUT" then NS.Database:WriteMirror() end
 end)
@@ -294,6 +337,11 @@ function commands.install(args)
         NS:RunOutOfCombat(function() NS.Install:Apply(first) end)
         return
     end
+    if first == "class" then
+        if NS.Install.CanPlay(second) then NS:RunOutOfCombat(function() NS.Install:ApplyClass(second) end)
+        else NS.Print(string.format(L.MSG_INSTALL_CLASS_USAGE, table.concat(NS.Install.ClassStyles(), ", "))) end
+        return
+    end
     if first == "" then NS.Print(L.MSG_INSTALL_USAGE) return end
     if second == "" then second = nil end
     if not NS.Install.PRESETS[first] or (second and not NS.Install.ROLES[second]) then NS.Print(L.MSG_INSTALL_USAGE) return end
@@ -314,8 +362,18 @@ function commands.reset()
     NS.Print(L.MSG_RESET)
 end
 
+--- /aeon pull [secondes] : compte à rebours, le premier réglé par défaut ; 0 l'annule.
+function commands.pull(args)
+    local raid = NS.Modules:Get("raidutility")
+    if not (raid and raid.Countdown) then return end
+    raid.Countdown(tonumber(args) or raid.db.countdown)
+end
+
 function commands.diag()
     for _, line in ipairs(NS.Diagnostic()) do NS.Print(line) end
+    local cpu, memory = NS.AddOnUsage()
+    if cpu then NS.Print(string.format(L.OPT_USAGE_CPU, cpu)) end
+    if memory then NS.Print(string.format(L.OPT_USAGE_MEMORY, memory / 1024)) end
 end
 
 function commands.uninstall()

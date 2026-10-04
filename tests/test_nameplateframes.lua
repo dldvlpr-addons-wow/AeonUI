@@ -38,6 +38,28 @@ test("plaques : montage à l'apparition, ancrée sur la plaque, démontage, réu
     Mock.namePlates = {}
 end)
 
+test("plaques : PNJ alliés, familiers et portée posés à l'activation, rendus à la coupure", function()
+    reset()
+    Enable()
+    eq(Mock.cvars.nameplateShowFriendlyNpcs, "1")
+    eq(Mock.cvars.nameplateShowEnemyPets, "1")
+    eq(Mock.cvars.nameplateMaxDistance, "60")
+    NPF.db.pets, NPF.db.maxDistance = false, 45
+    NPF:OnRefresh()
+    eq(Mock.cvars.nameplateShowEnemyPets, "0", "option coupée : origine rendue")
+    eq(Mock.cvars.nameplateMaxDistance, "45")
+    eq(Mock.cvars.UnitNameNPC, "1", "noms flottants gardés par défaut")
+    NPF.db.hideWorldNames = true
+    NPF:OnRefresh()
+    eq(Mock.cvars.UnitNameNPC, "0", "noms flottants masqués")
+    Disable()
+    eq(Mock.cvars.UnitNameNPC, "1", "rendus à la coupure")
+    eq(Mock.cvars.nameplateShowFriendlyNpcs, "0")
+    eq(Mock.cvars.nameplateMaxDistance, "40")
+    NPF.db.pets, NPF.db.maxDistance, NPF.db.hideWorldNames = true, 60, false
+    Mock.namePlates = {}
+end)
+
 test("plaques : couleur de menace connue, réaction si secrète, allié sans barre", function()
     reset()
     Enable()
@@ -63,6 +85,60 @@ test("plaques : couleur de menace connue, réaction si secrète, allié sans bar
     NS.Modules:Refresh("nameplateframes")
     truthy(ally.health:IsShown(), "option : barre alliée")
     NPF.db.friendlyHealth = false
+    Disable()
+    Mock.namePlates = {}
+end)
+
+test("plaques : menace par rôle (tank, co-tank), points de combo, emplacement de contrôle", function()
+    reset()
+    Enable()
+    local enemy = Enemy("nameplate1", { threat = 0 })
+    Mock.AddNamePlate("nameplate1")
+    local frame = NPF:GetFrame("nameplate1")
+    local colors = NPF.db.threatColors
+    Mock.roles.player = "TANK"
+    Mock.FireEvent("UNIT_THREAT_SITUATION_UPDATE", "nameplate1")
+    eq(frame.health.barColor[1], colors.tankLost.r, "tank sans agro : perdue")
+    -- Co-tank : menace du tank du groupe sur le mob, sans le jeton composé nameplate1target (secret).
+    local threatOf = UnitThreatSituation
+    Mock.groupSize, Mock.units.party1, Mock.roles.party1 = 2, { name = "Tank2" }, "TANK"
+    UnitThreatSituation = function(a, b) if a == "party1" then return 3 end return threatOf(a, b) end
+    Mock.FireEvent("UNIT_THREAT_SITUATION_UPDATE", "nameplate1")
+    eq(frame.health.barColor[3], colors.offTank.b, "tenue par un autre tank")
+    UnitThreatSituation, Mock.groupSize, Mock.units.party1, Mock.roles.party1 = threatOf, 0, nil, nil
+    enemy.threat = 3
+    Mock.FireEvent("UNIT_THREAT_SITUATION_UPDATE", "nameplate1")
+    eq(frame.health.barColor[2], colors.tankSecure.g, "agro tenue")
+    NPF.db.threatRole = "dps"
+    Mock.FireEvent("UNIT_THREAT_SITUATION_UPDATE", "nameplate1")
+    eq(frame.health.barColor[1], colors.dpsAggro.r, "rôle forcé : agro prise en DPS")
+    NPF.db.threatRole = "auto"
+    Mock.roles.player = nil
+    -- Points de combo : seulement sur la plaque de la cible.
+    Mock.units.player.comboMax, Mock.units.player.combo = 5, 2
+    Mock.units.target = enemy
+    Mock.FireEvent("PLAYER_TARGET_CHANGED")
+    local lit = 0
+    for _, pip in ipairs(frame.plateComboPips) do
+        if pip:IsShown() and pip.color and pip.color[4] == 1 then lit = lit + 1 end
+    end
+    eq(#frame.plateComboPips, 5, "une pastille par point")
+    eq(lit, 2, "deux points allumés")
+    Mock.units.target = nil
+    Mock.FireEvent("PLAYER_TARGET_CHANGED")
+    eq(frame.plateComboPips[1]:IsShown(), false, "sans cible : aucune pastille")
+    Mock.units.player.comboMax, Mock.units.player.combo = nil, nil
+    -- Contrôle : hors de la grille, dans son emplacement.
+    Mock.debuffs.nameplate1 = { { icon = "poison", auraInstanceID = 1, isFromPlayerOrPlayerPet = true },
+                                { icon = "stun", auraInstanceID = 2, cc = true, isFromPlayerOrPlayerPet = true } }
+    Mock.FireEvent("UNIT_AURA", "nameplate1")
+    eq(frame.ccSlot.buttons[1].icon.texture, "stun", "contrôle dans l'emplacement")
+    truthy(frame.ccSlot.buttons[1]:IsShown())
+    eq(frame.auras.buttons[1].icon.texture, "poison")
+    eq(frame.auras.buttons[2]:IsShown(), false, "contrôle retiré de la grille")
+    Mock.debuffs.nameplate1 = {}
+    Mock.FireEvent("UNIT_AURA", "nameplate1")
+    eq(frame.ccSlot.buttons[1]:IsShown(), false)
     Disable()
     Mock.namePlates = {}
 end)
@@ -123,4 +199,35 @@ test("plaques : taille des textes suit fontDelta", function()
     eq(size, base + 1, "niveau : un cran en dessous")
     NS.db.modules.nameplateframes.fontDelta = -1
     Disable()
+end)
+
+test("plaques : couleur par type, hors combat assombri, portée d'attaque, icône de quête", function()
+    reset()
+    local db = NPF.db
+    db.classificationColors, db.darkenOutOfCombat, db.rangeFade = true, true, true
+    Mock.spells[133] = "Boule de feu"
+    local inRange = true
+    C_Spell.IsSpellInRange = function(spell) return spell == 133 and inRange end
+    C_QuestLog = C_QuestLog or {}
+    local previousQuest = C_QuestLog.UnitIsRelatedToActiveQuest
+    C_QuestLog.UnitIsRelatedToActiveQuest = function(unit) return Mock.units[unit].quest == true end
+    Enable()
+    Enemy("nameplate1", { classification = "elite", powerType = "RAGE", combat = true, quest = true })
+    Mock.AddNamePlate("nameplate1")
+    local frame = NPF:GetFrame("nameplate1")
+    eq(frame.health.barColor[1], db.classificationColor.elite.r, "élite en couleur d'élite")
+    truthy(frame.questIcon:IsShown(), "icône de quête")
+    Enemy("nameplate2", { powerType = "MANA" })
+    Mock.AddNamePlate("nameplate2")
+    local caster = NPF:GetFrame("nameplate2")
+    eq(caster.health.barColor[3], db.classificationColor.caster.b * 0.5, "lanceur hors combat : assombri")
+    eq(caster.questIcon:IsShown(), false)
+    eq(frame:GetAlpha(), 1, "à portée")
+    inRange = false
+    Mock.Advance(0.3)
+    eq(frame:GetAlpha(), db.rangeAlpha, "hors de portée : atténué")
+    db.classificationColors, db.darkenOutOfCombat, db.rangeFade = false, false, false
+    C_Spell.IsSpellInRange, C_QuestLog.UnitIsRelatedToActiveQuest, Mock.spells[133] = nil, previousQuest, nil
+    Disable()
+    Mock.namePlates = {}
 end)

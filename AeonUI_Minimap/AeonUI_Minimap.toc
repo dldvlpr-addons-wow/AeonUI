@@ -1,0 +1,14 @@
+## Interface: 16001
+## Title: |cff3fa9f5Aeon|rUI Minimap
+## Title-frFR: |cff3fa9f5Aeon|rUI Minicarte
+## Notes: AeonUI minimap. Disable to use another minimap addon.
+## Notes-frFR: Minicarte AeonUI. À désactiver pour utiliser un autre addon de minicarte.
+## Version: @project-version@
+## Dependencies: AeonUI
+## Group: AeonUI
+## IconTexture: Interface\AddOns\AeonUI\Media\Logo
+## Category: User Interface
+## Category-frFR: Interface utilisateur
+## X-License: All Rights Reserved
+
+MinimapFrame.lua

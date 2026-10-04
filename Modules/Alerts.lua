@@ -121,7 +121,9 @@ function Alerts:CheckDeath(unit)
     if NS.IsSecret(guid) or NS.IsSecret(isDead) or not guid then return false end
     -- Pas UnitIsUnit(unit, "player") : secret en combat. Le GUID, lui, vient d'être vérifié.
     if guid == UnitGUID("player") then return false end
-    if not isDead then
+    local feign = NS.IsFeignDeath(unit)
+    if feign == nil then return false end   -- secret : on s'abstient
+    if not isDead or feign then
         dead[guid] = nil
         return false
     end
@@ -243,10 +245,12 @@ function Alerts:BuildOptions(o)
         { name = L.ALERTS_SHOW_ENTER, value = "enter" },
         { name = L.ALERTS_SHOW_LEAVE, value = "leave" },
     }, 36)
+    o:Advanced()
     o:EditBox("combatInText", L.OPT_ALERTS_IN_TEXT, 1, 36)
     o:Color("combatInColor", L.OPT_ALERTS_IN_COLOR, 36)
     o:EditBox("combatOutText", L.OPT_ALERTS_OUT_TEXT, 1, 36)
     o:Color("combatOutColor", L.OPT_ALERTS_OUT_COLOR, 36)
+    o:EndAdvanced()
     o:Slider("textSize", L.OPT_ALERTS_SIZE, 12, 48, 2, 36)
     o:Check("combatSound", L.OPT_ALERTS_COMBAT_SOUND, 36)
     o:Sound("combatSoundPreset", "combatSoundFile", 52)

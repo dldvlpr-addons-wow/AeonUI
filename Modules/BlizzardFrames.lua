@@ -23,6 +23,7 @@ local BlizzardFrames = NS.Modules:Register("blizzardframes", {
     titleKey = "BF_TITLE",
     descKey = "BF_DESC",
     secure = true,            -- systèmes Edit Mode protégés : tout hors combat
+    reloadOnDisable = true,   -- cadres Blizzard rendus au /reload seulement : les options le proposent
     defaults = defaults,
 })
 
@@ -42,8 +43,10 @@ function BlizzardFrames:Apply()
         if frame then
             if self.db[def.key] == "move" then
                 Movers:Adopt(def.key, frame, L[def.label], def.default[1], def.default[2], def.default[3], def.anchor)
-            else
+            elseif Movers.adopted[def.key] and Movers.adopted[def.key].active then
+                -- « move » -> « keep » : le cadre reste posé sur le support jusqu'au /reload.
                 Movers:Release(def.key)
+                NS:Fire("BLIZZARD_FRAMES_RELEASED")
             end
         end
     end
@@ -65,8 +68,16 @@ end
 function BlizzardFrames:OnDisable()
     active = false
     events:UnregisterAllEvents()
-    for _, def in ipairs(FRAMES) do Movers:Release(def.key) end
-    NS.Print(L.MSG_BF_DISABLED_RELOAD)
+    local released = false
+    for _, def in ipairs(FRAMES) do
+        local entry = Movers.adopted[def.key]
+        if entry and entry.active then released = true end
+        Movers:Release(def.key)
+    end
+    -- Coupure par profil (DisableAll) : /reload proposé, sauf si le nouveau profil rallume le module.
+    if released then
+        C_Timer.After(0, function() if not active then NS:Fire("BLIZZARD_FRAMES_RELEASED") end end)
+    end
 end
 
 function BlizzardFrames:OnRefresh()

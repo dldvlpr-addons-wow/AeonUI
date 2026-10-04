@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: |cff3fa9f5Aeon|rUI Chat
+## Title-frFR: |cff3fa9f5Aeon|rUI Chat
+## Notes: AeonUI chat and chat bubbles. Disable to use another chat addon.
+## Notes-frFR: Chat et bulles de dialogue AeonUI. À désactiver pour utiliser un autre addon de chat.
+## Version: @project-version@
+## Dependencies: AeonUI
+## Group: AeonUI
+## IconTexture: Interface\AddOns\AeonUI\Media\Logo
+## Category: User Interface
+## Category-frFR: Interface utilisateur
+## X-License: All Rights Reserved
+
+Chat.lua
+ChatBubbles.lua

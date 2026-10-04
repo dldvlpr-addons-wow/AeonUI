@@ -48,7 +48,7 @@ end)
 
 test("barres de ressources : « en combat » masque hors combat, valeur secrète passée telle quelle", function()
     local bars = enable()
-    NS.db.modules.resourcebars.visibility = "combat"
+    NS.db.modules.resourcebars.visibility = NS.Visibility.Spec({ match = "any", combat = "yes", target = "yes" })
     RB:OnRefresh()
     eq(bars.power.holder:IsShown(), false, "hors combat sans cible")
     Mock.SetCombat(true)
@@ -58,7 +58,7 @@ test("barres de ressources : « en combat » masque hors combat, valeur secrète
     Mock.FireEvent("UNIT_POWER_FREQUENT", "player")
     truthy(NS.IsSecret(bars.power.value), "secret transmis sans comparaison")
     Mock.SetCombat(false)
-    NS.db.modules.resourcebars.visibility = "always"
+    NS.db.modules.resourcebars.visibility = NS.Visibility.Spec()
     disable()
 end)
 
@@ -79,4 +79,58 @@ test("barres de ressources : verticales, longueur en hauteur et graduations couc
     eq(bars.combo.ticks[1].points[1][1], "TOP")
     Mock.units.player.comboMax, Mock.units.player.combo, Mock.units.player.powerType = nil, nil, "MANA"
     disable()
+end)
+
+test("barres de ressources : paliers de couleur, repères, courbe du moteur si secret", function()
+    local bars = enable()
+    local db = NS.db.modules.resourcebars
+    db.powerLow, db.powerMid, db.threshold, db.powerHashLines = 30, 50, 50, "25, 75, 120"
+    RB:OnRefresh()
+    local mid = db.powerMidColor
+    eq(bars.power.barColor[1], mid.r, "40 % : second palier")
+    Mock.units.player.power = 20
+    Mock.FireEvent("UNIT_POWER_FREQUENT", "player")
+    eq(bars.power.barColor[1], db.powerLowColor.r, "20 % : premier palier")
+    Mock.units.player.power = 90
+    Mock.FireEvent("UNIT_POWER_FREQUENT", "player")
+    eq(bars.power.barColor[3], 1, "au-dessus : couleur de mana")
+    local lines = 0
+    for _, line in ipairs(bars.power.hashLines) do if line:IsShown() then lines = lines + 1 end end
+    eq(lines, 3, "25, 75 et le repère à 50 ; 120 ignoré")
+    -- Valeur secrète : le moteur évalue la courbe en paliers.
+    _G.UnitPowerPercent = function(_, _, _, curve) return Mock.EvaluateCurve(curve, 0.2) end
+    Mock.units.player.power = Mock.SetSecret(20)
+    Mock.FireEvent("UNIT_POWER_FREQUENT", "player")
+    eq(bars.power.barColor[1], db.powerLowColor.r, "courbe : premier palier")
+    _G.UnitPowerPercent = nil
+    db.powerLow, db.powerMid, db.threshold, db.powerHashLines = 0, 0, 0, ""
+    disable()
+end)
+
+test("barre de recharge globale : montrée pendant la recharge, cachée à la fin, placée déverrouillée", function()
+    reset()
+    local cooldown
+    C_Spell.GetSpellCooldown = function(id) if id == 61304 then return cooldown end end
+    NS.Modules:SetEnabled("gcdbar", true)
+    local holder = _G.AeonUIGCDBar
+    eq(holder:IsShown(), false, "hors recharge : cachée")
+    truthy(NS.Movers.registry.gcdBar, "mover enregistré")
+    cooldown = { startTime = GetTime(), duration = 1.5 }
+    Mock.FireEvent("SPELL_UPDATE_COOLDOWN")
+    truthy(holder:IsShown(), "recharge : montrée")
+    cooldown = nil
+    Mock.Advance(1.6)
+    eq(holder:IsShown(), false, "cachée à la fin")
+    cooldown = { startTime = GetTime(), duration = Mock.SetSecret(1.5) }
+    Mock.FireEvent("SPELL_UPDATE_COOLDOWN")
+    eq(holder:IsShown(), false, "durée secrète : rien")
+    cooldown = nil
+    NS:SetUnlocked(true)
+    truthy(holder:IsShown(), "déverrouillée : visible")
+    NS:SetUnlocked(false)
+    eq(holder:IsShown(), false)
+    NS.Modules:SetEnabled("gcdbar", false)
+    eq(NS.Movers.registry.gcdBar, nil)
+    NS.db.anchors.gcdBar = nil
+    C_Spell.GetSpellCooldown = nil
 end)

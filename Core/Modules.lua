@@ -56,6 +56,17 @@ function Modules:SortedList()
     return sorted
 end
 
+--- Appelle fn(...) au nom du module `name` (cadres créés hors de ses rappels : boutons d'en-tête,
+-- plaques) : movers, textes et barres créés savent à quel module ils appartiennent.
+function Modules:Within(name, fn, ...)
+    local previous = Modules.calling
+    Modules.calling = name
+    local results = { pcall(fn, ...) }
+    Modules.calling = previous
+    if not results[1] then error(results[2], 0) end
+    return unpack(results, 2)
+end
+
 local function Call(module, method)
     local fn = module[method]
     if not fn then return true end
@@ -162,9 +173,20 @@ function Modules:EnableAll()
     end
 end
 
-function Modules:DisableAll()
-    for _, module in ipairs(order) do Apply(module, false) end
+--- Coupe tous les modules, ou seulement ceux de l'addon `addon` (AeonUI_* décoché).
+function Modules:DisableAll(addon)
+    for _, module in ipairs(order) do
+        if not addon or module.addon == addon then Apply(module, false) end
+    end
 end
+
+-- Addon d'origine de chaque module (AeonUI ou un AeonUI_*) : son ADDON_LOADED suit
+-- l'enregistrement de ses modules, avant tout autre addon.
+local owner = CreateFrame("Frame")
+owner:RegisterEvent("ADDON_LOADED")
+owner:SetScript("OnEvent", function(_, _, addon)
+    for _, module in ipairs(order) do module.addon = module.addon or addon end
+end)
 
 -- Les modules s'activent à PLAYER_LOGIN : GameTooltip, les popups et les sacs existent alors.
 NS:On("LOGIN", function() Modules:EnableAll() end)

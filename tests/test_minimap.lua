@@ -40,6 +40,13 @@ test("minimap : carrée, réancrée sur le support, décor caché, zone colorée
     eq(Minimap:GetZoom(), 1)
     Minimap:GetScript("OnMouseWheel")(Minimap, -1)
     eq(Minimap:GetZoom(), 0)
+    NS.db.modules.minimap.wheelZoom = false
+    NS.Modules:Refresh("minimap")
+    Mock.Advance(0.1)
+    truthy(Minimap:GetScript("OnMouseWheel"), "molette coupée : notre gestionnaire reste, jamais celui de Blizzard")
+    Minimap:GetScript("OnMouseWheel")(Minimap, 1)
+    eq(Minimap:GetZoom(), 0, "molette coupée : pas de zoom")
+    NS.db.modules.minimap.wheelZoom = true
     Disable()
     eq(Minimap:GetParent(), MinimapCluster.MinimapContainer, "parent d'origine rendu")
     eq(holder:IsShown(), false)
@@ -55,7 +62,7 @@ test("minimap : boutons d'addons regroupés sous la carte, rendus au disable ; c
     local libButton = CreateFrame("Button", "LibDBIcon10_Recount", Minimap)
     local blizzardButton = CreateFrame("Button", "MiniMapMailFrame", Minimap)
     local other = CreateFrame("Button", "SomeAddonMinimapButton", Minimap)
-    NS.db.modules.minimap.coords = true
+    NS.db.modules.minimap.coords, NS.db.modules.minimap.buttonBar = true, "hover"
     Mock.mapID, Mock.mapPosition = 1, { 0.5, 0.25 }
     Enable()
     local bar = _G.AeonUI_MinimapButtons
@@ -71,21 +78,52 @@ test("minimap : boutons d'addons regroupés sous la carte, rendus au disable ; c
     eq(bar:GetAlpha(), 1)
     Disable()
     eq(libButton:GetParent(), Minimap, "rendu à la carte")
-    NS.db.modules.minimap.coords, NS.db.modules.minimap.buttonBar = false, "hover"
+    NS.db.modules.minimap.coords, NS.db.modules.minimap.buttonBar = false, "button"
     Mock.mapID, Mock.mapPosition = nil, nil
 end)
 
-test("minimap : mode un bouton sous la carte, un clic ouvre la grille d'addons", function()
+test("minimap : coordonnées au survol et précision, FPS/MS, difficulté compacte", function()
+    reset()
+    local db = NS.db.modules.minimap
+    db.coords, db.coordsMode, db.coordsPrecision, db.performance, db.compactDifficulty = true, "hover", 2, true, true
+    Mock.mapID, Mock.mapPosition = 1, { 0.5, 0.25 }
+    local difficulty = CreateFrame("Frame", "MiniMapInstanceDifficulty", Minimap)
+    _G.GetInstanceInfo = function() return "Donjon", "party", 2, "Héroïque", 5 end
+    _G.GetDifficultyInfo = function() return "Héroïque", "party", true, false, true, false end
+    Enable()
+    local holder = _G.AeonUI_Minimap
+    eq(holder.coords:GetText(), "50.00, 25.00", "deux décimales")
+    eq(holder.coords:GetAlpha(), 0, "survol : cachées au repos")
+    Minimap.scripts.OnEnter(Minimap)
+    eq(holder.coords:GetAlpha(), 1)
+    Minimap.scripts.OnLeave(Minimap)
+    eq(holder.coords:GetAlpha(), 0)
+    eq(holder.performance:GetText(), "60 fps  |cff33dd3350 ms|r")
+    eq(MM.LatencyColor(300), "ffff3333")
+    eq(holder.difficulty:GetText(), "5H")
+    eq(difficulty:GetAlpha(), 0, "drapeau Blizzard masqué")
+    _G.GetInstanceInfo = function() return "", "none", 0, "", 0 end
+    Mock.FireEvent("ZONE_CHANGED_NEW_AREA")
+    eq(holder.difficulty:GetText(), "", "hors instance : rien")
+    Disable()
+    eq(difficulty:GetAlpha(), 1, "drapeau rendu")
+    _G.GetInstanceInfo, _G.GetDifficultyInfo, _G.MiniMapInstanceDifficulty = nil, nil, nil
+    db.coords, db.coordsMode, db.coordsPrecision, db.performance, db.compactDifficulty = false, "always", 1, false, false
+    Mock.mapID, Mock.mapPosition = nil, nil
+end)
+
+test("minimap : mode par défaut, un bouton dans la carte, un clic ouvre la grille d'addons à côté", function()
     reset()
     local first = CreateFrame("Button", "LibDBIcon10_Details", Minimap)
     local second = CreateFrame("Button", "LibDBIcon10_Recount", Minimap)
-    NS.db.modules.minimap.buttonBar = "button"
     Enable()
     local bar, toggle = _G.AeonUI_MinimapButtons, _G.AeonUI_MinimapButtonsToggle
     truthy(toggle:IsShown())
     eq(first:GetParent(), bar)
     eq(second:GetParent(), bar)
-    truthy(toggle.text:GetText():find("^Addons %(%d+%)$"), "compteur d'addons")
+    truthy(toggle.text:GetText():find("^%d+$"), "compteur d'addons")
+    local point, relativeTo, relativePoint = toggle:GetPoint(1)
+    eq(point, "BOTTOM"); eq(relativeTo, _G.AeonUI_Minimap); eq(relativePoint, "BOTTOM")
     eq(bar:IsShown(), false, "grille fermée au repos")
     toggle:GetScript("OnClick")(toggle)
     eq(bar:IsShown(), true)
@@ -95,6 +133,7 @@ test("minimap : mode un bouton sous la carte, un clic ouvre la grille d'addons",
     NS.db.modules.minimap.buttonBar = "hover"
     NS.Modules:Refresh("minimap")
     eq(toggle:IsShown(), false, "autre mode : bouton caché")
+    NS.db.modules.minimap.buttonBar = "button"
     Disable()
     eq(first:GetParent(), Minimap, "rendu à la carte")
 end)

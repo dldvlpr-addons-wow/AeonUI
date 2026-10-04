@@ -162,3 +162,22 @@ test("butin : barres de jets, choix interdits grisés, jet, annulation, secret i
     eq(bars[2]:IsShown(), false)
     NS.Modules:SetEnabled("loot", false)
 end)
+
+test("butin : jet en cours gardé à la coupure du module, retiré par CANCEL ou fin du temps", function()
+    reset()
+    NS.Modules:SetEnabled("loot", true)
+    Mock.rollItems = { [7] = { "icone", "Bottes", 1, 3, false, true, true, false },
+                       [8] = { "icone", "Cape", 1, 2, false, true, true, false } }
+    Loot:StartRoll(7, 60000)
+    Loot:StartRoll(8, 60000)
+    local _, _, bars = Loot:GetFrames()
+    NS.Modules:SetEnabled("loot", false)
+    eq(bars[1].rollID, 7, "module coupé : jet gardé")
+    truthy(bars[1]:IsShown())
+    Mock.FireEvent("CANCEL_LOOT_ROLL", 7)
+    eq(bars[1].rollID, nil, "fin du jet reçue module coupé")
+    Mock.rollTimeLeft = 0
+    bars[2]:GetScript("OnUpdate")(bars[2])
+    eq(bars[2]:IsShown(), false, "temps écoulé : barre retirée")
+    Mock.rollTimeLeft = 30000
+end)

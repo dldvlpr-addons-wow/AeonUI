@@ -5,6 +5,7 @@
 --   profileKeys["Perso - Royaume"] = nom du profil          -- absent = "Default"
 --   specProfiles["Perso - Royaume"][index de spé] = nom      -- prime sur profileKeys
 --   lastSpec["Perso - Royaume"] = index de spé                -- la spé n'est pas lisible dès la connexion
+--   contextProfiles["Perso - Royaume"][contexte] = nom       -- donjon, raid, pvp, world : prime sur la spé
 --   cvarBackup[cvar] = valeur d'origine, avant que AeonUI ne la change
 -- NS.global pointe sur AeonUIDB, NS.db sur le profil actif.
 -- Les défauts sont fusionnés sans jamais écraser une valeur existante ; les migrations
@@ -14,7 +15,7 @@ local _, NS = ...
 local Database = {}
 NS.Database = Database
 
-Database.VERSION = 3
+Database.VERSION = 6
 Database.DEFAULT_PROFILE = "Default"
 
 Database.GLOBAL_DEFAULTS = {
@@ -25,8 +26,13 @@ Database.GLOBAL_DEFAULTS = {
     profileKeys = {},
     specProfiles = {},
     lastSpec = {},
+    contextProfiles = {},
+    goldLedger = {},          -- [« Perso - Royaume »] = or en cuivre, relevé à la connexion et à chaque gain
+    profileHotkeys = {},      -- [nom de profil] = touche qui bascule sur ce profil
     cvarBackup = {},
     chatClassColors = {},     -- [personnage] = { [chatType] = couleur de classe d'origine }
+    tipsSeen = {},            -- [clé] = true : bulle d'aide de la fenêtre d'options déjà vue
+    optionsMode = "simple",   -- fenêtre d'options : "simple" masque les réglages avancés, "advanced" les montre
 }
 
 Database.PROFILE_DEFAULTS = {
@@ -37,15 +43,21 @@ Database.PROFILE_DEFAULTS = {
         accent = { r = 0.25, g = 0.66, b = 0.96 },
         backdrop = { r = 0.05, g = 0.06, b = 0.08, a = 0.9 },
         border = { r = 0, g = 0, b = 0, a = 1 },
+        borderSize = 1,           -- épaisseur des bordures en pixels physiques (1 à 4)
         statusbar = "",           -- nom LibSharedMedia, sinon texture plate
         pixelPerfect = true,
         uiScale = 1,              -- multiplicateur d'échelle (0,5 à 1,5) au-dessus de la base
         optionsScale = 1,         -- taille de la fenêtre d'options (0,8 à 1,5), en plus de uiScale
         grid = 0,                 -- 0, 16 ou 32 px, visible en mode déverrouillé
+        snap = true,              -- aimant du mode déverrouillé (Maj le coupe le temps d'un glisser)
+        accentPreset = "custom",  -- "custom" (accent ci-dessus), "class", "faction" (lus pour chaque personnage)
+        darkMode = false,         -- palette sombre partagée des barres de vie (Media:SetHealthColor)
+        moduleMedia = {},         -- [module] = { font, statusbar } : exception au thème, absent = hérité
     },
     anchors = {},
-    -- Listes d'identifiants de sorts partagées par tous les filtres d'auras (« 1234, 5678 »).
-    auraLists = { whitelist = "", blacklist = "" },
+    -- Listes d'identifiants de sorts partagées par tous les filtres d'auras (« 1234, 5678 »),
+    -- tri des débuffs (boss, contrôle, dissipable) et lueur des contrôles (Glow.STYLES ou "none").
+    auraLists = { whitelist = "", blacklist = "", prioritize = true, ccGlow = "pixel" },
     modules = {},
 }
 
@@ -87,13 +99,84 @@ Database.MIGRATIONS = {
             if profile.theme.pixelPerfect == nil then profile.theme.pixelPerfect = false end
         end
     end,
+    -- v3 -> v4 : visibilités propres à chaque module -> réglage commun (Core/Visibility).
+    -- Tables partielles : MergeDefaults complète le reste.
+    [4] = function(db)
+        for _, profile in pairs(db.profiles or {}) do
+            local modules = type(profile.modules) == "table" and profile.modules or {}
+            local topbar = modules.topbar
+            if type(topbar) == "table" and topbar.hideInCombat ~= nil then
+                if topbar.hideInCombat == true then topbar.visibility = { combat = "no" } end
+                topbar.hideInCombat = nil
+            end
+            local panels = type(modules.datapanels) == "table" and modules.datapanels.panels
+            for _, panel in pairs(type(panels) == "table" and panels or {}) do
+                if type(panel) == "table" and panel.hideInCombat ~= nil then
+                    if panel.hideInCombat == true then panel.visibility = { combat = "no" } end
+                    panel.hideInCombat = nil
+                end
+            end
+            local resource = modules.resourcebars
+            if type(resource) == "table" and type(resource.visibility) == "string" then
+                resource.visibility = resource.visibility == "combat" and { match = "any", combat = "yes", target = "yes" } or nil
+            end
+            local swing = modules.swingtimer
+            if type(swing) == "table" and swing.combatOnly ~= nil then
+                swing.visibility = swing.combatOnly and { combat = "yes" } or { combat = "ignore" }
+                swing.combatOnly = nil
+            end
+        end
+    end,
+    -- v4 -> v5 : habillage, cases darkPanels et skinWindows -> interrupteur et style par fenêtre.
+    -- Fidèle à l'existant : panneaux sombres -> style par défaut sombre, sinon Blizzard ; l'ancienne
+    -- case « au thème » ne couvrait que la fiche, l'inspection et les amis.
+    [5] = function(db)
+        for _, profile in pairs(db.profiles or {}) do
+            local skin = type(profile.modules) == "table" and profile.modules.skin
+            if type(skin) == "table" and (skin.darkPanels == true or skin.skinWindows == true) then
+                skin.windowStyle = skin.darkPanels == true and "dark" or "blizzard"
+                if skin.skinWindows == true then
+                    skin.windowStyles = { CharacterFrame = "theme", InspectFrame = "theme", FriendsFrame = "theme" }
+                end
+                skin.skinWindows = true
+            end
+            if type(skin) == "table" then skin.darkPanels = nil end
+        end
+    end,
+    -- v5 -> v6 : refonte des cadres de groupe. Une valeur restée à l'ancien défaut est effacée
+    -- (MergeDefaults pose le nouveau) ; une taille modifiée vaut aussi pour le raid.
+    [6] = function(db)
+        local OLD = { width = 90, height = 36, spacing = 4, raidSortBy = "GROUP", nameLength = 8,
+                      roleIconSize = 12, roleIconPosition = "TOPLEFT", roleShowDamager = true,
+                      aggroStyle = "border", auraSize = 16 }
+        for _, profile in pairs(db.profiles or {}) do
+            local group = type(profile.modules) == "table" and profile.modules.groupframes
+            if type(group) == "table" then
+                if group.width ~= nil and group.width ~= OLD.width then group.raidWidth = group.width end
+                if group.height ~= nil and group.height ~= OLD.height then group.raidHeight = group.height end
+                for key, old in pairs(OLD) do
+                    if group[key] == old then group[key] = nil end
+                end
+            end
+        end
+    end,
 }
 
+-- Migrations en échec de la session : { "v3 : message" }, lues par /aeon diag.
+Database.migrationErrors = {}
+
+--- Chaque migration sous pcall : une table abîmée ne doit pas empêcher l'addon de charger.
+-- En échec, la suite est jouée quand même ; FillProfile rétablit les types au chargement.
 function Database.Migrate(db)
     local from = tonumber(db.version) or Database.VERSION
     for version = from + 1, Database.VERSION do
         local migrate = Database.MIGRATIONS[version]
-        if migrate then migrate(db) end
+        if migrate then
+            local ok, err = pcall(migrate, db)
+            if not ok then
+                Database.migrationErrors[#Database.migrationErrors + 1] = "v" .. version .. " : " .. tostring(err)
+            end
+        end
     end
     db.version = Database.VERSION
 end
@@ -112,6 +195,15 @@ function Database.FillProfile(profile)
         if type(profile.modules[module.name]) ~= "table" then profile.modules[module.name] = {} end
         Database.MergeDefaults(module.defaults, profile.modules[module.name])
     end
+    -- Exceptions par module : chaînes seulement (chemin de police, nom de texture).
+    for name, own in pairs(profile.theme.moduleMedia) do
+        if type(own) ~= "table" then
+            profile.theme.moduleMedia[name] = nil
+        else
+            if type(own.font) ~= "string" then own.font = nil end
+            if type(own.statusbar) ~= "string" then own.statusbar = nil end
+        end
+    end
     for key, anchor in pairs(profile.anchors) do
         if type(anchor) ~= "table" or not POINTS[anchor.point] or not POINTS[anchor.relPoint]
             or type(anchor.x) ~= "number" or type(anchor.y) ~= "number" then
@@ -128,6 +220,11 @@ function Database.FillProfile(profile)
             if type(anchor.edgeY) ~= "number" then anchor.edgeY = nil end
             if type(anchor.matchWidth) ~= "boolean" then anchor.matchWidth = nil end
             if type(anchor.matchHeight) ~= "boolean" then anchor.matchHeight = nil end
+            -- Point d'écran épinglé et coin gardé quand la taille change (Movers).
+            if not POINTS[anchor.pin] then anchor.pin = nil end
+            if not POINTS[anchor.grow] then anchor.grow = nil end
+            if type(anchor.widthOffset) ~= "number" then anchor.widthOffset = nil end
+            if type(anchor.heightOffset) ~= "number" then anchor.heightOffset = nil end
         end
     end
     return profile
@@ -164,27 +261,63 @@ function Database:SpecProfile()
     return nil
 end
 
+--- Contexte du joueur : "dungeon", "raid", "pvp" (champ de bataille, arène) ou "world".
+function Database.Context()
+    local _, instanceType = IsInInstance()
+    if instanceType == "party" then return "dungeon" end
+    if instanceType == "raid" then return "raid" end
+    if instanceType == "pvp" or instanceType == "arena" then return "pvp" end
+    return "world"
+end
+
+--- Profil lié au contexte courant, et ce contexte ; nil sans lien.
+function Database:ContextProfile()
+    local map = self.global.contextProfiles[self.CharacterKey()]
+    if type(map) ~= "table" then return nil end
+    local context = self.Context()
+    local name = map[context]
+    if type(name) == "string" and self.global.profiles[name] then return name, context end
+    return nil
+end
+
 function Database:ActiveProfileName()
-    local name = self:SpecProfile() or self.global.profileKeys[self.CharacterKey()]
+    local name = self:ContextProfile() or self:SpecProfile() or self.global.profileKeys[self.CharacterKey()]
     if name and self.global.profiles[name] then return name end
     return self.DEFAULT_PROFILE
 end
 
---- Lie (ou délie, `name` nil) un profil à la spé `spec` du personnage.
-function Database:SetSpecProfile(spec, name)
-    local char = self.CharacterKey()
-    local map = self.global.specProfiles[char]
+--- Lie (ou délie, `name` nil) un profil à la clé `key` du personnage dans `root`.
+local function SetLink(root, char, key, name)
+    local map = root[char]
     if type(map) ~= "table" then
         map = {}
-        self.global.specProfiles[char] = map
+        root[char] = map
     end
-    map[spec] = name
-    if next(map) == nil then self.global.specProfiles[char] = nil end
+    map[key] = name
+    if next(map) == nil then root[char] = nil end
+end
+
+local function GetLink(root, char, key)
+    local map = root[char]
+    return type(map) == "table" and map[key] or nil
+end
+
+--- Lie (ou délie, `name` nil) un profil à la spé `spec` du personnage.
+function Database:SetSpecProfile(spec, name)
+    SetLink(self.global.specProfiles, self.CharacterKey(), spec, name)
 end
 
 function Database:GetSpecProfile(spec)
-    local map = self.global.specProfiles[self.CharacterKey()]
-    return type(map) == "table" and map[spec] or nil
+    return GetLink(self.global.specProfiles, self.CharacterKey(), spec)
+end
+
+--- Lie (ou délie) un profil au contexte `context` (voir Database.Context) du personnage.
+function Database:SetContextProfile(context, name)
+    SetLink(self.global.contextProfiles, self.CharacterKey(), context, name)
+end
+
+function Database:GetContextProfile(context)
+    return GetLink(self.global.contextProfiles, self.CharacterKey(), context)
 end
 
 function Database:ActiveProfile()
@@ -209,9 +342,12 @@ function Database:UseProfile(name, copyFrom)
         local source = copyFrom and profiles[copyFrom]
         profiles[name] = self.FillProfile(source and self.DeepCopy(source) or {})
     end
-    -- Spé liée à un profil : le choix vaut pour cette spé.
+    -- Contexte ou spé liés à un profil : le choix vaut pour ce lien.
+    local _, context = self:ContextProfile()
     local _, spec = self:SpecProfile()
-    if spec then
+    if context then
+        self:SetContextProfile(context, name)
+    elseif spec then
         self:SetSpecProfile(spec, name)
     elseif name == self.DEFAULT_PROFILE then
         self.global.profileKeys[self.CharacterKey()] = nil
@@ -225,17 +361,53 @@ end
 function Database:DeleteProfile(name)
     if name == self.DEFAULT_PROFILE or not self.global.profiles[name] then return false end
     self.global.profiles[name] = nil
+    self.global.profileHotkeys[name] = nil
     for key, value in pairs(self.global.profileKeys) do
         if value == name then self.global.profileKeys[key] = nil end
     end
-    for _, map in pairs(self.global.specProfiles) do
-        if type(map) == "table" then
-            for spec, value in pairs(map) do
-                if value == name then map[spec] = nil end
+    for _, root in ipairs({ self.global.specProfiles, self.global.contextProfiles }) do
+        for _, map in pairs(root) do
+            if type(map) == "table" then
+                for key, value in pairs(map) do
+                    if value == name then map[key] = nil end
+                end
             end
         end
     end
     return true
+end
+
+--- Nom de profil acceptable : texte non vide, sans espace autour, 48 caractères au plus, sans
+-- « | » (codes d'échappement du chat : |T, |H).
+function Database.ValidProfileName(name)
+    if type(name) ~= "string" then return nil end
+    name = name:gsub("^%s+", ""):gsub("%s+$", "")
+    if name == "" or #name > 48 or name:find("|", 1, true) then return nil end
+    return name
+end
+
+--- Renomme un profil (jamais "Default", jamais vers un nom pris) ; personnages, spés et
+-- raccourci suivent. Rend le nouveau nom, ou nil.
+function Database:RenameProfile(old, new)
+    new = self.ValidProfileName(new)
+    local profiles = self.global.profiles
+    if not new or old == self.DEFAULT_PROFILE or not profiles[old] or profiles[new] then return nil end
+    profiles[new], profiles[old] = profiles[old], nil
+    for key, value in pairs(self.global.profileKeys) do
+        if value == old then self.global.profileKeys[key] = new end
+    end
+    for _, root in ipairs({ self.global.specProfiles, self.global.contextProfiles }) do
+        for _, map in pairs(root) do
+            if type(map) == "table" then
+                for key, value in pairs(map) do
+                    if value == old then map[key] = new end
+                end
+            end
+        end
+    end
+    local hotkeys = self.global.profileHotkeys
+    hotkeys[new], hotkeys[old] = hotkeys[old], nil
+    return new
 end
 
 --- Remet le profil actif aux défauts.
@@ -393,8 +565,12 @@ Database.SENSITIVE = {
     "modules.automation.acceptInvites", "modules.automation.autoQuests", "modules.automation.fastDelete",
     "modules.automation.announceReset",   -- message envoyé au groupe au nom du joueur
     "modules.quickdraw.key",   -- une touche reçue (W, ÉCHAP) prendrait la place d'un raccourci du joueur
+    "modules.quickdraw.palettes.palette2.key", "modules.quickdraw.palettes.palette3.key",
+    "modules.quickdraw.palettes.palette4.key",
+    "modules.raidutility.countdownKey", "modules.raidutility.countdown2Key", "modules.raidutility.countdown3Key",
 }
 local ANCHOR_LIMIT = 10000
+local SIZE_OFFSET_LIMIT = 500   -- écart de taille d'un mover qui reprend celle de sa cible
 -- Réglages chiffrés sans curseur (listes de choix).
 Database.bounds["theme.grid"] = { 0, 64 }
 Database.bounds["modules.groupframes.raidThreshold"] = { 5, 40 }
@@ -448,6 +624,9 @@ function Database.Sanitize(profile, current)
         if f and (math.abs(f.x) > ANCHOR_LIMIT or math.abs(f.y) > ANCHOR_LIMIT) then anchor.fallback = nil end
         if anchor.edgeX and math.abs(anchor.edgeX) > ANCHOR_LIMIT then anchor.edgeX = nil end
         if anchor.edgeY and math.abs(anchor.edgeY) > ANCHOR_LIMIT then anchor.edgeY = nil end
+        for _, field in ipairs({ "widthOffset", "heightOffset" }) do
+            if anchor[field] then anchor[field] = math.max(-SIZE_OFFSET_LIMIT, math.min(SIZE_OFFSET_LIMIT, anchor[field])) end
+        end
     end
     for _, path in ipairs(Database.SENSITIVE) do
         local parent, leaf = ResolvePath(profile, path)
@@ -459,15 +638,39 @@ end
 
 --- Remplace le profil actif par la chaîne importée (complétée des défauts, valeurs bornées,
 -- réglages sensibles conservés). nil + raison si invalide.
-function Database:ImportProfile(text)
-    local imported, reason = self.Deserialize(text)
+-- Export du compte accepté seulement si `allowAccount` (collé à la main, jamais reçu du groupe).
+function Database:ImportProfile(text, allowAccount)
+    local imported, reason = self.Deserialize(text, self.PastedLimit(allowAccount))
     if not imported then return nil, reason end
+    if imported.account and not allowAccount then return nil, "account" end
     local name = self:ActiveProfileName()
     local current = self.global.profiles[name]
     DropNonFinite(imported, 0)
+    if imported.account then
+        -- Export du compte : chaque profil créé ou remplacé sous son nom, le profil actif compris.
+        for profileName, profile in pairs(type(imported.profiles) == "table" and imported.profiles or {}) do
+            local valid = self.ValidProfileName(profileName)
+            if valid and type(profile) == "table" then
+                local mine = self.global.profiles[valid] or current
+                self.global.profiles[valid] = self.Sanitize(self.FillProfile(profile), mine)
+            end
+        end
+        return self.global.profiles[name]
+    end
     if imported.partial then imported = self.MergePartial(current, imported) end
     self.global.profiles[name] = self.Sanitize(self.FillProfile(imported), current)
     return self.global.profiles[name]
+end
+
+--- Tous les profils du compte, réduits à ce qui diffère des défauts (FillProfile les rend à
+-- l'import), pour un export d'un bloc (Database.Export).
+function Database:AccountExport()
+    return { account = true, profiles = self:MirrorTable().profiles }
+end
+
+--- Borne de la chaîne compressée collée à la main : celle du miroir, plus large que l'envoi reçu.
+function Database.PastedLimit(allowAccount)
+    return allowAccount and Database.MIRROR_SLOTS * Database.MIRROR_CHUNK or nil
 end
 
 --- Extrait d'un profil : les sections `sections` (set de "theme", "auraLists" ou noms de
@@ -593,7 +796,8 @@ end
 --- Table globale réduite à ce qui diffère des défauts ; chaque profil reste présent, même vide.
 function Database:MirrorTable()
     local profileDefaults = self.DeepCopy(self.PROFILE_DEFAULTS)
-    for _, module in ipairs(NS.Modules:List()) do profileDefaults.modules[module.name] = module.defaults end
+    -- mirrorDefaults : défauts plus larges que ceux du module (entrées créées à la demande).
+    for _, module in ipairs(NS.Modules:List()) do profileDefaults.modules[module.name] = module.mirrorDefaults or module.defaults end
     local defaults = self.DeepCopy(self.GLOBAL_DEFAULTS)
     for name in pairs(self.global.profiles) do defaults.profiles[name] = profileDefaults end
     -- Historique du chat : volumineux et changeant, il ferait vite déborder les tranches ;

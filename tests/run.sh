@@ -44,7 +44,23 @@ fi
 
 echo
 echo "== .toc"
-listed=$(grep '\.lua[[:space:]]*$' AeonUI.toc | tr -d '\r' | tr '\\' '/' | sed 's/[[:space:]]*$//' | sort)
+# Cœur + addons AeonUI_* : chaque ligne d'un toc enfant est préfixée de son dossier.
+listed=$( {
+    grep '\.lua[[:space:]]*$' AeonUI.toc
+    for toc in AeonUI_*/AeonUI_*.toc; do
+        grep '\.lua[[:space:]]*$' "$toc" | sed "s#^#$(dirname "$toc")/#"
+    done
+} | tr -d '\r' | tr '\\' '/' | sed 's/[[:space:]]*$//' | sort)
+for toc in AeonUI_*/AeonUI_*.toc; do
+    if ! grep -q '^## Dependencies: AeonUI[[:space:]]*$' "$toc"; then
+        echo "  FAIL — $toc sans « ## Dependencies: AeonUI »"
+        status=1
+    fi
+    if grep -q '^local .*= \.\.\.[[:space:]]*$' "$(dirname "$toc")"/*.lua; then
+        echo "  FAIL — $(dirname "$toc") : un fichier lit le vararg (NS privé en jeu), utiliser « local NS = AeonUI »"
+        status=1
+    fi
+done
 shipped=$(find . -name '*.lua' -not -path './.git/*' -not -path './AeonUI/*' | sed 's#^\./##' | grep -v '^tests/' | grep -v '^tools/' | sort)
 if [ "$listed" = "$shipped" ]; then
     echo "  ok"

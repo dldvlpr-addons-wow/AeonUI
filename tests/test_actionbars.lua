@@ -40,6 +40,64 @@ test("barres : activation crée trois barres de douze boutons Blizzard, pagine, 
     truthy(Mock.FindPrinted("/reload"))
 end)
 
+test("barres : survol en combat sans SetAttribute protégé, infobulle gardée", function()
+    reset()
+    Enable()
+    local button = AB:GetBar(1).buttons[1]
+    local texture = button.NewActionTexture
+    Mock.SetCombat(true)
+    button:GetScript("OnEnter")(button)
+    truthy(button.tooltipShown, "infobulle")
+    eq(button.NewActionTexture, texture, "texture rendue après le survol")
+    Mock.SetCombat(false)
+    button.pressAndHoldAction = nil
+    button:GetScript("OnEnter")(button)
+    eq(button.pressAndHoldAction, false, "hors combat : mise à jour Blizzard complète")
+end)
+
+test("barres : glisser-déposer par gestionnaire sécurisé, verrou des barres respecté", function()
+    reset()
+    Enable()
+    local button = AB:GetBar(2).buttons[3]
+    Mock.cvars.lockActionBars = "1"
+    Mock.FireEvent("CVAR_UPDATE", "lockActionBars")
+    local function Run(script, kind, modified)
+        local saved = _G.IsModifiedClick
+        _G.IsModifiedClick = function() return modified end
+        local body = assert(button.wrapped and button.wrapped[script], script .. " enveloppé")
+        local chunk = assert((loadstring or load)("local self, button, kind, value = ... " .. body))
+        local results = { chunk(button, "LeftButton", kind, 1) }
+        _G.IsModifiedClick = saved
+        return results[1], results[2]
+    end
+    local kind, slot = Run("OnReceiveDrag", "spell")
+    eq(kind, "action")
+    eq(slot, 63, "barre 2 = page 6, bouton 3")
+    eq(Run("OnReceiveDrag", nil), false, "curseur vide : rien")
+    eq(Run("OnDragStart", nil, false), false, "barres verrouillées : pas de prise")
+    eq(select(2, Run("OnDragStart", nil, true)), 63, "touche de prise : autorisée")
+    Mock.cvars.lockActionBars = "0"
+    Mock.FireEvent("CVAR_UPDATE", "lockActionBars")
+    eq(select(2, Run("OnDragStart", nil, false)), 63, "déverrouillées")
+    Mock.cvars.lockActionBars = nil
+end)
+
+test("barres : Update en combat (OnShow, page) sans SetAttribute, attribut reposé à la sortie", function()
+    reset()
+    Enable()
+    local button = AB:GetBar(1).buttons[1]
+    Mock.SetCombat(true)
+    button.pressAndHoldAction = nil
+    button:Update()
+    eq(button.pressAndHoldAction, nil, "rien posé en combat")
+    Mock.SetCombat(false)
+    local onEvent = button.OnEvent
+    button.OnEvent = function(self, event, ...) self:Update() return onEvent(self, event, ...) end
+    Mock.FireEvent("PLAYER_REGEN_ENABLED")
+    button.OnEvent = onEvent
+    eq(button.pressAndHoldAction, false, "reposé à la sortie du combat")
+end)
+
 test("barres : disposition boutons par ligne, boutons cachés au-delà du compte", function()
     reset()
     Enable()
@@ -86,6 +144,7 @@ test("barres : boutons retirés des diffuseurs Blizzard, recharge peinte sans va
     local button = AB:GetBar(1).buttons[1]
     for _, frame in ipairs(ActionBarButtonEventsFrame.frames) do truthy(frame ~= button, "hors du diffuseur Blizzard") end
     for _, frame in ipairs(ActionBarActionEventsFrame.frames) do truthy(frame ~= button, "hors du diffuseur d'unité") end
+    local blizzardSetCooldown = rawget(button.cooldown, "SetCooldown")
     -- Sans objet durée : SetCooldown seulement sur des valeurs connues.
     Mock.actionCooldown = { start = 10, duration = 5 }
     Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
@@ -96,6 +155,15 @@ test("barres : boutons retirés des diffuseurs Blizzard, recharge peinte sans va
     Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
     eq(button.cooldown.painted, nil, "valeur secrète : recharge effacée, aucune erreur")
     eq(Mock.FindPrinted("Blizzard"), nil, "aucun échec signalé")
+    eq(rawget(button.cooldown, "SetCooldown"), blizzardSetCooldown, "SetCooldown ombré à demeure, rendu tel quel après le dispatch")
+    eq(button.UpdateCooldown, nil)
+    -- Hors de notre dispatch (fin d'animation d'incantation) : valeur secrète repeinte par nous.
+    Mock.actionCooldown = { start = 30, duration = 5 }
+    button.cooldown:SetCooldown(Mock.SetSecret(31), 5)
+    eq(button.cooldown.painted[1], 30, "secret hors dispatch : relu, jamais transmis")
+    button.cooldown:SetCooldown(40, 5)
+    eq(button.cooldown.painted[1], 40, "valeur connue : SetCooldown d'origine")
+    Mock.actionCooldown = { start = Mock.SetSecret(20), duration = 5 }
     -- Avec l'API Midnight : objet durée transmis tel quel.
     local object = { secret = true }
     _G.C_ActionBar = {
@@ -219,4 +287,101 @@ test("barres d'action : micro-menu AeonUI sans MICRO_BUTTONS (moteur 12.x)", fun
     NS.Modules:SetEnabled("actionbars", false)
     NS.db.modules.actionbars.microMenu = "move"
     spells:Hide() quests:Hide()
+end)
+
+test("barres d'action : visibilité commune dans le driver, survol lié entre barres « au survol »", function()
+    reset()
+    local db = NS.db.modules.actionbars
+    db.bars[2].mouseover, db.bars[3].mouseover = true, true
+    db.bars[2].visibility = NS.Visibility.Spec({ combat = "yes" })
+    Enable()
+    local bar1, bar2, bar3 = AB:GetBar(1), AB:GetBar(2), AB:GetBar(3)
+    eq(Mock.stateDrivers[bar2].visibility, "[petbattle] hide; [combat] show; hide")
+    truthy(Mock.stateDrivers[bar1].visibility:find("^%[overridebar%]"), "barre 1 : barres spéciales d'abord")
+    Mock.mouseOver = bar2
+    Mock.Advance(0.2)
+    eq(bar2:GetAlpha(), 1, "survolée")
+    eq(bar3:GetAlpha(), 0, "survol non lié")
+    db.linkedMouseover = true
+    Mock.Advance(0.2)
+    eq(bar3:GetAlpha(), 1, "survol lié")
+    Mock.mouseOver = nil
+    Disable()
+    db.bars[2].mouseover, db.bars[3].mouseover, db.linkedMouseover = false, false, false
+    db.bars[2].visibility = NS.Visibility.Spec()
+end)
+
+test("barres : style AeonUI, recharge grisée hors GCD, lueur de proc, barre 7 sur la page 14", function()
+    reset()
+    local db = NS.db.modules.actionbars
+    db.iconStyle, db.classBorder, db.procGlow = "aeon", true, "pixel"
+    db.bars[7].enabled = true
+    local cooldown = { isActive = true, isOnGCD = false, duration = 8 }
+    _G.C_ActionBar = { GetActionCooldown = function() return cooldown end }
+    local overlayed = false
+    _G.GetActionInfo = function() return "spell", 133 end
+    _G.IsSpellOverlayed = function() return overlayed end
+    Enable()
+    local button = AB:GetBar(1).buttons[1]
+    eq(button.icon.texCoord[1], db.iconZoom, "icône recadrée")
+    truthy(button.aeonBorder.top:IsShown(), "bordure fine")
+    eq(button.aeonBorder.top.color[1], RAID_CLASS_COLORS.MAGE.r, "couleur de classe")
+    eq(button.icon:IsDesaturated(), true, "recharge : icône grisée")
+    cooldown = { isActive = true, isOnGCD = true, duration = 1.5 }
+    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    eq(button.icon:IsDesaturated(), false, "recharge globale : pas grisée")
+    cooldown = { isActive = true, duration = 1.5 }
+    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    eq(button.icon:IsDesaturated(), false, "recharge globale sans isOnGCD : pas grisée")
+    cooldown = { isActive = true, duration = Mock.SetSecret(8) }
+    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    eq(button.icon:IsDesaturated(), false, "durée secrète, isOnGCD inconnu : pas grisée")
+    cooldown = { isActive = true, isOnGCD = false, duration = Mock.SetSecret(8) }
+    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    eq(button.icon:IsDesaturated(), true, "durée secrète, vraie recharge : grisée")
+    Mock.secret[8] = nil
+    cooldown = { isActive = Mock.SetSecret(true), isOnGCD = false }
+    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    eq(button.icon:IsDesaturated(), false, "secret : icône intacte")
+    Mock.secret[true] = nil   -- le mock marque la valeur elle-même
+    overlayed = true
+    Mock.FireEvent("SPELL_ACTIVATION_OVERLAY_GLOW_SHOW")
+    eq(NS.Glow.Current(button), "pixel", "proc : lueur AeonUI")
+    overlayed = false
+    Mock.FireEvent("SPELL_ACTIVATION_OVERLAY_GLOW_HIDE")
+    eq(NS.Glow.Current(button), nil)
+    local bar7 = AB:GetBar(7)
+    eq(bar7.buttons[1]:GetAttribute("actionpage"), 14, "barre 7 = page 14")
+    eq(bar7.buttons[1].buttonType, "MULTIACTIONBAR6BUTTON")
+    db.iconStyle = "blizzard"
+    NS.Modules:Refresh("actionbars")
+    eq(button.icon.texCoord[1], 0, "style Blizzard rendu")
+    eq(button.aeonBorder.top:IsShown(), false)
+    Disable()
+    db.classBorder, db.procGlow, db.bars[7].enabled = false, "blizzard", false
+    _G.C_ActionBar, _G.GetActionInfo, _G.IsSpellOverlayed = nil, nil, nil
+end)
+
+test("barres : inscription Blizzard hors dispatch retirée aussitôt, jumeaux cachés hors de tout diffuseur", function()
+    reset()
+    local twin = CreateFrame("CheckButton", "MultiBarBottomLeftButton3", MultiBarBottomLeft)
+    tinsert(ActionBarButtonEventsFrame.frames, twin)
+    MultiBarBottomLeft.actionButtons = { twin }
+    Enable()
+    local button = AB:GetBar(1).buttons[1]
+    ActionBarActionEventsFrame:RegisterFrame(button)             -- Update Blizzard : page changée en combat
+    for _, frame in pairs(ActionBarActionEventsFrame.frames) do truthy(frame ~= button, "notre bouton retiré sur place") end
+    ActionBarActionEventsFrame:RegisterFrame(twin)
+    for _, frame in pairs(ActionBarActionEventsFrame.frames) do truthy(frame ~= twin, "jumeau caché retiré") end
+    for _, frame in pairs(ActionBarButtonEventsFrame.frames) do truthy(frame ~= twin, "diffuseur principal : jumeau retiré") end
+    ActionBarButtonEventsFrame:RegisterFrame(twin)
+    for _, frame in pairs(ActionBarButtonEventsFrame.frames) do truthy(frame ~= twin, "réinscription retirée") end
+    ActionBarActionEventsFrame.frames[twin] = twin                -- inscription directe, sans RegisterFrame
+    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    eq(ActionBarActionEventsFrame.frames[twin], nil, "balayé au dispatch suivant")
+    Disable()
+    MultiBarBottomLeft.actionButtons = nil
+    for i = #ActionBarButtonEventsFrame.frames, 1, -1 do
+        if ActionBarButtonEventsFrame.frames[i] == twin then tremove(ActionBarButtonEventsFrame.frames, i) end
+    end
 end)

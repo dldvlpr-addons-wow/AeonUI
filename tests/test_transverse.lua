@@ -152,3 +152,107 @@ test("movers : grille au pas infime (profil importé) ne fige pas le jeu", funct
     NS:SetUnlocked(false)
     NS.db.theme.grid = 0
 end)
+
+test("alertes de mouvement : icône pendant la recharge, annonce au retour, sort inconnu ignoré", function()
+    reset()
+    local Movement = NS.Modules:Get("movementalert")
+    Mock.spells[1953], Mock.spells[20252] = "Blink", "Intercept"
+    Mock.knownSpells[1953] = true
+    local onCooldown = true
+    C_Spell.GetSpellCooldown = function(spell)
+        if spell == 1953 then return { isActive = onCooldown, isOnGCD = false, startTime = 1000, duration = 15 } end
+    end
+    NS.db.modules.movementalert.extraSpells = "20252"
+    NS.Modules:SetEnabled("movementalert", true)
+    local holder = _G.AeonUIMovementAlert
+    eq(#Movement.TrackedSpells(), 1, "Intercept non appris : écarté")
+    Mock.FireEvent("SPELL_UPDATE_COOLDOWN")
+    truthy(holder:IsShown())
+    local icon = select(1, holder:GetChildren())
+    truthy(icon:IsShown(), "Transfert en recharge : icône")
+    onCooldown = false
+    Mock.FireEvent("SPELL_UPDATE_COOLDOWN")
+    eq(icon:IsShown(), false, "prêt : icône cachée")
+    local announce
+    for _, region in ipairs({ holder:GetRegions() }) do if region.text then announce = region end end
+    eq(announce.text, string.format(L.MOVEMENT_READY, "Blink"), "annonce du retour")
+    truthy(announce:IsShown())
+    Mock.Advance(2)
+    eq(announce:IsShown(), false, "annonce effacée")
+    NS.Modules:SetEnabled("movementalert", false)
+    eq(holder:IsShown(), false)
+    NS.db.modules.movementalert.extraSpells = ""
+    C_Spell.GetSpellCooldown, Mock.spells[1953], Mock.spells[20252], Mock.knownSpells[1953] = nil, nil, nil, nil
+end)
+
+test("fenêtres déplaçables : Maj garde la place, Ctrl pour cette ouverture, rien sans touche ni en combat", function()
+    reset()
+    local Shifter = NS.Modules:Get("shifter")
+    local frame = _G.MerchantFrame or CreateFrame("Frame", "MerchantFrame", UIParent)
+    NS.Modules:SetEnabled("shifter", true)
+    truthy(Shifter.IsHooked(frame), "fenêtre prise en charge")
+    local function Drag(x, y)
+        frame:GetScript("OnMouseDown")(frame, "LeftButton")
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y)
+        frame:GetScript("OnMouseUp")(frame, "LeftButton")
+    end
+    Drag(10, 10)
+    eq(NS.db.modules.shifter.positions.MerchantFrame, nil, "sans touche : rien")
+    Mock.shift = true
+    Drag(100, 500)
+    Mock.shift = false
+    eq(NS.db.modules.shifter.positions.MerchantFrame[3], 100, "Maj : gardée")
+    Mock.ctrl = true
+    Drag(300, 400)
+    Mock.ctrl = false
+    frame:ClearAllPoints()
+    frame:GetScript("OnShow")(frame)
+    eq(select(4, frame:GetPoint(1)), 300, "Ctrl : cette ouverture")
+    frame:GetScript("OnHide")(frame)
+    frame:GetScript("OnShow")(frame)
+    eq(select(4, frame:GetPoint(1)), 100, "rouverte : place gardée")
+    Mock.SetCombat(true)
+    frame:ClearAllPoints()
+    frame:GetScript("OnShow")(frame)
+    eq(frame:GetPoint(1), nil, "combat : pas touchée")
+    Mock.SetCombat(false)
+    NS.db.modules.shifter.positions = {}
+    NS.Modules:SetEnabled("shifter", false)
+end)
+
+test("barres d'auras : la plus courte en tête, débuff au type, permanentes écartées, temps qui défile", function()
+    reset()
+    local AuraBars = NS.Modules:Get("aurabars")
+    local previous = C_UnitAuras.GetAuraDataByIndex
+    local auras = {
+        HELPFUL = { { name = "Arcane Intellect", icon = 1, duration = 1800, expirationTime = Mock.now + 1700 },
+                    { name = "Frost Armor", icon = 2, duration = 0, expirationTime = 0 },
+                    { name = "Renew", icon = 3, duration = 15, expirationTime = Mock.now + 10, applications = 1 } },
+        HARMFUL = { { name = "Poison", icon = 4, duration = 30, expirationTime = Mock.now + 20, dispelName = "Poison" } },
+    }
+    C_UnitAuras.GetAuraDataByIndex = function(unit, index, filter)
+        return unit == "player" and auras[filter] and auras[filter][index] or nil
+    end
+    local previousColors = _G.DebuffTypeColor
+    _G.DebuffTypeColor = { Poison = { r = 0, g = 0.6, b = 0 }, none = { r = 0.8, g = 0, b = 0 } }
+    NS.Modules:SetEnabled("aurabars", true)
+    local names = {}
+    for _, entry in ipairs(AuraBars.Collect()) do names[#names + 1] = entry.name end
+    eq(table.concat(names, ","), "Renew,Poison,Arcane Intellect", "plus courte d'abord, permanente écartée")
+    local holder = _G.AeonUIAuraBars
+    local first, second = holder:GetChildren()
+    eq(first.name.text, "Renew")
+    eq(first.time.text, "10")
+    eq(second.barColor[2], 0.6, "débuff poison en vert")
+    Mock.Advance(3)
+    eq(first.time.text, "7", "temps qui défile")
+    NS.db.modules.aurabars.show = "debuffs"
+    NS.Modules:Refresh("aurabars")
+    eq(first.name.text, "Poison", "débuffs seulement")
+    eq(second:IsShown(), false)
+    NS.Modules:SetEnabled("aurabars", false)
+    eq(holder:IsShown(), false)
+    NS.db.modules.aurabars.show = "both"
+    C_UnitAuras.GetAuraDataByIndex, _G.DebuffTypeColor = previous, previousColors
+end)

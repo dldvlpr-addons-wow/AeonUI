@@ -1,0 +1,14 @@
+## Interface: 16001
+## Title: |cff3fa9f5Aeon|rUI Quest Tracker
+## Title-frFR: |cff3fa9f5Aeon|rUI Suivi de quêtes
+## Notes: AeonUI quest tracker.
+## Notes-frFR: Suivi de quêtes AeonUI.
+## Version: @project-version@
+## Dependencies: AeonUI
+## Group: AeonUI
+## IconTexture: Interface\AddOns\AeonUI\Media\Logo
+## Category: User Interface
+## Category-frFR: Interface utilisateur
+## X-License: All Rights Reserved
+
+QuestTracker.lua

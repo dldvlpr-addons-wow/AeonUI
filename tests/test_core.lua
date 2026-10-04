@@ -359,6 +359,11 @@ test("médias : fond et bordure 1 px suivent le thème et l'échelle", function(
     NS:Fire("THEME_CHANGED")
     eq(edges.top.color[1], 1, "bordure recolorée après THEME_CHANGED")
     eq(edges.left:GetWidth(), NS.Pixel:Scale(1), "épaisseur = 1 pixel physique")
+    NS.db.theme.borderSize = 3
+    NS:Fire("THEME_CHANGED")
+    eq(edges.left:GetWidth(), NS.Pixel:Scale(3), "épaisseur réglable")
+    NS.db.theme.borderSize = 1
+    NS:Fire("THEME_CHANGED")
     UIParent:SetScale(768 / 1080)
     NS.Pixel:Update()
     NS:Fire("PIXEL_CHANGED")
@@ -366,6 +371,21 @@ test("médias : fond et bordure 1 px suivent le thème et l'échelle", function(
     UIParent:SetScale(768 / 1080)
     NS.Pixel:Update()
     NS.db.theme.border = { r = 0, g = 0, b = 0, a = 1 }
+end)
+
+test("médias : textes en famille de polices, replis coréen, chinois et cyrillique", function()
+    reset()
+    local frame = CreateFrame("Frame", nil, UIParent)
+    local text = NS.Media:CreateText(frame, "OVERLAY", 2)
+    local family = text.fontFamily
+    truthy(family, "famille posée")
+    local byAlphabet = {}
+    for _, member in ipairs(family.members) do byAlphabet[member.alphabet] = member end
+    eq(byAlphabet.roman.file, (NS.Media:Font()), "police du thème en latin")
+    eq(byAlphabet.korean.file, "Fonts\\2002.TTF")
+    truthy(byAlphabet.simplifiedchinese and byAlphabet.traditionalchinese and byAlphabet.russian, "replis")
+    local again = NS.Media:CreateText(frame, "OVERLAY", 2)
+    eq(again.fontFamily, family, "même taille et contour : famille réutilisée")
 end)
 
 test("médias : texture de barre plate sans LibSharedMedia, contour de police du thème", function()
@@ -394,10 +414,24 @@ test("migration v2 -> v3 : les profils existants gardent leur échelle (pixelPer
     local db = { version = 2, profiles = { Default = { theme = { fontSize = 13 }, anchors = {}, modules = {} } },
                  profileKeys = {}, cvarBackup = {} }
     Database.Migrate(db)
-    eq(db.version, 3)
+    eq(db.version, NS.Database.VERSION)
     eq(db.profiles.Default.theme.pixelPerfect, false, "profil existant : pas de changement d'échelle")
     local fresh = Database.FillProfile({})
     eq(fresh.theme.pixelPerfect, true, "profil neuf : pixel perfect")
+end)
+
+test("migration en échec : la suivante est jouée, l'erreur figure dans /aeon diag", function()
+    local Database = NS.Database
+    local db = { version = 1, theme = {}, anchors = {}, modules = {}, profiles = "abîmé" }
+    Database.Migrate(db)
+    eq(db.version, Database.VERSION, "version posée malgré l'échec")
+    truthy(#Database.migrationErrors > 0, "échec journalisé")
+    local found
+    for _, line in ipairs(NS.Diagnostic()) do
+        if line:find("Migrations en échec : v", 1, true) then found = true end
+    end
+    truthy(found, "ligne du diagnostic")
+    Database.migrationErrors = {}
 end)
 
 test("pixel : un seul Apply en file pendant le combat", function()
@@ -427,7 +461,7 @@ test("Edit Mode : cacher et poser passent par les méthodes *Base, jamais par la
     NS.ShowBlizzardFrame(frame)
 end)
 
-test("Edit Mode : une barre cachée par HideRegion et réaffichée par UpdateVisibility est recachée", function()
+test("Edit Mode : barre cachée par HideRegion sans hook (transparente si UpdateVisibility la remontre)", function()
     local function EditModeBar(name)
         local bar = CreateFrame("Frame", name, UIParent)
         bar.ShowBase, bar.HideBase = bar.Show, bar.Hide
@@ -437,9 +471,168 @@ test("Edit Mode : une barre cachée par HideRegion et réaffichée par UpdateVis
         return bar
     end
     local stance = EditModeBar("AeonUITestStanceBar")
+    local updateVisibility = stance.UpdateVisibility
     NS.HideRegion(stance)
+    eq(stance:IsShown(), false)
+    eq(stance.UpdateVisibility, updateVisibility, "méthode Blizzard jamais hookée")
     stance:UpdateVisibility()
-    eq(stance:IsShown(), false, "HideRegion : recachée après UpdateVisibility")
+    eq(stance:GetAlpha(), 0, "remontrée par Blizzard : reste transparente")
     NS.ShowRegion(stance)
     eq(stance:IsShown(), true, "ShowRegion : ShowBase, jamais ShowOverride")
+    eq(stance:GetAlpha(), 1)
+end)
+
+test("HideRegion : un bouton réaffiché par SetShown(true) est recaché", function()
+    local button = CreateFrame("Button", "AeonUITestLandingButton", UIParent)
+    NS.HideRegion(button)
+    button:SetShown(true)
+    eq(button:IsShown(), false)
+    NS.ShowRegion(button)
+    eq(button:IsShown(), true)
+end)
+
+test("visibilité commune : toutes / au moins une, conditions macro, instance absente des drivers", function()
+    local V = NS.Visibility
+    local state = { combat = true, group = false, mounted = true }
+    eq(V.Evaluate(V.Spec(), state), true, "aucune condition : visible")
+    eq(V.Evaluate(V.Spec({ combat = "yes", mounted = "yes" }), state), true)
+    eq(V.Evaluate(V.Spec({ combat = "yes", group = "yes" }), state), false, "toutes")
+    eq(V.Evaluate(V.Spec({ match = "any", combat = "yes", group = "yes" }), state), true, "au moins une")
+    eq(V.Evaluate(V.Spec({ group = "no" }), state), true, "« non » satisfait par l'absence")
+    eq(V.Macro(V.Spec()), nil)
+    eq(V.Macro(V.Spec({ combat = "yes", target = "no" })), "[combat,@target,noexists] show; hide")
+    eq(V.Macro(V.Spec({ match = "any", raid = "yes", mounted = "no" })), "[group:raid] show; [nomounted] show; hide")
+    eq(V.Macro(V.Spec({ instance = "yes" })), nil, "instance : pas de condition macro")
+end)
+
+test("visibilité commune : cadre suivi aux événements, survol partagé par groupe, retrait", function()
+    reset()
+    local V = NS.Visibility
+    local a, b = CreateFrame("Frame", nil, UIParent), CreateFrame("Frame", nil, UIParent)
+    local specA = V.Spec({ combat = "yes", mouseover = true })
+    V:Register("testA", a, function() return specA end, { hoverGroup = "test" })
+    V:Register("testB", b, function() return V.Spec({ mouseover = true }) end, { hoverGroup = "test" })
+    eq(a:IsShown(), false, "hors combat : caché")
+    Mock.SetCombat(true)
+    eq(a:IsShown(), true, "en combat : montré")
+    eq(a:GetAlpha(), 0, "au survol seulement : transparent")
+    Mock.mouseOver = b
+    Mock.Advance(0.2)
+    eq(a:GetAlpha(), 1, "survol de l'autre cadre du groupe")
+    Mock.mouseOver = nil
+    Mock.Advance(0.2)
+    eq(b:GetAlpha(), 0)
+    Mock.SetCombat(false)
+    V:Unregister("testA")
+    V:Unregister("testB")
+    eq(a:GetAlpha(), 1, "alpha rendu")
+    eq(a:IsShown(), false)
+    local secure = CreateFrame("Frame", nil, UIParent)
+    V:Register("testSecure", secure, function() return V.Spec({ group = "yes" }) end, { secure = true, prefix = "[petbattle] hide; " })
+    eq(Mock.stateDrivers[secure].visibility, "[petbattle] hide; [group] show; hide")
+    V:Unregister("testSecure")
+    eq(Mock.stateDrivers[secure].visibility, nil, "driver retiré")
+end)
+
+test("migration v3 -> v4 : masquages en combat convertis en visibilité commune", function()
+    local Database = NS.Database
+    local profile = { theme = {}, anchors = {}, modules = {
+        topbar = { hideInCombat = true },
+        datapanels = { panels = { panel1 = { hideInCombat = false }, panel2 = { hideInCombat = true } } },
+        resourcebars = { visibility = "combat" },
+        swingtimer = { combatOnly = false },
+    } }
+    local db = { version = 3, profiles = { Default = profile }, profileKeys = {}, cvarBackup = {} }
+    Database.Migrate(db)
+    eq(db.version, NS.Database.VERSION)
+    local m = profile.modules
+    eq(m.topbar.hideInCombat, nil)
+    eq(m.topbar.visibility.combat, "no")
+    eq(m.datapanels.panels.panel1.visibility, nil, "« non » : défaut gardé")
+    eq(m.datapanels.panels.panel2.visibility.combat, "no")
+    eq(m.resourcebars.visibility.match, "any")
+    eq(m.resourcebars.visibility.target, "yes")
+    eq(m.swingtimer.visibility.combat, "ignore")
+    local filled = Database.FillProfile(profile)
+    eq(filled.modules.topbar.visibility.match, "all", "réglage partiel complété par les défauts")
+    eq(filled.modules.topbar.visibility.mounted, "ignore")
+end)
+
+test("lueur commune : quatre styles, un pilote pour les animées, pièces réutilisées", function()
+    reset()
+    local Glow = NS.Glow
+    eq(select(1, Glow.PerimeterPoint(5, 10, 4)), 5)
+    local x, y, horizontal = Glow.PerimeterPoint(12, 10, 4)
+    eq(x, 10) eq(y, -2) eq(horizontal, false)
+    x, y = Glow.PerimeterPoint(26, 10, 4)
+    eq(x, 0) eq(y, -2)
+    local frame = CreateFrame("Frame", nil, UIParent)
+    frame:SetSize(40, 40)
+    Glow.Show(frame, "pixel")
+    eq(Glow.Current(frame), "pixel")
+    truthy(Glow.animated[frame], "animée")
+    local line = frame.aeonGlowParts.pixel[1]
+    local before = line.points[1][4]
+    Mock.Advance(0.5)
+    truthy(line.points[1][4] ~= before, "trait déplacé par le pilote")
+    Glow.Show(frame, "classic", { r = 1, g = 0, b = 0 })
+    eq(line:IsShown(), false, "style changé : traits cachés")
+    eq(Glow.animated[frame], nil, "hors du pilote")
+    local back = frame.aeonGlowParts.classic[1]
+    truthy(back.pulse:IsPlaying(), "halo pulsé")
+    eq(back.color[1], 1)
+    Glow.Show(frame, "inconnu")
+    eq(Glow.Current(frame), "pixel", "style inconnu : pixel")
+    eq(frame.aeonGlowParts.pixel[1], line, "pièces réutilisées")
+    Glow.Hide(frame)
+    eq(Glow.Current(frame), nil)
+    eq(next(Glow.animated), nil, "pilote coupé")
+    Glow.Show(frame, "button")
+    eq(frame.aeonGlowParts.button[1].blendMode, "ADD")
+    Glow.Hide(frame)
+end)
+
+test("thème : textures maison, exception par module, préréglages d'accent, mode sombre", function()
+    reset()
+    local Media, theme = NS.Media, NS.db.theme
+    theme.statusbar = "aeon:gloss"
+    eq(Media:StatusBarTexture(), "Interface\\AddOns\\AeonUI\\Media\\Bars\\Gloss", "texture maison sans LibSharedMedia")
+    theme.moduleMedia.resourcebars = { statusbar = "aeon:stripes", font = "Fonts\\ARIALN.TTF" }
+    eq(Media:StatusBarTexture("resourcebars"), "Interface\\AddOns\\AeonUI\\Media\\Bars\\Stripes", "exception du module")
+    eq(Media:StatusBarTexture("unitframes"), "Interface\\AddOns\\AeonUI\\Media\\Bars\\Gloss", "autre module : thème")
+    local bar = NS.Modules:Within("resourcebars", function() return Media:CreateStatusBar(UIParent) end)
+    local text = NS.Modules:Within("resourcebars", function() return Media:CreateText(UIParent) end)
+    eq(bar.barTexture, "Interface\\AddOns\\AeonUI\\Media\\Bars\\Stripes", "barre créée au nom du module")
+    eq(text:GetFont(), "Fonts\\ARIALN.TTF", "police du module")
+    theme.moduleMedia.resourcebars = nil
+    NS:Fire("THEME_CHANGED")
+    eq(bar.barTexture, "Interface\\AddOns\\AeonUI\\Media\\Bars\\Gloss", "exception retirée : thème repris")
+    local choices = Media:StatusBarChoices("Plate")
+    eq(choices[1].value, "")
+    eq(choices[2].value, "aeon:smooth")
+    theme.statusbar = ""
+    -- Accent : classe et faction lues pour le personnage.
+    theme.accentPreset = "class"
+    local r, g, b = Media:Accent()
+    local c = RAID_CLASS_COLORS.MAGE
+    eq(r, c.r); eq(b, c.b)
+    Mock.units.player.faction = "Horde"
+    theme.accentPreset = "faction"
+    r = Media:Accent()
+    eq(r, 0.86, "rouge de la Horde")
+    Mock.units.player.faction = nil
+    theme.accentPreset = "custom"
+    r = Media:Accent()
+    eq(r, theme.accent.r)
+    -- Mode sombre : remplissage sombre, couleur de l'unité dans le fond.
+    theme.darkMode = true
+    Media:SetHealthColor(bar, 1, 0, 0)
+    eq(bar.barColor[1], Media.DARK.fill[1], "remplissage de la palette")
+    eq(bar.bg.color[1], 1, "couleur de l'unité dessous")
+    eq(bar.bg:GetAlpha(), Media.DARK.missingAlpha)
+    theme.darkMode = false
+    Media:SetHealthColor(bar, 1, 0, 0)
+    eq(bar.barColor[1], 1)
+    eq(bar.bg.color[1], theme.backdrop.r, "fond du thème rendu")
+    eq(bar.bg:GetAlpha(), 1)
 end)

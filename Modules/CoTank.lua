@@ -36,22 +36,14 @@ local active = false
 local button
 local watched              -- jeton d'unité suivi ("raid7"), ou nil
 local debuffIcons = {}     -- filles d'UIParent, ancrées au bouton : Show/Hide libres en combat
+local engine               -- conteneur d'auras du moteur (lit les débuffs en combat) ; false : absent
+local engineCounts = {}    -- compteurs des boutons du moteur (réglage debuffStacks)
 
 --------------------------------------------------------------------------------
 -- Détection des tanks
 --------------------------------------------------------------------------------
 
-function CoTank.IsTank(unit)
-    if _G.UnitGroupRolesAssigned then
-        local role = UnitGroupRolesAssigned(unit)
-        if not NS.IsSecret(role) and role == "TANK" then return true end
-    end
-    if _G.GetPartyAssignment then
-        local assigned = GetPartyAssignment("MAINTANK", unit)
-        if not NS.IsSecret(assigned) and assigned then return true end
-    end
-    return false
-end
+CoTank.IsTank = NS.IsTankUnit
 
 --- Jeton de l'autre tank, ou nil.
 function CoTank:FindOtherTank()
@@ -97,12 +89,54 @@ end
 
 local function HideDebuffIcons()
     for i = 1, #debuffIcons do debuffIcons[i]:Hide() end
+    if engine then NS.SetAuraContainerUnit(engine, "none") end
+end
+
+--- Débuffs par le conteneur du moteur, quand le client l'offre : il les lit en combat compris.
+-- Rangée sous la barre, même filtre que la voie maison. Rend false sans moteur.
+local function ConfigureEngine()
+    if engine == nil then engine = NS.CreateAuraContainer(UIParent) or false end
+    if not engine then return false end
+    local db = CoTank.db
+    engine:ClearAllPoints()
+    engine:SetPoint("TOPLEFT", button, "BOTTOMLEFT", 0, -2)
+    NS.SetAuraContainerFlow(engine, "TOPLEFT", "RIGHT", "DOWN", nil)
+    local blacklist = NS.ParseSpellList(NS.db.auraLists.blacklist)
+    -- Liste blanche toujours montrée, comme la voie maison : groupe à part, retiré des débuffs filtrés.
+    local whitelist = db.debuffFilter ~= "all" and NS.ParseSpellList(NS.db.auraLists.whitelist) or {}
+    local excluded = {}
+    for id in pairs(blacklist) do excluded[id] = true end
+    for id in pairs(whitelist) do excluded[id] = true end
+    local max = db.debuffs and db.debuffMax or 0
+    local function init(slotButton)
+        local holder = NS.InitAuraButton(slotButton, { size = CoTank.db.debuffSize })
+        engineCounts[#engineCounts + 1] = holder.count
+    end
+    NS.SetAuraGroup(engine, "listed", { filter = "HARMFUL", max = next(whitelist) and max or 0, index = 1,
+        size = db.debuffSize, spacing = 2, candidates = { includeSpellIDs = whitelist }, init = init })
+    NS.SetAuraGroup(engine, "debuffs", {
+        filter = NS.AuraEngineFilter("HARMFUL", db.debuffFilter), max = max, index = 2,
+        size = db.debuffSize, spacing = 2, prioritize = db.debuffFilter == "important",
+        candidates = NS.AuraEngineCandidates(db.debuffFilter, next(excluded) and excluded or nil),
+        init = init,
+    })
+    for _, key in ipairs({ "listed", "debuffs" }) do
+        for _, slotButton in ipairs(NS.AuraGroupButtons(engine, key)) do
+            pcall(slotButton.SetSize, slotButton, db.debuffSize, db.debuffSize)
+        end
+    end
+    for _, count in ipairs(engineCounts) do count:SetAlpha(db.debuffStacks and 1 or 0) end
+    return true
 end
 
 --- Rangée d'icônes sous la barre : créée/redimensionnée hors combat (Refresh). Pas filles du
 -- bouton sécurisé : un enfant hérite de sa protection, et Show/Hide seraient bloqués en combat.
 local function EnsureDebuffIcons()
     local db = CoTank.db
+    if ConfigureEngine() then
+        for i = 1, #debuffIcons do debuffIcons[i]:Hide() end
+        return
+    end
     for i = 1, db.debuffMax do
         local icon = debuffIcons[i]
         if not icon then
@@ -129,6 +163,7 @@ end
 -- le balayage l'acceptent, le compteur et le filtre s'abstiennent.
 function CoTank:UpdateDebuffs()
     if not button or not watched then return end
+    if engine then return end   -- le moteur écoute UNIT_AURA lui-même
     local db = self.db
     local slot, shown = 1, math.min(db.debuffMax, #debuffIcons)
     if db.debuffs then
@@ -182,6 +217,7 @@ function CoTank:Refresh()
         button:SetAttribute("unit", unit)
         Paint(unit)
         self:UpdateHealth()
+        if engine then NS.SetAuraContainerUnit(engine, unit, true) end
         self:UpdateDebuffs()
         button:Show()
     else
@@ -251,9 +287,11 @@ function CoTank:BuildOptions(o)
     o:Slider("width", L.OPT_COTANK_WIDTH, 80, 300, 10)
     o:Slider("height", L.OPT_COTANK_HEIGHT, 12, 40, 2)
     o:Check("debuffs", L.OPT_COTANK_DEBUFFS)
+    o:Advanced()
     o:Dropdown("debuffFilter", L.OPT_COTANK_DEBUFF_FILTER, NS.AuraFilterChoices, 36)
     o:Check("debuffStacks", L.OPT_COTANK_DEBUFF_STACKS, 36)
     o:Slider("debuffMax", L.OPT_COTANK_DEBUFF_MAX, 1, 8, 1)
     o:Slider("debuffSize", L.OPT_COTANK_DEBUFF_SIZE, 12, 32, 2)
+    o:EndAdvanced()
     o:Button(L.OPT_COTANK_PREVIEW, function() NS:SetUnlocked(not NS.unlocked) end)
 end

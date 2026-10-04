@@ -56,16 +56,9 @@ local function ListenToLayouts()
     end
 end
 
-for raw in io.lines("AeonUI.toc") do
-    local line = raw:gsub("\r", ""):gsub("%s+$", "")
-    if line:match("%.lua$") then
-        assert(loadfile((line:gsub("\\", "/"))))("AeonUI", NS)
-        if NS.Widgets and not NS.docListening then NS.docListening = true ListenToLayouts() end
-    end
-end
-Mock.FireEvent("ADDON_LOADED", "AeonUI")
-Mock.FireEvent("PLAYER_LOGIN")
-Mock.FireEvent("PLAYER_ENTERING_WORLD")
+require("load_addons")(NS, function()
+    if NS.Widgets and not NS.docListening then NS.docListening = true ListenToLayouts() end
+end)
 
 --------------------------------------------------------------------------------
 -- Écriture
@@ -138,8 +131,14 @@ end
 for _, key in ipairs(Window.order) do
     write()
     write("## " .. Clean(Window.pages[key].title))
+    local layout = Options:GetLayout(key)
+    -- Description de la page (en-tête de la fenêtre) ; les notes de la page sont des remarques.
+    if layout.description and layout.description ~= "" then
+        write()
+        write(Clean(layout.description))
+    end
     local tab, inList = nil, false
-    for index, entry in ipairs(entriesByLayout[Options:GetLayout(key)] or {}) do
+    for _, entry in ipairs(entriesByLayout[layout] or {}) do
         if entry.tab ~= tab then
             tab, inList = entry.tab, false
             write()
@@ -152,8 +151,7 @@ for _, key in ipairs(Window.order) do
         elseif entry.kind == "Note" then
             inList = false
             write()
-            -- La première note est la description de la page ; les suivantes, des remarques.
-            write(index == 1 and Clean(entry.text) or ("> " .. Clean(entry.text)))
+            write("> " .. Clean(entry.text))
         else
             if not inList then write() inList = true end
             local level = math.max(0, math.floor((entry.indent or 0) / 20) - 1)

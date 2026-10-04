@@ -1,4 +1,4 @@
--- Modules/Chat.lua
+-- AeonUI_Chat/Chat.lua
 -- Chat AeonUI : fenêtres de chat habillées (fond au thème, police du thème, onglets plats,
 -- boutons latéraux cachés, sans fondu), URL cliquables, copie du chat, noms de canaux courts,
 -- couleur de classe partout, horodatage, zone de saisie en haut ou en bas. Historique rejoué au
@@ -8,10 +8,12 @@
 -- Exclu du miroir CVar (limité, Database:MirrorTable) ; la table hôte le garde.
 -- Midnight : un message secret (rencontre) passe tel quel, sans transformation ni mémoire.
 --
--- Pas de mover ni de taille : ChatFrame1 est un système Edit Mode, le joueur le place là.
+-- Fenêtres : ChatFrame1 à gauche et la première fenêtre détachée à droite, chacune adoptée sur
+-- un mover (/aeon unlock) avec sa taille dans les options ; Edit Mode et le glissé d'onglet ne les
+-- déplacent plus tant que l'option est active.
 -- Les textes passent par un enrobage d'AddMessage par fenêtre (URL, canaux courts) : hors
 -- combat ou pas, rien de protégé ici. Cède aux addons de la liste yieldsTo.
-local _, NS = ...
+local NS = AeonUI
 local L = NS.L
 local Media = NS.Media
 
@@ -26,6 +28,7 @@ local Chat = NS.Modules:Register("chat", {
         hideButtons = true,
         flatTabs = true,
         noFade = true,
+        fadeTime = 120,           -- secondes avant qu'une ligne s'estompe (fondu actif)
         maxLines = 1000,
         urls = true,
         copy = true,
@@ -34,12 +37,22 @@ local Chat = NS.Modules:Register("chat", {
         timestamps = "none",      -- "none" | "%H:%M " | "%H:%M:%S "
         editBoxTop = false,
         background = { r = 0.05, g = 0.06, b = 0.08, a = 0.6 },   -- fond des fenêtres (couleur + opacité)
+        backgroundTexture = "",   -- texture du fond (Media:StatusBarChoices), teintée par `background` ; "" : plat
+        hideScrollBar = false,    -- barre de défilement et bouton « vers le bas » cachés (molette gardée)
         history = true, historyLines = 100,        -- lignes rejouées au /reload, par fenêtre
         keywords = "",                             -- mots-clés séparés par des virgules
         keywordName = true,                        -- ton nom compte comme mot-clé
         keywordSound = true,
         keywordSoundFile = "",                     -- son importé, sinon celui des chuchotements
         antiSpam = false, spamWindow = 60,         -- même message du même auteur dans la fenêtre (s) : caché
+        tabFontSize = 12,                          -- onglets plats : taille, couleur de l'onglet actif, soulignement
+        tabActiveColor = { r = 0.25, g = 0.66, b = 0.96 },
+        tabUnderline = true,
+        sidebar = "none",                          -- barre de raccourcis : "none", "left", "right" de la fenêtre 1
+        sidebarButtons = "copy, friends, channels, options",   -- ordre des boutons (liste libre)
+        windows = true,                            -- fenêtre 1 à gauche, fenêtre détachée à droite, sur movers
+        leftWidth = 430, leftHeight = 180,
+        rightWidth = 320, rightHeight = 160,       -- AddonPlacements.POINTS.chatRight
     },
 })
 
@@ -288,13 +301,87 @@ end
 -- Habillage
 --------------------------------------------------------------------------------
 
+-- CHAT_FRAMES inclut les fenêtres temporaires (chuchotement : ChatFrame11 et au-delà).
 local function Windows()
-    local list = {}
+    local list, seen = {}, {}
+    for _, name in ipairs(_G.CHAT_FRAMES or {}) do
+        local frame = _G[name]
+        if frame and not seen[frame] then seen[frame] = true list[#list + 1] = frame end
+    end
     for i = 1, (NUM_CHAT_WINDOWS or 10) do
         local frame = _G["ChatFrame" .. i]
-        if frame then list[#list + 1] = frame end
+        if frame and not seen[frame] then seen[frame] = true list[#list + 1] = frame end
     end
     return list
+end
+
+--------------------------------------------------------------------------------
+-- Fenêtres gauche et droite : posées sur des movers (/aeon unlock), tailles des options
+--------------------------------------------------------------------------------
+
+local CHAT_MIN_WIDTH, CHAT_MIN_HEIGHT = 296, 120   -- bornes de redimensionnement du client
+
+-- Cadre déjà posé sur le mover de droite, nil sinon.
+local function ManagedRight()
+    local entry = NS.Movers.adopted.chatRight
+    return entry and entry.active and entry.frame or nil
+end
+
+--- Fenêtre de droite : celle déjà gérée si elle est toujours affichée et détachée du dock, sinon
+-- la première fenêtre affichée et détachée, hors ChatFrame1 (fenêtres temporaires exclues).
+function Chat.RightWindow()
+    if not _G.GetChatWindowInfo then return nil end
+    local max = (Constants and Constants.ChatFrameConstants and Constants.ChatFrameConstants.MaxChatWindows)
+        or NUM_CHAT_WINDOWS or 10
+    local current, first = ManagedRight(), nil
+    for id = 2, max do
+        local frame = _G["ChatFrame" .. id]
+        local shown, _, docked = select(7, GetChatWindowInfo(id))
+        if frame and shown and not docked then
+            if frame == current then return frame end
+            first = first or frame
+        end
+    end
+    return first
+end
+
+local function PlaceWindow(key, frame, width, height, point, x, y)
+    width, height = math.max(width, CHAT_MIN_WIDTH), math.max(height, CHAT_MIN_HEIGHT)
+    frame:SetSize(width, height)
+    -- Rappel du module : le mover reste rattaché au chat (clic droit, filtre de la barre d'outils).
+    local holder = NS.Modules:Within("chat", function()
+        return NS.Movers:Adopt(key, frame, L["MOVER_" .. key:upper()], point, x, y, point)
+    end)
+    holder:SetSize(width, height)
+end
+
+function Chat.ApplyWindows()
+    local db = Chat.db
+    local managed = active and db.windows
+    if managed and _G.ChatFrame1 then
+        PlaceWindow("chatLeft", ChatFrame1, db.leftWidth, db.leftHeight, "BOTTOMLEFT", 10, 40)
+    else
+        NS.Movers:Release("chatLeft")
+    end
+    local right = managed and Chat.RightWindow()
+    if right then
+        PlaceWindow("chatRight", right, db.rightWidth, db.rightHeight, "BOTTOMRIGHT", -10, 100)
+    else
+        NS.Movers:Release("chatRight")
+    end
+end
+
+-- Redimensionnement à la main (bouton du chat, Edit Mode) : la taille devient celle des options.
+-- Glisser l'onglet d'une fenêtre gérée la ramène sur son mover : la place vient de /aeon unlock.
+local function OnWindowResized(frame)
+    if not (active and Chat.db.windows) then return end
+    local db = Chat.db
+    if frame == ChatFrame1 or frame.isDocked then
+        db.leftWidth, db.leftHeight = math.floor(ChatFrame1:GetWidth() + 0.5), math.floor(ChatFrame1:GetHeight() + 0.5)
+    elseif frame == ManagedRight() then   -- pas une fenêtre qui vient d'être détachée
+        db.rightWidth, db.rightHeight = math.floor(frame:GetWidth() + 0.5), math.floor(frame:GetHeight() + 0.5)
+    end
+    Chat.ApplyWindows()
 end
 
 local function SetTexturesAlpha(prefix, holder, suffixes, alpha)
@@ -307,7 +394,7 @@ end
 local function Entry(frame)
     local entry = frames[frame]
     if entry then return entry end
-    entry = { original = { font = { frame:GetFont() } } }
+    entry = { original = { font = { frame:GetFont() }, timeVisible = frame.GetTimeVisible and frame:GetTimeVisible() } }
     local bg, edges = Media:CreateBackdrop(frame)
     entry.backdrop = { bg = bg, edges = edges }
     entry.original.addMessage = frame.AddMessage
@@ -322,9 +409,23 @@ local function Entry(frame)
     return entry
 end
 
-local function ShowBackdrop(entry, shown, color)
+local function TexturePath(key)
+    if not key or key == "" then return nil end
+    for _, choice in ipairs(Media:StatusBarChoices("")) do
+        if choice.value == key then return choice.texture end
+    end
+end
+
+local function ShowBackdrop(entry, shown, color, texture)
     local b = entry.backdrop
-    if color then NS.SetSolidColor(b.bg, color.r, color.g, color.b, color.a or 1) end
+    local path = TexturePath(texture)
+    if color and path then
+        b.bg:SetTexture(path)
+        b.bg:SetVertexColor(color.r, color.g, color.b, color.a or 1)
+    elseif color then
+        b.bg:SetVertexColor(1, 1, 1, 1)
+        NS.SetSolidColor(b.bg, color.r, color.g, color.b, color.a or 1)
+    end
     if shown then b.bg:Show() else b.bg:Hide() end
     for _, edge in pairs(b.edges or {}) do if shown then edge:Show() else edge:Hide() end end
 end
@@ -333,7 +434,10 @@ local function SkinWindow(frame)
     local db, name = Chat.db, frame:GetName()
     local entry = Entry(frame)
     local index = name:match("ChatFrame(%d+)")
-    ShowBackdrop(entry, db.skin, db.background)
+    ShowBackdrop(entry, db.skin, db.background, db.backgroundTexture)
+    for _, key in ipairs({ "ScrollBar", "ScrollToBottomButton" }) do
+        if db.hideScrollBar then NS.HideRegion(frame[key]) else NS.ShowRegion(frame[key]) end
+    end
     if db.skin then
         SetTexturesAlpha(name, frame, CHAT_FRAME_TEXTURES or {}, 0)
         local path = Media:Font()
@@ -344,13 +448,12 @@ local function SkinWindow(frame)
         frame:SetFont(unpack(entry.original.font))
     end
     if frame.SetFading then frame:SetFading(not db.noFade) end
+    if not db.noFade and frame.SetTimeVisible then frame:SetTimeVisible(db.fadeTime) end
     if frame.SetMaxLines and frame.GetMaxLines and frame:GetMaxLines() ~= db.maxLines then frame:SetMaxLines(db.maxLines) end
 
     local tab = _G[name .. "Tab"] or frame.Tab
     if tab then
         SetTexturesAlpha(name .. "Tab", tab, TAB_TEXTURES, db.flatTabs and 0 or 1)
-        local text = tab.Text or _G[name .. "TabText"]
-        if text and db.flatTabs then text:SetFont(Media:Font(), db.fontSize, Media:Outline()) end
     end
     local buttonFrame = _G[name .. "ButtonFrame"] or frame.buttonFrame
     if buttonFrame then
@@ -381,6 +484,121 @@ local function SkinWindow(frame)
         end
     end
 end
+
+--------------------------------------------------------------------------------
+-- Onglets
+--------------------------------------------------------------------------------
+
+local TAB_INACTIVE = 0.65
+
+local function SelectedFrame() return _G.SELECTED_CHAT_FRAME or _G.ChatFrame1 end
+
+--- Onglet plat : couleur de l'onglet actif, soulignement ; rien sans onglets plats.
+local function StyleTab(frame)
+    local entry, name = frames[frame], frame:GetName()
+    local tab = _G[name .. "Tab"] or frame.Tab
+    if not (entry and tab) then return end
+    local db = Chat.db
+    local text = tab.Text or _G[name .. "TabText"]
+    local styled = active and db.flatTabs
+    local selected = frame == SelectedFrame()
+    if styled and text then
+        text:SetFont(Media:Font(), db.tabFontSize, Media:Outline())
+        local color = db.tabActiveColor
+        if selected then text:SetTextColor(color.r, color.g, color.b) else text:SetTextColor(TAB_INACTIVE, TAB_INACTIVE, TAB_INACTIVE) end
+    end
+    if styled and db.tabUnderline and not entry.tabUnderline then
+        entry.tabUnderline = tab:CreateTexture(nil, "OVERLAY")
+        entry.tabUnderline:SetHeight(2)
+        entry.tabUnderline:SetPoint("BOTTOMLEFT", tab, "BOTTOMLEFT", 4, 2)
+        entry.tabUnderline:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", -4, 2)
+    end
+    if entry.tabUnderline then
+        local color = db.tabActiveColor
+        NS.SetSolidColor(entry.tabUnderline, color.r, color.g, color.b, 1)
+        entry.tabUnderline:SetShown(styled and db.tabUnderline and selected)
+    end
+end
+
+function Chat.StyleTabs()
+    for frame in pairs(frames) do StyleTab(frame) end
+end
+
+--------------------------------------------------------------------------------
+-- Barre de raccourcis
+--------------------------------------------------------------------------------
+
+local SIDEBAR_SIZE = 20
+local SIDEBAR_ACTIONS = {
+    copy = { icon = "Interface\\Buttons\\UI-GuildButton-PublicNote-Up", label = "CHAT_SIDEBAR_COPY",
+             run = function() Chat:CopyWindow(SelectedFrame()) end },
+    friends = { icon = "Interface\\FriendsFrame\\UI-Toast-FriendOnlineIcon", label = "CHAT_SIDEBAR_FRIENDS",
+                run = function() if _G.ToggleFriendsFrame then ToggleFriendsFrame() end end },
+    channels = { icon = "Interface\\FriendsFrame\\UI-Toast-ChatInviteIcon", label = "CHAT_SIDEBAR_CHANNELS",
+                 run = function() if _G.ToggleChannelFrame then ToggleChannelFrame() end end },
+    options = { icon = "Interface\\Buttons\\UI-OptionsButton", label = "CHAT_SIDEBAR_OPTIONS",
+                run = function() NS.OpenOptions("chat") end },
+}
+local sidebar
+
+--- Actions de la liste, dans son ordre, inconnues et doublons écartés.
+function Chat.SidebarActions(text)
+    local list, seen = {}, {}
+    for word in tostring(text or ""):lower():gmatch("%a+") do
+        if SIDEBAR_ACTIONS[word] and not seen[word] then seen[word] = true list[#list + 1] = word end
+    end
+    return list
+end
+
+local function SidebarButton(index)
+    sidebar.buttons = sidebar.buttons or {}
+    local button = sidebar.buttons[index]
+    if button then return button end
+    button = CreateFrame("Button", nil, sidebar)
+    button:SetSize(SIDEBAR_SIZE, SIDEBAR_SIZE)
+    Media:CreateBackdrop(button)
+    button.icon = button:CreateTexture(nil, "ARTWORK")
+    button.icon:SetPoint("TOPLEFT", 2, -2)
+    button.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+    button:SetScript("OnClick", function(self) SIDEBAR_ACTIONS[self.action].run() end)
+    button:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(L[SIDEBAR_ACTIONS[self.action].label])
+        GameTooltip:Show()
+    end)
+    button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    sidebar.buttons[index] = button
+    return button
+end
+
+local function ApplySidebar()
+    local side, anchor = Chat.db.sidebar, _G.ChatFrame1
+    if not active or side == "none" or not anchor then
+        if sidebar then sidebar:Hide() end
+        return
+    end
+    if not sidebar then sidebar = CreateFrame("Frame", "AeonUIChatSidebar", UIParent) end
+    local actions = Chat.SidebarActions(Chat.db.sidebarButtons)
+    sidebar:SetSize(SIDEBAR_SIZE, math.max(1, #actions * (SIDEBAR_SIZE + 2) - 2))
+    sidebar:ClearAllPoints()
+    if side == "left" then
+        sidebar:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -4, 0)
+    else
+        sidebar:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 4, 0)
+    end
+    for index, action in ipairs(actions) do
+        local button = SidebarButton(index)
+        button.action = action
+        button.icon:SetTexture(SIDEBAR_ACTIONS[action].icon)
+        button:ClearAllPoints()
+        button:SetPoint("TOP", sidebar, "TOP", 0, -(index - 1) * (SIDEBAR_SIZE + 2))
+        button:Show()
+    end
+    for index = #actions + 1, #(sidebar.buttons or {}) do sidebar.buttons[index]:Hide() end
+    sidebar:Show()
+end
+
+function Chat:GetSidebar() return sidebar end
 
 local function ApplySideButtons()
     for _, name in ipairs(SIDE_BUTTONS) do
@@ -502,6 +720,9 @@ function Chat:Apply()
     ApplySideButtons()
     ApplyClassColors()
     ApplyTimestamps()
+    Chat.StyleTabs()
+    ApplySidebar()
+    Chat.ApplyWindows()
 end
 
 local function Restore()
@@ -519,10 +740,17 @@ local function Restore()
         end
         frame:SetFont(unpack(entry.original.font))
         if frame.SetFading then frame:SetFading(true) end
+        if entry.original.timeVisible and frame.SetTimeVisible then frame:SetTimeVisible(entry.original.timeVisible) end
         NS.ShowRegion(_G[name .. "ButtonFrame"] or frame.buttonFrame)
+        NS.ShowRegion(frame.ScrollBar)
+        NS.ShowRegion(frame.ScrollToBottomButton)
         if entry.copyButton then entry.copyButton:Hide() end
+        if entry.tabUnderline then entry.tabUnderline:Hide() end
+        local tabText = (_G[name .. "Tab"] or frame.Tab or {}).Text
+        if tabText and tabText.SetFont then tabText:SetFont(unpack(entry.original.font)) end
     end
     for _, name in ipairs(SIDE_BUTTONS) do NS.ShowRegion(name) end
+    ApplySidebar()
 end
 
 local events = CreateFrame("Frame")
@@ -538,17 +766,29 @@ function Chat:OnEnable()
             if active and type(link) == "string" and link:sub(1, 4) == "url:" then Chat:ShowText(link:sub(5)) end
         end)
         if _G.FCF_OpenTemporaryWindow then hooksecurefunc("FCF_OpenTemporaryWindow", function() if active then Chat:Apply() end end) end
+        -- Changement d'onglet, et Blizzard qui recolore les onglets : on repasse derrière.
+        for _, name in ipairs({ "FCF_Tab_OnClick", "FCFTab_UpdateColors" }) do
+            if _G[name] then hooksecurefunc(name, function() if active then Chat.StyleTabs() end end) end
+        end
+        if _G.FCF_SavePositionAndDimensions then hooksecurefunc("FCF_SavePositionAndDimensions", OnWindowResized) end
+        if _G.ChatFrame1 and ChatFrame1.EditMode_OnResized then
+            hooksecurefunc(ChatFrame1, "EditMode_OnResized", function() OnWindowResized(ChatFrame1) end)
+        end
     end
     self:Apply()
     AddFilters()
     self:ReplayHistory(Windows())
     NS.RegisterEventSafe(events, "UPDATE_CHAT_WINDOWS")
     NS.RegisterEventSafe(events, "UPDATE_FLOATING_CHAT_WINDOWS")
+    -- Edit Mode repose ChatFrame1 (taille comprise) au chargement de sa disposition.
+    NS.RegisterEventSafe(events, "EDIT_MODE_LAYOUTS_UPDATED")
+    NS.RegisterEventSafe(events, "PLAYER_ENTERING_WORLD")
 end
 
 function Chat:OnDisable()
     active = false
     events:UnregisterAllEvents()
+    Chat.ApplyWindows()
     Restore()
     if ClassColorBackup() then
         local keep = self.db.classColors
@@ -570,15 +810,34 @@ NS:On("THEME_CHANGED", function() if active then Chat:Apply() end end)
 --------------------------------------------------------------------------------
 
 function Chat:BuildOptions(o)
-    o.layout:Note(L.NOTE_CHAT_EDITMODE, 20)
     o:Check("skin", L.OPT_CHAT_SKIN)
     o.layout:Color(L.OPT_CHAT_BACKGROUND, function() return o:DB().background end,
         function() Chat:OnRefresh() end, 20)
+    o:Advanced()
+    o:Dropdown("backgroundTexture", L.OPT_CHAT_BACKGROUND_TEXTURE, function() return Media:StatusBarChoices(L.OPT_CHAT_TEXTURE_FLAT) end, 36)
+    o:EndAdvanced()
+    o:Check("hideScrollBar", L.OPT_CHAT_HIDE_SCROLLBAR)
     o:Slider("fontSize", L.OPT_CHAT_FONT_SIZE, 9, 20, 1)
     o:Check("flatTabs", L.OPT_CHAT_FLAT_TABS)
+    o:Advanced()
+    o:Slider("tabFontSize", L.OPT_CHAT_TAB_FONT_SIZE, 8, 20, 1, 36)
+    o:Color("tabActiveColor", L.OPT_CHAT_TAB_ACTIVE_COLOR, 36)
+    o:Check("tabUnderline", L.OPT_CHAT_TAB_UNDERLINE, 36)
+    o:EndAdvanced()
+    o:Dropdown("sidebar", L.OPT_CHAT_SIDEBAR, {
+        { name = L.OPT_CHAT_SIDEBAR_NONE, value = "none" }, { name = L.OPT_CHAT_SIDEBAR_LEFT, value = "left" },
+        { name = L.OPT_CHAT_SIDEBAR_RIGHT, value = "right" },
+    })
+    o:Advanced()
+    o:EditBox("sidebarButtons", L.OPT_CHAT_SIDEBAR_BUTTONS, 1, 36)
+    o.layout:Hint(L.OPT_CHAT_SIDEBAR_HINT)
+    o:EndAdvanced()
     o:Check("hideButtons", L.OPT_CHAT_HIDE_BUTTONS)
     o:Check("noFade", L.OPT_CHAT_NO_FADE)
+    o:Advanced()
+    o:Slider("fadeTime", L.OPT_CHAT_FADE_TIME, 5, 600, 5, 36)
     o:Slider("maxLines", L.OPT_CHAT_MAX_LINES, 128, 4096, 128)
+    o:EndAdvanced()
     o:Check("editBoxTop", L.OPT_CHAT_EDITBOX_TOP)
     o:Check("urls", L.OPT_CHAT_URLS)
     o:Check("copy", L.OPT_CHAT_COPY)
@@ -591,15 +850,39 @@ function Chat:BuildOptions(o)
     })
     o:Title(L.OPT_CHAT_HISTORY_TITLE)
     o:Check("history", L.OPT_CHAT_HISTORY)
+    o:Advanced()
     o:Slider("historyLines", L.OPT_CHAT_HISTORY_LINES, 20, 500, 10, 36)
+    o:EndAdvanced()
     -- Pas en retrait : l'historique déjà gardé s'efface même option décochée.
     o:Button(L.OPT_CHAT_HISTORY_CLEAR, function() Chat:ClearHistory() end, 20)
     o:Title(L.OPT_CHAT_KEYWORDS_TITLE)
     o:EditBox("keywords", L.OPT_CHAT_KEYWORDS)
     o:Check("keywordName", L.OPT_CHAT_KEYWORD_NAME)
     o:Check("keywordSound", L.OPT_CHAT_KEYWORD_SOUND)
+    o:Advanced()
     o:Sound(nil, "keywordSoundFile", 36, PlayKeywordSound)
+    o:EndAdvanced()
     o:Title(L.OPT_CHAT_SPAM_TITLE)
     o:Check("antiSpam", L.OPT_CHAT_ANTI_SPAM)
+    o:Advanced()
     o:Slider("spamWindow", L.OPT_CHAT_SPAM_WINDOW, 10, 600, 10, 36)
+    o:EndAdvanced()
+    o:Title(L.OPT_CHAT_WINDOWS_TITLE)
+    o:Check("windows", L.OPT_CHAT_WINDOWS)
+    o:Slider("leftWidth", L.OPT_CHAT_LEFT_WIDTH, CHAT_MIN_WIDTH, 900, 2, 36)
+    o:Slider("leftHeight", L.OPT_CHAT_LEFT_HEIGHT, CHAT_MIN_HEIGHT, 600, 2, 36)
+    o:Slider("rightWidth", L.OPT_CHAT_RIGHT_WIDTH, CHAT_MIN_WIDTH, 900, 2, 36)
+    o:Slider("rightHeight", L.OPT_CHAT_RIGHT_HEIGHT, CHAT_MIN_HEIGHT, 600, 2, 36)
+    o:Button(L.OPT_UF_UNLOCK, function() NS:SetUnlocked(not NS.unlocked) end, 36)
+    -- Remet toutes les fenêtres à zéro : général à gauche, butin / commerce détaché à droite.
+    o:Button(L.OPT_CHAT_SETUP_WINDOWS, function()
+        NS.Options.Confirm("AEONUI_CHAT_SETUP", L.MSG_CHAT_SETUP_CONFIRM, function()
+            NS:RunOutOfCombat(function()
+                if NS.AddonPlacements.Chat() then
+                    Chat:OnRefresh()
+                    NS.Options.AskReload(L.MSG_CHAT_RELOAD)
+                end
+            end)
+        end)
+    end, 36)
 end

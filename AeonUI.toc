@@ -2,7 +2,7 @@
 ## Title: |cff3fa9f5Aeon|rUI
 ## Notes: Barre d'infos, confort automatique, rappels et habillage pour WoW Forever (addon non officiel). Modules activables un par un, sans dépendance. /aeon
 ## Version: @project-version@
-## X-Curse-Project-ID: 
+## X-Curse-Project-ID: 1711484
 ## X-Wago-ID: 
 ## SavedVariables: AeonUIDB
 ## OptionalDeps: LibSharedMedia-3.0
@@ -16,7 +16,10 @@
 # Un seul .toc sans suffixe : un fichier AeonUI_Forever.toc ne serait chargé par aucun client.
 #
 # L'ordre de chargement est le seul mécanisme de dépendance :
-#   Libs (LibStub, LibDeflate : compression des exports) -> Locale -> Core (Compat, Core, Pixel, Database, CVars, Modules, Media, Movers, DataTexts) -> Modules -> Config
+#   Libs (LibStub, LibDeflate : compression des exports) -> Locale -> Core (Compat, Core, Pixel, Database, CVars, Modules, Media, Movers, Visibility, Glow, DataTexts) -> Modules -> Config
+# Les parties remplaçables par un autre addon (sacs, barres d'action, cadres, barres de nom, chat,
+# minicarte, suivi de quêtes) sont des addons AeonUI_* séparés (## Dependencies: AeonUI), chargés
+# après le cœur et désactivables dans la liste d'addons du jeu.
 
 Libs\LibStub\LibStub.lua
 Libs\LibDeflate\LibDeflate.lua
@@ -40,6 +43,8 @@ Core\CVars.lua
 Core\Media.lua
 Core\Modules.lua
 Core\Movers.lua
+Core\Visibility.lua
+Core\Glow.lua
 Core\DataTexts.lua
 Core\ProfileShare.lua
 Modules\TopBar.lua
@@ -47,24 +52,19 @@ Modules\DataPanels.lua
 Modules\Automation.lua
 Modules\Reminders.lua
 Modules\Alerts.lua
-Modules\Nameplates.lua
 Modules\Frames.lua
 Modules\UnitFrameElements.lua
-Modules\UnitFrames.lua
-Modules\ResourceBars.lua
 Modules\SwingTimer.lua
+Modules\GCDBar.lua
 Modules\RaidCooldowns.lua
 Modules\Quickdraw.lua
-Modules\NamePlateFrames.lua
-Modules\GroupFrames.lua
-Modules\ActionBars.lua
-Modules\MinimapFrame.lua
-Modules\Chat.lua
+Modules\MovementAlert.lua
+Modules\Shifter.lua
+Modules\AuraBars.lua
+Modules\CooldownBars.lua
 Modules\Loot.lua
 Modules\RaidUtility.lua
-Modules\Bags.lua
 Modules\DataBars.lua
-Modules\QuestTracker.lua
 Modules\BlizzardFrames.lua
 Modules\CooldownManager.lua
 Modules\CoTank.lua

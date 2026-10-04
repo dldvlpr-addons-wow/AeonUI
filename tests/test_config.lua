@@ -2,20 +2,20 @@
 local T = ...
 local NS, test, eq, truthy, reset = T.NS, T.test, T.eq, T.truthy, T.reset
 
-test("options : fenêtre avec quatre pages générales + une page par module", function()
+test("options : fenêtre avec cinq pages générales + une page par module", function()
     truthy(NS.optionsCategoryId, "lanceur dans Options > AddOns")
     eq(Mock.subcategories, nil, "plus de sous-pages Blizzard")
-    for _, key in ipairs({ "general", "modules", "profiles", "maintenance" }) do
+    for _, key in ipairs({ "general", "media", "modules", "profiles", "maintenance" }) do
         truthy(NS.Options:GetLayout(key), "page " .. key)
     end
-    local pages = 4
+    local pages = 5
     for _, module in ipairs(NS.Modules:List()) do
         if module.name ~= "boom" then
             truthy(NS.Options:GetLayout(module.name), "page de " .. module.name)
             pages = pages + 1
         end
     end
-    eq(#NS.OptionsWindow.order, pages, "4 pages générales + une par module")
+    eq(#NS.OptionsWindow.order, pages, "5 pages générales + une par module")
     NS.Options:Refresh()
 end)
 

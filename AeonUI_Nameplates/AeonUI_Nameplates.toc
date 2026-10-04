@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: |cff3fa9f5Aeon|rUI Nameplates
+## Title-frFR: |cff3fa9f5Aeon|rUI Barres de nom
+## Notes: AeonUI nameplates. Disable to use another nameplate addon.
+## Notes-frFR: Barres de nom AeonUI. À désactiver pour utiliser un autre addon de barres de nom.
+## Version: @project-version@
+## Dependencies: AeonUI
+## Group: AeonUI
+## IconTexture: Interface\AddOns\AeonUI\Media\Logo
+## Category: User Interface
+## Category-frFR: Interface utilisateur
+## X-License: All Rights Reserved
+
+Nameplates.lua
+NamePlateFrames.lua

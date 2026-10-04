@@ -7,7 +7,8 @@ local L = NS.L
 local Media = NS.Media
 
 local function Bar(enabled, overrides)
-    local cfg = { enabled = enabled, width = 300, height = 10, text = true }
+    -- orientation : "HORIZONTAL" ou "VERTICAL" (remplie de bas en haut ; width = longueur, height = épaisseur)
+    local cfg = { enabled = enabled, width = 300, height = 10, text = true, orientation = "HORIZONTAL" }
     for k, v in pairs(overrides or {}) do cfg[k] = v end
     return cfg
 end
@@ -102,7 +103,14 @@ local function Create(key)
 end
 
 local function Layout(frame, cfg)
-    frame:SetSize(S(cfg.width), S(cfg.height))
+    local vertical = cfg.orientation == "VERTICAL"
+    if vertical then frame:SetSize(S(cfg.height), S(cfg.width)) else frame:SetSize(S(cfg.width), S(cfg.height)) end
+    for _, bar in ipairs({ frame.bar, frame.rested }) do
+        bar:SetOrientation(vertical and "VERTICAL" or "HORIZONTAL")
+        if bar.SetRotatesTexture then bar:SetRotatesTexture(vertical) end
+    end
+    -- Texte tourné d'un quart de tour le long d'une barre verticale.
+    if frame.text.SetRotation then frame.text:SetRotation(vertical and math.pi / 2 or 0) end
     if cfg.text then frame.text:Show() else frame.text:Hide() end
 end
 
@@ -229,8 +237,11 @@ function DataBars:BuildOptions(o)
     for _, key in ipairs({ "xp", "rep" }) do
         o:Tab(L["DATABARS_" .. key:upper()])
         o:Check("bars." .. key .. ".enabled", L.OPT_DATABARS_ENABLED)
-        o:Slider("bars." .. key .. ".width", L.OPT_UF_WIDTH, 100, 800, 10)
-        o:Slider("bars." .. key .. ".height", L.OPT_UF_HEIGHT, 4, 30, 1)
+        o:Dropdown("bars." .. key .. ".orientation", L.OPT_BAR_ORIENTATION, {
+            { name = L.OPT_BAR_HORIZONTAL, value = "HORIZONTAL" }, { name = L.OPT_BAR_VERTICAL, value = "VERTICAL" },
+        })
+        o:Slider("bars." .. key .. ".width", L.OPT_BAR_LENGTH, 100, 800, 10)
+        o:Slider("bars." .. key .. ".height", L.OPT_BAR_THICKNESS, 4, 30, 1)
         o:Check("bars." .. key .. ".text", L.OPT_DATABARS_TEXT)
     end
 end

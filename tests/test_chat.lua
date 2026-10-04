@@ -20,6 +20,19 @@ test("chat : transformations pures (URL, canaux courts, nettoyage)", function()
     eq(Chat.CleanLine("|cnNORMAL_FONT_COLOR:Guilde|r ok"), "Guilde ok", "couleur nommée")
 end)
 
+test("chat : barre de défilement cachée puis rendue, fond texturé teinté", function()
+    Fresh()
+    ChatFrame1.ScrollBar = CreateFrame("Frame", nil, ChatFrame1)
+    Chat.db.hideScrollBar, Chat.db.backgroundTexture = true, "aeon:smooth"
+    Enable()
+    eq(ChatFrame1.ScrollBar:IsShown(), false, "cachée")
+    Chat.db.hideScrollBar = false
+    Chat:OnRefresh()
+    eq(ChatFrame1.ScrollBar:IsShown(), true, "rendue")
+    Disable()
+    ChatFrame1.ScrollBar, Chat.db.backgroundTexture = nil, ""
+end)
+
 test("chat : habillage, police, onglets, boutons, AddMessage enrobé, rendu au disable", function()
     Fresh()
     Enable()
@@ -43,7 +56,14 @@ test("chat : habillage, police, onglets, boutons, AddMessage enrobé, rendu au d
     local _, _, top = frame.editBox:GetPoint()
     eq(top, "TOPLEFT")
     NS.db.modules.chat.editBoxTop = false
+    NS.db.modules.chat.noFade, NS.db.modules.chat.fadeTime = false, 30
+    NS.Modules:Refresh("chat")
+    eq(frame.fading, true)
+    eq(frame:GetTimeVisible(), 30, "fondu après 30 s")
+    NS.db.modules.chat.noFade, NS.db.modules.chat.fadeTime = true, 120
+    frame.timeVisible = 30
     Disable()
+    eq(frame:GetTimeVisible(), 120, "durée Blizzard d'origine rendue")
     eq(frame.font, "Fonts\\FRIZQT__.TTF")
     eq(frame.fontSize, 14)
     eq(ChatFrame1Background.alpha, 1)
@@ -93,4 +113,100 @@ test("chat : couleur et opacité du fond propres aux fenêtres", function()
     truthy(bg, "fond peint avec l'alpha du réglage")
     eq(bg.color[1], 0.2)
     Disable()
+end)
+
+test("chat : onglet actif coloré et souligné, barre de raccourcis dans l'ordre choisi", function()
+    Fresh()
+    local db = NS.db.modules.chat
+    db.sidebar, db.sidebarButtons = "left", "options, copy, inconnu, copy"
+    _G.SELECTED_CHAT_FRAME = ChatFrame2
+    Enable()
+    local color = db.tabActiveColor
+    eq(ChatFrame2Tab.Text.textColor[1], color.r, "onglet actif")
+    eq(ChatFrame1Tab.Text.textColor[1], 0.65, "onglet inactif atténué")
+    local sidebar = Chat:GetSidebar()
+    truthy(sidebar:IsShown())
+    eq(select(3, sidebar:GetPoint(1)), "TOPLEFT", "à gauche de la fenêtre 1")
+    eq(sidebar.buttons[1].action, "options", "ordre de la liste")
+    eq(sidebar.buttons[2].action, "copy")
+    eq(sidebar.buttons[3], nil, "inconnus et doublons écartés")
+    sidebar.buttons[2]:GetScript("OnClick")(sidebar.buttons[2])
+    truthy(AeonUI_ChatCopy:IsShown(), "copie de la fenêtre active")
+    AeonUI_ChatCopy:Hide()
+    Disable()
+    eq(sidebar:IsShown(), false, "cachée au disable")
+    db.sidebar, db.sidebarButtons = "none", "copy, friends, channels, options"
+    _G.SELECTED_CHAT_FRAME = nil
+end)
+
+test("bulles : thème, bordure au canal, canal décoché masqué, bulle interdite laissée", function()
+    reset()
+    local Bubbles = NS.Modules:Get("chatbubbles")
+    local function Bubble(text)
+        local bubble = CreateFrame("Frame", nil, WorldFrame)
+        local holder = CreateFrame("Frame", nil, bubble)
+        holder.String = holder:CreateFontString()
+        holder.String:SetText(text)
+        holder.skin = holder:CreateTexture()
+        return bubble, holder
+    end
+    local say, sayHolder = Bubble("bonjour")
+    local yell = Bubble("À L'AIDE")
+    local forbidden, forbiddenHolder = Bubble("secret")
+    function forbidden:IsForbidden() return true end
+    _G.C_ChatBubbles = { GetAllChatBubbles = function() return { say, yell, forbidden } end }
+    ChatTypeInfo.SAY.r, ChatTypeInfo.SAY.g, ChatTypeInfo.SAY.b = 1, 1, 1
+    NS.db.modules.chatbubbles.yell = false
+    NS.Modules:SetEnabled("chatbubbles", true)
+    Mock.FireEvent("CHAT_MSG_SAY", "bonjour", "Bob")
+    Mock.FireEvent("CHAT_MSG_YELL", "À L'AIDE", "Bob")
+    Mock.Advance(0.1)
+    eq(sayHolder.skin.alpha, 0, "texture Blizzard cachée")
+    eq(sayHolder.String.font, NS.db.theme.font, "police du thème")
+    eq(Bubbles.ChannelOf("bonjour"), "say")
+    eq(yell:GetAlpha(), 0, "crier décoché : masquée")
+    eq(say:GetAlpha(), 1)
+    eq(forbiddenHolder.skin.alpha, nil, "bulle interdite : intacte")
+    NS.Modules:SetEnabled("chatbubbles", false)
+    eq(sayHolder.skin.alpha, 1, "rendue au disable")
+    eq(yell:GetAlpha(), 1)
+    NS.db.modules.chatbubbles.yell = true
+    _G.C_ChatBubbles = nil
+end)
+
+test("chat : fenêtres gauche et droite sur movers, tailles des options, redimensionnement repris", function()
+    Fresh()
+    Mock.chatWindows = { [2] = { shown = true, docked = true }, [3] = { shown = true, docked = false } }
+    Enable()
+    eq(Chat.RightWindow(), ChatFrame3, "première fenêtre détachée")
+    eq(ChatFrame1:GetWidth(), 430)
+    eq(ChatFrame3:GetHeight(), 160)
+    truthy(NS.Movers.registry.chatLeft, "mover gauche")
+    truthy(NS.Movers.registry.chatRight, "mover droite")
+    local point, holder = ChatFrame1:GetPoint()
+    eq(point, "BOTTOMLEFT")
+    eq(holder, NS.Movers.adopted.chatLeft.holder, "posée sur son mover")
+    Chat.db.rightWidth = 100
+    NS.Modules:Refresh("chat")
+    eq(ChatFrame3:GetWidth(), 296, "borne du client")
+    ChatFrame1:SetSize(512, 200)
+    ChatFrame2.isDocked = true
+    FCF_SavePositionAndDimensions(ChatFrame2)          -- fenêtre dockée : redimensionne ChatFrame1
+    eq(Chat.db.leftWidth, 512, "taille reprise dans les options")
+    eq(Chat.db.leftHeight, 200)
+    Mock.chatWindows[2] = { shown = true, docked = false }   -- ChatFrame2 sortie du dock
+    ChatFrame2.isDocked = nil
+    ChatFrame2:SetSize(430, 180)
+    FCF_SavePositionAndDimensions(ChatFrame2)
+    eq(Chat.RightWindow(), ChatFrame3, "fenêtre gérée gardée")
+    eq(Chat.db.rightWidth, 100, "taille de droite intacte")
+    eq(NS.Movers.registry.chatRight.module, "chat", "mover rattaché au module")
+    Chat.db.windows = false
+    NS.Modules:Refresh("chat")
+    eq(NS.Movers.registry.chatLeft, nil, "option coupée : movers retirés")
+    Chat.db.windows = true
+    Disable()
+    eq(NS.Movers.registry.chatRight, nil, "module coupé : movers retirés")
+    Mock.chatWindows, ChatFrame2.isDocked = {}, nil
+    Chat.db.leftWidth, Chat.db.leftHeight, Chat.db.rightWidth = 430, 180, 320
 end)

@@ -40,7 +40,7 @@ local TopBar = NS.Modules:Register("topbar", {
         serverTime = false,
         use24h = true,
         showResting = true,
-        hideInCombat = false,
+        visibility = NS.Visibility.Spec(),   -- conditions communes (Core/Visibility)
         perfInCombat = true,       -- FPS/latence restent visibles quand la barre se masque en combat
         shiftMinimap = true,       -- barre en haut : descendre la minimap pour ne pas la recouvrir
         extraLeft = "none",        -- data text de l'emplacement libre de gauche (NS.DataTexts)
@@ -290,6 +290,7 @@ function TOOLTIP.durability(tt) tt:AddLine(L.TOPBAR_DURABILITY_TIP) end
 function TOOLTIP.gold(tt)
     tt:AddLine(L.TOPBAR_GOLD_TIP)
     tt:AddLine(NS.FormatMoney(GetMoney()), 1, 1, 1)
+    NS.DataTexts.GoldLedgerTooltip(tt)
 end
 
 function TOOLTIP.bags(tt) tt:AddLine(L.TOPBAR_BAGS_TIP) end
@@ -409,8 +410,7 @@ local function BuildTravel()
         button.spellID = id
         button:SetAttribute("type", "spell")
         button:SetAttribute("spell", id)
-        button.icon:SetTexture(C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(id)
-            or (_G.GetSpellTexture and GetSpellTexture(id)))
+        button.icon:SetTexture(NS.GetSpellTexture(id))
         button:ClearAllPoints()
         local col, row = (i - 1) % TRAVEL_COLUMNS, math.floor((i - 1) / TRAVEL_COLUMNS)
         button:SetPoint("TOPLEFT", travelMenu, "TOPLEFT", 6 + col * (TRAVEL_SIZE + 4), -6 - row * (TRAVEL_SIZE + 4))
@@ -427,16 +427,7 @@ end
 local function RefreshTravelCooldowns()
     for _, button in ipairs(travelButtons) do
         if button:IsShown() and button.spellID then
-            local start, duration = 0, 0
-            if C_Spell and C_Spell.GetSpellCooldown then
-                local info = C_Spell.GetSpellCooldown(button.spellID)
-                if info then start, duration = info.startTime, info.duration end
-            elseif _G.GetSpellCooldown then
-                start, duration = GetSpellCooldown(button.spellID)
-            end
-            if not NS.IsSecret(start) and not NS.IsSecret(duration) then
-                button.cooldown:SetCooldown(start or 0, duration or 0)
-            end
+            NS.SetSpellCooldown(button.cooldown, button.spellID)
         end
     end
 end
@@ -561,23 +552,22 @@ end
 
 local function ApplyVisibilityDrivers()
     if not _G.RegisterStateDriver then return end
-    -- Le menu Voyage est toujours fermé en combat ; la barre seulement sur option.
+    -- Le menu Voyage est toujours fermé en combat ; la barre suit sa visibilité commune.
     RegisterStateDriver(travelMenu, "visibility", "[combat] hide")
     local db = TopBar.db
-    if db.hideInCombat then
-        RegisterStateDriver(bar, "visibility", "[combat] hide; show")
+    local function Spec() return TopBar.db.visibility end
+    local opts = { secure = true, hoverGroup = "topbar", forceVisible = function() return NS.unlocked end }
+    NS.Visibility:Register("topbar", bar, Spec, opts)
+    -- FPS/latence (fille d'UIParent) : même réglage, sauf « toujours visibles ».
+    if db.show.perf and not db.perfInCombat then
+        NS.Visibility:Register("topbarPerf", elements.perf, Spec, opts)
     else
-        UnregisterStateDriver(bar, "visibility")
-        bar:Show()
-    end
-    if db.hideInCombat and db.show.perf and not db.perfInCombat then
-        RegisterStateDriver(elements.perf, "visibility", "[combat] hide; show")
-    else
-        UnregisterStateDriver(elements.perf, "visibility")
+        NS.Visibility:Unregister("topbarPerf")
     end
 end
 
 local function Layout()
+    if not active then return end
     local db = TopBar.db
     local free = db.position == "FREE"
     if free then
@@ -769,11 +759,9 @@ function TopBar:OnDisable()
     eventFrame:UnregisterAllEvents()
     if ticker then ticker:Cancel() ticker = nil end
     if bar then
-        if _G.UnregisterStateDriver then
-            UnregisterStateDriver(bar, "visibility")
-            UnregisterStateDriver(travelMenu, "visibility")
-            UnregisterStateDriver(elements.perf, "visibility")
-        end
+        NS.Visibility:Unregister("topbar")
+        NS.Visibility:Unregister("topbarPerf")
+        if _G.UnregisterStateDriver then UnregisterStateDriver(travelMenu, "visibility") end
         travelMenu:Hide()
         elements.perf:Hide()   -- fille d'UIParent, pas de la barre
         bar:Hide()
@@ -826,15 +814,18 @@ function TopBar:BuildOptions(o)
         NS.Movers:Reset("topbar")
         NS.Modules:Refresh("topbar")
     end, 36)
+    o:Advanced()
     o:Slider("backgroundAlpha", L.OPT_TOPBAR_ALPHA, 0, 1, 0.05, 20, "%.2f")
     if not C_EditMode then o:Check("shiftMinimap", L.OPT_TOPBAR_MINIMAP) end
-    o:Check("hideInCombat", L.OPT_TOPBAR_HIDE_COMBAT)
-    o:Check("perfInCombat", L.OPT_TOPBAR_PERF_COMBAT, 36)
-    o.layout:Hint(L.HINT_TOPBAR_PERF_COMBAT)   -- grisée tant que la barre reste visible en combat
+    o:EndAdvanced()
+    o:Check("perfInCombat", L.OPT_TOPBAR_PERF_COMBAT, 20)
+    o:Visibility("visibility", L.OPT_VISIBILITY, { secure = true })
     o:Title(L.OPT_TOPBAR_CLOCK)
     o:Check("use24h", L.OPT_TOPBAR_24H)
+    o:Advanced()
     o:Check("serverTime", L.OPT_TOPBAR_SERVER_TIME)
     o:Check("showResting", L.OPT_TOPBAR_RESTING)
+    o:EndAdvanced()
     o:Title(L.OPT_TOPBAR_ELEMENTS)
     for _, key in ipairs({ "friends", "guild", "clock", "gold", "durability", "bags", "perf", "travel", "hearth" }) do
         o:Check("show." .. key, L["OPT_TOPBAR_SHOW_" .. key:upper()])

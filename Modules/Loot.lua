@@ -239,6 +239,7 @@ end
 local function RollOnUpdate(bar)
     if not bar.rollID or not _G.GetLootRollTimeLeft then return end
     local left = Known(GetLootRollTimeLeft(bar.rollID))
+    if left and left <= 0 then HideRoll(bar) return end   -- jet fini sans CANCEL_LOOT_ROLL reçu
     if left then bar.timer:SetValue(left) end
 end
 
@@ -339,10 +340,13 @@ local function TakeBlizzard()
             end
         end
     end
-    if db.rolls and not rollEventTaken and UIParent:IsEventRegistered("START_LOOT_ROLL") then
-        UIParent:UnregisterEvent("START_LOOT_ROLL")
-        rollEventTaken = true
-    end
+    -- UIParent est protégé : événement pris et rendu hors combat, état relu au moment de l'appel.
+    NS:RunOutOfCombat(function()
+        if active and Loot.db.rolls and not rollEventTaken and UIParent:IsEventRegistered("START_LOOT_ROLL") then
+            UIParent:UnregisterEvent("START_LOOT_ROLL")
+            rollEventTaken = true
+        end
+    end)
 end
 
 local function RestoreBlizzard()
@@ -351,10 +355,13 @@ local function RestoreBlizzard()
         if lootFrame then NS.RegisterEventSafe(lootFrame, event) end
         blizzardLoot[event] = nil
     end
-    if rollEventTaken then
-        UIParent:RegisterEvent("START_LOOT_ROLL")
-        rollEventTaken = false
-    end
+    NS:RunOutOfCombat(function()
+        if rollEventTaken and not (active and Loot.db.rolls) then
+            UIParent:RegisterEvent("START_LOOT_ROLL")
+            rollEventTaken = false
+            events:UnregisterEvent("START_LOOT_ROLL")   -- CANCEL gardé : fin des jets déjà affichés
+        end
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -362,12 +369,16 @@ end
 --------------------------------------------------------------------------------
 
 events:SetScript("OnEvent", function(_, event, arg1, arg2)
-    if not active then return end
+    -- Fin d'un jet : toujours suivie, une barre affichée survit à la coupure du module.
+    if event == "CANCEL_LOOT_ROLL" then Loot:CancelRoll(arg1) return end
+    -- Jets : pris en charge tant qu'UIParent ne les écoute pas (restitution différée hors combat).
+    if not active and not (event == "START_LOOT_ROLL" and rollEventTaken) then return end
     local db = Loot.db
     if event == "START_LOOT_ROLL" then
-        if db.rolls then Loot:StartRoll(arg1, arg2) end
-    elseif event == "CANCEL_LOOT_ROLL" then
-        Loot:CancelRoll(arg1)
+        -- Seulement si Blizzard ne l'affiche pas aussi (prise différée en combat).
+        if rollEventTaken or (active and db.rolls and not UIParent:IsEventRegistered("START_LOOT_ROLL")) then
+            Loot:StartRoll(arg1, arg2)
+        end
     elseif not db.window then
         return
     elseif event == "LOOT_OPENED" then
@@ -392,6 +403,12 @@ end)
 function Loot:Reconcile()
     RestoreBlizzard()
     events:UnregisterAllEvents()
+    if rollEventTaken and rollAnchor then   -- restitution en attente (combat) : aucun jet perdu
+        NS.RegisterEventSafe(events, "START_LOOT_ROLL")
+    end
+    local rolling = rollEventTaken   -- jets déjà affichés : menés à leur fin, jamais cachés
+    for _, bar in ipairs(rollBars) do rolling = rolling or bar.rollID ~= nil end
+    if rolling then NS.RegisterEventSafe(events, "CANCEL_LOOT_ROLL") end
     if not active then return end
     TakeBlizzard()
     if self.db.window then
@@ -415,7 +432,6 @@ function Loot:Reconcile()
         NS.RegisterEventSafe(events, "CANCEL_LOOT_ROLL")
     else
         NS.Movers:Unregister("lootroll")
-        for _, bar in ipairs(rollBars) do HideRoll(bar) end
     end
 end
 
@@ -429,7 +445,6 @@ end
 function Loot:OnDisable()
     active = false
     if window then window:Hide() end   -- OnHide : CloseLoot
-    for _, bar in ipairs(rollBars) do HideRoll(bar) end
     NS.Movers:Unregister("loot")
     NS.Movers:Unregister("lootroll")
     self:Reconcile()   -- active = false : événements rendus à Blizzard
@@ -443,7 +458,9 @@ function Loot:OnRefresh() self:Reconcile() end
 
 function Loot:BuildOptions(o)
     o:Check("window", L.OPT_LOOT_WINDOW)
+    o:Advanced()
     o:Check("atCursor", L.OPT_LOOT_AT_CURSOR, 36)
+    o:EndAdvanced()
     o:Check("rolls", L.OPT_LOOT_ROLLS)
     o:Slider("rollWidth", L.OPT_UF_WIDTH, 200, 500, 10, 36)
     o:Button(L.OPT_UNLOCK, function() NS:SetUnlocked(not NS.unlocked) end, 20)

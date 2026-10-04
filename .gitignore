@@ -3,3 +3,6 @@ AeonUI-*.zip
 
 # Notes de travail locales : gardées sur le poste, pas publiées.
 docs/superpowers/
+
+# Réglages locaux de Claude Code.
+.claude/

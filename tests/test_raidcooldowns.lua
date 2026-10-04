@@ -45,7 +45,7 @@ test("minuteur d'attaque : inerte sans C_SwingTimer, barre remplie puis vidée a
     eq(NS.Movers.registry.swingTimer, nil, "inerte : pas de mover")
     NS.Modules:SetEnabled("swingtimer", false)
     _G.C_SwingTimer = {}
-    NS.db.modules.swingtimer.combatOnly = false
+    NS.db.modules.swingtimer.visibility = NS.Visibility.Spec()
     NS.Modules:SetEnabled("swingtimer", true)
     truthy(NS.Movers.registry.swingTimer, "mover")
     local container, bar = _G.AeonUISwingTimer, nil
@@ -60,6 +60,44 @@ test("minuteur d'attaque : inerte sans C_SwingTimer, barre remplie puis vidée a
     Mock.Advance(2)
     eq(bar.value, 0, "vide au coup suivant")
     NS.Modules:SetEnabled("swingtimer", false)
-    NS.db.modules.swingtimer.combatOnly = true
+    NS.db.modules.swingtimer.visibility = NS.Visibility.Spec({ combat = "yes" })
     _G.C_SwingTimer = nil
+end)
+
+test("minuteur d'attaque : animé par le moteur, temps restant, portée", function()
+    reset()
+    local checked, inRange = {}, true
+    _G.C_SwingTimer = {
+        EnableRangeCheck = function(swingType, on) checked[swingType] = on end,
+        IsTargetWithinSwingRange = function() return inRange end,
+    }
+    _G.C_DurationUtil = { CreateDuration = function()
+        return { SetTimeFromStart = function(self, start, duration) self.start, self.duration = start, duration end }
+    end }
+    NS.db.modules.swingtimer.visibility = NS.Visibility.Spec()
+    NS.Modules:SetEnabled("swingtimer", true)
+    local bar
+    for _, frame in ipairs(Mock.frames) do
+        if frame.hand == "mainHand" then bar = frame end
+    end
+    eq(checked[0], true, "portée suivie pour la main droite")
+    Mock.FireEvent("PLAYER_SWING", 2.5, 0)
+    eq(bar.timer.duration.duration, 2.5, "durée confiée au moteur")
+    eq(bar.timer.direction, Enum.StatusBarTimerDirection.RemainingTime)
+    eq(bar.time:GetText(), "2.5", "temps restant")
+    Mock.Advance(1)
+    eq(bar.time:GetText(), "1.5")
+    Mock.Advance(2)
+    eq(bar.time:GetText(), "", "coup fini : texte effacé")
+    Mock.FireEvent("PLAYER_SWING_RANGE_UPDATE", 0, false, true)
+    eq(bar:GetAlpha(), NS.db.modules.swingtimer.rangeAlpha, "hors de portée : atténuée")
+    Mock.FireEvent("PLAYER_SWING_RANGE_UPDATE", 0, true, true)
+    eq(bar:GetAlpha(), 1, "à portée")
+    inRange = false
+    Mock.FireEvent("PLAYER_TARGET_CHANGED")
+    eq(bar:GetAlpha(), NS.db.modules.swingtimer.rangeAlpha, "nouvelle cible lue")
+    NS.Modules:SetEnabled("swingtimer", false)
+    eq(checked[0], false, "suivi coupé avec le module")
+    NS.db.modules.swingtimer.visibility = NS.Visibility.Spec({ combat = "yes" })
+    _G.C_SwingTimer, _G.C_DurationUtil = nil, nil
 end)

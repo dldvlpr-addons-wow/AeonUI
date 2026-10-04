@@ -1,0 +1,14 @@
+## Interface: 16001
+## Title: |cff3fa9f5Aeon|rUI Action Bars
+## Title-frFR: |cff3fa9f5Aeon|rUI Barres d'action
+## Notes: AeonUI action bars. Disable to use another action bar addon.
+## Notes-frFR: Barres d'action AeonUI. À désactiver pour utiliser un autre addon de barres.
+## Version: @project-version@
+## Dependencies: AeonUI
+## Group: AeonUI
+## IconTexture: Interface\AddOns\AeonUI\Media\Logo
+## Category: User Interface
+## Category-frFR: Interface utilisateur
+## X-License: All Rights Reserved
+
+ActionBars.lua

@@ -3,7 +3,8 @@
 # AeonUI
 
 Interface and quality-of-life for **WoW Forever** (client 1.60, engine 12.x, Interface `16001`).
-Thirty-two modules you can enable one by one, **no dependencies** (LibStub and LibDeflate are bundled).
+Modules you can enable one by one, no library to install (LibStub and LibDeflate are bundled).
+The CurseForge app also installs ForeverMeter, the damage meter, as a required dependency.
 Built for this client, within the limits of its engine.
 
 Unofficial addon, not affiliated with Blizzard Entertainment. World of Warcraft and WoW Forever are trademarks of Blizzard Entertainment.
@@ -69,12 +70,20 @@ unlock).
 ## Out of scope
 - Combat-log swing timers: the combat log is forbidden to addons on this engine. The
   "Swing timer" module goes through `PLAYER_SWING` when the client has it.
-- Damage meter: ForeverMeter, a separate addon, already does this (`C_DamageMeter`).
+- Damage meter: ForeverMeter, a separate addon, already does this (`C_DamageMeter`). It is a
+  required dependency on CurseForge: the CurseForge app installs it with AeonUI.
 
 ## Installation
-Copy the folder to `World of Warcraft/_classic_beta_/Interface/AddOns/AeonUI/`
-(the folder must be named `AeonUI`, like the `.toc`). On first launch, a window
+Copy the `AeonUI` folder and the `AeonUI_*` folders to `World of Warcraft/_classic_beta_/Interface/AddOns/`
+(each folder must keep its name, like its `.toc`). On first launch, a window
 starts the setup assistant.
+
+`AeonUI` is the core. The parts another addon can replace are separate addons, listed
+under AeonUI in the game's AddOns list: `AeonUI_Bags` (bags, bank), `AeonUI_ActionBars`,
+`AeonUI_UnitFrames` (unit frames, resource bars), `AeonUI_GroupFrames` (group frames,
+click casting), `AeonUI_Nameplates`, `AeonUI_Chat` (chat, bubbles), `AeonUI_Minimap`,
+`AeonUI_QuestTracker`. Untick one there (for example `AeonUI_Bags` to use Bagnator),
+then `/reload`: its settings are kept for when you tick it again.
 
 ## One-click install
 `/aeon setup`, "Quick install" page: three base profiles, one per role (`/aeon install

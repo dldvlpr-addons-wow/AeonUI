@@ -2,8 +2,9 @@
 -- Pages de la fenêtre d'options (Config/OptionsWindow.lua) :
 --   * pages générales : Général (langue, apparence, cadres mobiles), Modules (interrupteurs),
 --     Profils (profil actif, partage, préréglages de rôle), Maintenance ;
---   * une page par module : titre, explication, « Activer », « Réinitialiser ce module », puis ce
---     que le module décrit lui-même dans module:BuildOptions(o).
+--   * une page par module : en-tête fixe (titre et case du module, explication, recherche
+--     dans la page, onglets), puis ce que le module décrit lui-même dans module:BuildOptions(o) ;
+--     à droite, un aperçu cliquable si le module en décrit un (module:BuildPreview(p)).
 -- Options > AddOns > AeonUI ne garde qu'un bouton qui ouvre la fenêtre.
 -- Les getters relisent NS.db à chaque appel : changer de profil remplace la table.
 local _, NS = ...
@@ -13,7 +14,8 @@ local Window = NS.OptionsWindow
 local Options = {}
 NS.Options = Options
 
-local PAGE_WIDTH = 600
+local PAGE_X, PAGE_WIDTH, HEADER_TOP = 24, 880, 18
+local PREVIEW_COLUMN = 270   -- colonne de l'aperçu, à droite des réglages
 
 --------------------------------------------------------------------------------
 -- Confirmations
@@ -40,13 +42,46 @@ local function Confirm(which, message, onAccept)
 end
 Options.Confirm = Confirm
 
+--- Bouton « Recharger » : Forever bloque ReloadUI() appelé par un addon, même sur un clic.
+-- Un bouton d'action posé sur celui de la popup joue la macro /reload (clic matériel).
+-- Popups partagées entre toutes les boîtes : le calque se cache avec la nôtre.
+local function ReloadOverlay(popup)
+    local button = (popup.GetButton and popup:GetButton(1)) or popup.button1
+    if not button then return end
+    local overlay = popup.AeonUIReload
+    if not overlay then
+        overlay = CreateFrame("Button", nil, button, "InsecureActionButtonTemplate")
+        overlay:SetAllPoints(button)
+        overlay:RegisterForClicks("AnyUp")
+        overlay:SetAttribute("useOnKeyDown", false)
+        overlay:SetAttribute("type", "macro")
+        overlay:SetAttribute("macrotext", "/reload")
+        popup.AeonUIReload = overlay
+    end
+    overlay:SetParent(button)
+    overlay:SetAllPoints(button)
+    overlay:SetFrameLevel(button:GetFrameLevel() + 5)
+    overlay:Show()
+end
+
 --- Propose /reload (module coupé qui ne rend ses cadres Blizzard qu'au rechargement, langue).
 local function AskReload(message)
+    -- En combat, les attributs du calque ne s'écrivent pas : message seul, /reload à la main.
+    if NS.InCombat() then
+        StaticPopupDialogs.AEONUI_RELOAD_COMBAT = {
+            text = "%s", button1 = _G.OKAY or "OK",
+            timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+        }
+        StaticPopup_Show("AEONUI_RELOAD_COMBAT", message .. "\n\n" .. L.MSG_RELOAD_TYPE)
+        return
+    end
     StaticPopupDialogs.AEONUI_RELOAD = {
-        text = "%s", button1 = L.OPT_RELOAD_NOW, button2 = L.OPT_LATER, OnAccept = function() ReloadUI() end,
+        text = "%s", button1 = L.OPT_RELOAD_NOW, button2 = L.OPT_LATER,
+        OnHide = function(popup) if popup and popup.AeonUIReload then popup.AeonUIReload:Hide() end end,
         timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
     }
-    StaticPopup_Show("AEONUI_RELOAD", message)
+    local popup = StaticPopup_Show("AEONUI_RELOAD", message)
+    if popup then ReloadOverlay(popup) end
 end
 Options.AskReload = AskReload
 
@@ -69,13 +104,107 @@ end
 local layouts = {}        -- [clé de page] = layout (pour Refresh, la recherche et les tests)
 local scrolls = {}        -- [clé de page] = ScrollFrame de la page
 
---- Page scrollable : la hauteur visible dépend de la fenêtre.
-local function NewPage(key)
+--- Recherche dans la page : chaque frappe amène le premier réglage trouvé, Entrée le suivant.
+local function PageSearch(header, key)
+    local search = CreateFrame("EditBox", nil, header, "InputBoxTemplate")
+    search:SetSize(200, 22)
+    search:SetPoint("TOPRIGHT", header, "TOPRIGHT", -92, -HEADER_TOP - 4)   -- à gauche des outils de la fenêtre
+    search:SetAutoFocus(false)
+    local placeholder = search:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+    placeholder:SetPoint("LEFT", search, "LEFT", 2, 0)
+    placeholder:SetText(L.OPT_SEARCH_PAGE)
+    local found, index = {}, 0
+    local function reveal(typing)
+        local result = found[index]
+        if result then Options.Reveal(result, typing) end
+    end
+    search:SetScript("OnTextChanged", function(self)
+        local text = self:GetText() or ""
+        placeholder:SetShown(text == "")
+        found, index = {}, 1
+        if #text >= 2 then
+            for _, result in ipairs(Options.Search(text, key)) do
+                if result.entry then found[#found + 1] = result end
+            end
+        end
+        reveal(true)
+    end)
+    search:SetScript("OnEnterPressed", function()
+        if #found == 0 then return end
+        index = index % #found + 1
+        reveal()
+    end)
+    search:SetScript("OnEscapePressed", function(self)
+        self:SetText("")
+        self:ClearFocus()
+    end)
+    return search
+end
+
+--- Fine barre de défilement à droite de la page : position et part visible.
+local function ScrollIndicator(panel, scroll)
+    local thumb = panel:CreateTexture(nil, "OVERLAY")
+    thumb:SetWidth(3)
+    thumb:Hide()
+    local function paint()
+        local range, visible = scroll:GetVerticalScrollRange() or 0, scroll:GetHeight() or 0
+        if range <= 0 or visible <= 0 then thumb:Hide() return end
+        local height = math.max(24, visible * visible / (visible + range))
+        local offset = (visible - height) * ((scroll:GetVerticalScroll() or 0) / range)
+        local r, g, b = NS.Media:Accent()
+        NS.SetSolidColor(thumb, r, g, b, 0.6)
+        thumb:ClearAllPoints()
+        thumb:SetPoint("TOPLEFT", scroll, "TOPRIGHT", 3, -offset)
+        thumb:SetHeight(height)
+        thumb:Show()
+    end
+    scroll:SetScript("OnScrollRangeChanged", paint)
+    scroll:SetScript("OnVerticalScroll", paint)
+    return paint
+end
+
+--- Page : en-tête fixe (titre, explication, recherche, onglets) puis contenu défilant en grille.
+-- `sideWidth` : colonne fixe à droite (panel.side), les réglages défilent à sa gauche.
+local function NewPage(key, title, description, sideWidth)
     local panel = CreateFrame("Frame", "AeonUIOptions" .. key)
     panel:Hide()
+    local header = CreateFrame("Frame", nil, panel)
+    header:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
+    header:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, 0)
+    local headerBackground = header:CreateTexture(nil, "BACKGROUND")
+    headerBackground:SetAllPoints()
+    NS.SetSolidColor(headerBackground, 0, 0, 0, 0.2)
+    local headerLine = header:CreateTexture(nil, "ARTWORK")
+    headerLine:SetHeight(1)
+    headerLine:SetPoint("BOTTOMLEFT")
+    headerLine:SetPoint("BOTTOMRIGHT")
+    NS.SetSolidColor(headerLine, 1, 1, 1, 0.08)
+    local titleText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    titleText:SetPoint("TOPLEFT", header, "TOPLEFT", PAGE_X, -HEADER_TOP)
+    titleText:SetWidth(PAGE_WIDTH - 250)
+    titleText:SetJustifyH("LEFT")
+    if titleText.SetWordWrap then titleText:SetWordWrap(false) end
+    titleText:SetTextColor(1, 1, 1)
+    titleText:SetText(title)
+    panel.header, panel.titleText = header, titleText
+    local descriptionText = header:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    descriptionText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -6)
+    descriptionText:SetWidth(PAGE_WIDTH - 250)
+    descriptionText:SetJustifyH("LEFT")
+    descriptionText:SetTextColor(0.7, 0.72, 0.76)
+    descriptionText:SetText(description or "")
+    panel.search = PageSearch(header, key)
+    local tabHost = CreateFrame("Frame", nil, header)
+    tabHost:SetSize(PAGE_WIDTH, 1)
+
     local scroll = CreateFrame("ScrollFrame", nil, panel)
-    scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
-    scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -8, 0)
+    scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
+    scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -12 - (sideWidth and sideWidth + 12 or 0), 0)
+    if sideWidth then
+        panel.side = CreateFrame("Frame", nil, panel)
+        panel.side:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -16, -12)
+        panel.side:SetWidth(sideWidth)
+    end
     local content = CreateFrame("Frame", nil, scroll)
     content:SetSize(1, 1)
     scroll:SetScrollChild(content)
@@ -86,11 +215,31 @@ local function NewPage(key)
         if value < 0 then value = 0 elseif value > range then value = range end
         self:SetVerticalScroll(value)
     end)
-    scroll:SetScript("OnSizeChanged", function(_, width) content:SetWidth(width) end)
-    local layout = NS.Widgets.NewLayout(content, 16, PAGE_WIDTH)
+    local paintScroll = ScrollIndicator(panel, scroll)
+    scroll:SetScript("OnSizeChanged", function(_, width)
+        content:SetWidth(width)
+        paintScroll()
+    end)
+    local width = sideWidth and (PAGE_WIDTH - sideWidth - 20) or PAGE_WIDTH
+    local layout = NS.Widgets.NewLayout(content, PAGE_X, width, { grid = true, tabHost = tabHost })
+    layout.description = description
+    -- Hauteur de l'en-tête : explication (sur plusieurs lignes) et rangées d'onglets.
+    local function FitHeader()
+        local hasDescription = description and description ~= ""
+        local top = HEADER_TOP + 30 + (hasDescription and ((descriptionText:GetStringHeight() or 14) + 6) or 0) + 12
+        tabHost:ClearAllPoints()
+        tabHost:SetPoint("TOPLEFT", header, "TOPLEFT", PAGE_X, -top)
+        local tabs = layout.tabBar and layout.tabBar:GetHeight() or 0
+        header:SetHeight(top + (tabs > 0 and tabs or -6))
+    end
+    FitHeader()
+    layout.OnFinish = FitHeader
     -- Onglet changé : la page repart du haut (la hauteur change).
-    layout.OnTabSelected = function() scroll:SetVerticalScroll(0) end
-    panel:SetScript("OnShow", function() layout:Refresh() end)
+    layout.OnTabSelected = function()
+        scroll:SetVerticalScroll(0)
+        paintScroll()
+    end
+    panel:SetScript("OnShow", function() layout:Refresh() paintScroll() end)
     layouts[key], scrolls[key] = layout, scroll
     return panel, layout, content
 end
@@ -115,15 +264,30 @@ local function Resolve(db, key)
     return parent, tonumber(leaf) or leaf
 end
 
+-- Une clé peut être une fonction qui rend la clé au moment de la lecture (widget qui suit une
+-- sélection, ex. le panneau réglé dans DataPanels) ; KeyAt ajoute un suffixe aux deux formes.
+local function KeyOf(key) if type(key) == "function" then return key() end return key end
+local function KeyAt(key, suffix)
+    if type(key) == "function" then return function() return key() .. suffix end end
+    return key .. suffix
+end
+ModuleOptions.KeyAt = KeyAt
+
 function ModuleOptions:Getter(key)
-    return function() local t, k = Resolve(self:DB(), key) return t[k] end
+    return function() local t, k = Resolve(self:DB(), KeyOf(key)) return t[k] end
+end
+
+--- Réglage changé : module rafraîchi, puis l'aperçu de la page s'il y en a un.
+function ModuleOptions:Changed()
+    NS.Modules:Refresh(self.name)
+    if self.preview then self.preview() end
 end
 
 function ModuleOptions:Setter(key, after)
     return function(value)
-        local t, k = Resolve(self:DB(), key)
+        local t, k = Resolve(self:DB(), KeyOf(key))
         t[k] = value
-        NS.Modules:Refresh(self.name)
+        self:Changed()
         if after then after(value) end
     end
 end
@@ -134,7 +298,7 @@ end
 
 function ModuleOptions:Slider(key, label, minValue, maxValue, step, indent, format)
     -- Bornes gardées pour l'import : un profil reçu ne sort pas des limites du curseur.
-    NS.Database.bounds["modules." .. self.name .. "." .. key] = { minValue, maxValue }
+    if type(key) == "string" then NS.Database.bounds["modules." .. self.name .. "." .. key] = { minValue, maxValue } end
     return self.layout:Slider(label, minValue, maxValue, step, self:Getter(key), self:Setter(key),
         indent or 20, format)
 end
@@ -144,16 +308,46 @@ function ModuleOptions:Dropdown(key, label, choices, indent, after)
 end
 
 function ModuleOptions:Color(key, label, indent)
-    return self.layout:Color(label, self:Getter(key), function() NS.Modules:Refresh(self.name) end, indent or 20)
+    return self.layout:Color(label, self:Getter(key), function() self:Changed() end, indent or 20)
 end
 
 function ModuleOptions:Title(text) return self.layout:Title(text) end
 function ModuleOptions:Tab(label) return self.layout:Tab(label) end
 function ModuleOptions:Note(text, indent) return self.layout:Note(text, indent or 20) end
 function ModuleOptions:Hint(text) return self.layout:Hint(text) end
-function ModuleOptions:Button(label, onClick, indent) return self.layout:Button(label, onClick, indent or 20) end
+function ModuleOptions:Button(label, onClick, indent, primary) return self.layout:Button(label, onClick, indent or 20, primary) end
+--- Réglages suivants moins courants, en fin de bloc, jusqu'au prochain titre ou onglet.
+function ModuleOptions:Advanced() return self.layout:Advanced(L.OPT_ADVANCED_SHOW) end
+--- Fin des réglages avancés : les suivants du bloc redeviennent courants.
+function ModuleOptions:EndAdvanced() self.layout:EndAdvanced() end
 function ModuleOptions:EditBox(key, label, lines, indent)
     return self.layout:EditBox(label, self:Getter(key), self:Setter(key), lines, indent or 20)
+end
+
+--- Visibilité commune (Core/Visibility) du réglage `key` : combinaison, six conditions, survol.
+-- Ouvre son propre bloc jusqu'au prochain titre : à appeler en fin de section.
+-- opts.secure : cadre à state driver, l'instance n'y a pas de condition macro et n'est pas proposée.
+-- opts.noMouseover : module qui n'évalue que les conditions (pas de fondu au survol).
+function ModuleOptions:Visibility(key, label, opts)
+    opts = opts or {}
+    local indent, secure = 20, opts.secure
+    self.layout:Title(label)
+    self:Advanced()
+    self:Dropdown(KeyAt(key, ".match"), L.OPT_VIS_MATCH, {
+        { name = L.OPT_VIS_MATCH_ALL, value = "all" }, { name = L.OPT_VIS_MATCH_ANY, value = "any" },
+    }, indent)
+    local choices = {
+        { name = L.OPT_VIS_IGNORE, value = "ignore" }, { name = L.OPT_VIS_YES, value = "yes" },
+        { name = L.OPT_VIS_NO, value = "no" },
+    }
+    for _, condition in ipairs(NS.Visibility.CONDITIONS) do
+        if not (secure and condition == "instance") then
+            self:Dropdown(KeyAt(key, "." .. condition), L["OPT_VIS_" .. condition:upper()], choices, indent)
+        end
+    end
+    if not opts.noMouseover then self:Check(KeyAt(key, ".mouseover"), L.OPT_VIS_MOUSEOVER, indent) end
+    self.layout:EndAdvanced()         -- les réglages qui suivent restent visibles
+    self.layout:PopParents(1)         -- ni ne dépendent de la case « survol »
 end
 
 --- Son : preset du client (si `presetKey`), fichier importé par le joueur et bouton d'écoute.
@@ -186,7 +380,7 @@ function ModuleOptions:CopyFrom(key, sources, indent)
         for field, value in pairs(source) do
             if field ~= "enabled" and target[field] ~= nil then target[field] = NS.Database.DeepCopy(value) end
         end
-        NS.Modules:Refresh(self.name)
+        self:Changed()
         self.layout:Refresh()
     end, indent or 20)
 end
@@ -196,9 +390,7 @@ end
 --------------------------------------------------------------------------------
 
 local function BuildGeneral()
-    local panel, layout = NewPage("general")
-    layout:Header(L.OPT_GENERAL)
-    layout:Note(L.OPT_INTRO)
+    local panel, layout = NewPage("general", L.OPT_GENERAL, L.OPT_INTRO)
     local languages = { { name = L.OPT_LANGUAGE_AUTO, value = "auto" } }
     for _, entry in ipairs(NS.LOCALE_ORDER) do
         languages[#languages + 1] = { name = entry.name, value = entry.code }
@@ -212,45 +404,35 @@ local function BuildGeneral()
         end)
 
     layout:Title(L.OPT_APPEARANCE)
-    layout:Dropdown(L.OPT_FONT, function()
-            local fonts = {}
-            for _, font in ipairs(NS.GetFontList()) do
-                fonts[#fonts + 1] = { name = font.name, value = font.path, font = font.path }
-            end
-            return fonts
-        end,
-        function() return NS.db.theme.font end,
-        function(value) NS.db.theme.font = value; NS:Fire("THEME_CHANGED") end)
-    NS.Database.bounds["theme.fontSize"] = { 9, 18 }
     NS.Database.bounds["theme.uiScale"] = { NS.Pixel.MIN_USER_SCALE, NS.Pixel.MAX_USER_SCALE }
-    layout:Slider(L.OPT_FONT_SIZE, 9, 18, 1,
-        function() return NS.db.theme.fontSize end,
-        function(value) NS.db.theme.fontSize = value; NS:Fire("THEME_CHANGED") end)
-    layout:Dropdown(L.OPT_FONT_OUTLINE, {
-            { name = L.OUTLINE_NONE, value = "" }, { name = L.OUTLINE_THIN, value = "OUTLINE" },
-            { name = L.OUTLINE_THICK, value = "THICKOUTLINE" },
+    -- Préréglage : classe et faction lues pour chaque personnage ; les couleurs fixes vont dans l'accent.
+    layout:Dropdown(L.OPT_ACCENT_PRESET, {
+            { name = L.ACCENT_CUSTOM, value = "custom" }, { name = L.ACCENT_CLASS, value = "class" },
+            { name = L.ACCENT_FACTION, value = "faction" }, { name = L.ACCENT_AEON, value = "aeon" },
+            { name = L.ACCENT_BRONZE, value = "bronze" },
         },
-        function() return NS.db.theme.fontOutline end,
-        function(value) NS.db.theme.fontOutline = value; NS:Fire("THEME_CHANGED") end)
-    -- Texture des barres : seulement avec LibSharedMedia, sinon la texture plate suffit.
-    local LSM = _G.LibStub and LibStub("LibSharedMedia-3.0", true)
-    if LSM then
-        layout:Dropdown(L.OPT_STATUSBAR, function()
-                local list = { { name = L.STATUSBAR_FLAT, value = "" } }
-                for _, name in ipairs(LSM:List("statusbar") or {}) do
-                    list[#list + 1] = { name = name, value = name, texture = LSM:Fetch("statusbar", name, true) }
-                end
-                return list
-            end,
-            function() return NS.db.theme.statusbar end,
-            function(value) NS.db.theme.statusbar = value; NS:Fire("THEME_CHANGED") end)
-    end
+        function() return NS.db.theme.accentPreset end,
+        function(value)
+            local fixed = NS.Media.ACCENT_PRESETS[value]
+            if fixed then
+                local accent = NS.db.theme.accent
+                accent.r, accent.g, accent.b = fixed.r, fixed.g, fixed.b
+                value = "custom"
+            end
+            NS.db.theme.accentPreset = value
+            NS:Fire("THEME_CHANGED")
+            layout:Refresh()
+        end)
     layout:Color(L.OPT_ACCENT, function() return NS.db.theme.accent end,
-        function() NS:Fire("THEME_CHANGED") end)
+        function() NS.db.theme.accentPreset = "custom"; NS:Fire("THEME_CHANGED") end)
     layout:Color(L.OPT_BACKDROP_COLOR, function() return NS.db.theme.backdrop end,
         function() NS:Fire("THEME_CHANGED") end)
     layout:Color(L.OPT_BORDER_COLOR, function() return NS.db.theme.border end,
         function() NS:Fire("THEME_CHANGED") end)
+    NS.Database.bounds["theme.borderSize"] = { 1, 4 }
+    layout:Slider(L.OPT_BORDER_SIZE, 1, 4, 1,
+        function() return NS.db.theme.borderSize or 1 end,
+        function(value) NS.db.theme.borderSize = value; NS:Fire("THEME_CHANGED") end)
     layout:Check(L.OPT_PIXEL_PERFECT,
         function() return NS.db.theme.pixelPerfect end,
         function(value) NS.db.theme.pixelPerfect = value; NS:Fire("THEME_CHANGED") end)
@@ -279,10 +461,76 @@ local function BuildGeneral()
     return panel
 end
 
+-- Modules dont les textes et les barres peuvent prendre une police et une texture propres.
+local MEDIA_MODULES = { "unitframes", "groupframes", "nameplateframes", "resourcebars", "swingtimer", "databars" }
+
+local function FontChoices(inherit)
+    local fonts = inherit and { { name = L.OPT_MEDIA_INHERIT, value = "inherit" } } or {}
+    for _, font in ipairs(NS.GetFontList()) do
+        fonts[#fonts + 1] = { name = font.name, value = font.path, font = font.path }
+    end
+    return fonts
+end
+
+local function TextureChoices(inherit)
+    local list = NS.Media:StatusBarChoices(L.STATUSBAR_FLAT)
+    if inherit then table.insert(list, 1, { name = L.OPT_MEDIA_INHERIT, value = "inherit" }) end
+    return list
+end
+
+--- Polices et textures : thème commun, mode sombre, puis exception par module.
+local function BuildMedia()
+    local panel, layout = NewPage("media", L.OPT_MEDIA, L.OPT_MEDIA_INTRO)
+    local function changed() NS:Fire("THEME_CHANGED") end
+    layout:Dropdown(L.OPT_FONT, function() return FontChoices(false) end,
+        function() return NS.db.theme.font end,
+        function(value) NS.db.theme.font = value; changed() end)
+    NS.Database.bounds["theme.fontSize"] = { 9, 18 }
+    layout:Slider(L.OPT_FONT_SIZE, 9, 18, 1,
+        function() return NS.db.theme.fontSize end,
+        function(value) NS.db.theme.fontSize = value; changed() end)
+    layout:Dropdown(L.OPT_FONT_OUTLINE, {
+            { name = L.OUTLINE_NONE, value = "" }, { name = L.OUTLINE_THIN, value = "OUTLINE" },
+            { name = L.OUTLINE_THICK, value = "THICKOUTLINE" },
+        },
+        function() return NS.db.theme.fontOutline end,
+        function(value) NS.db.theme.fontOutline = value; changed() end)
+    layout:Dropdown(L.OPT_STATUSBAR, function() return TextureChoices(false) end,
+        function() return NS.db.theme.statusbar end,
+        function(value) NS.db.theme.statusbar = value; changed() end)
+    layout:Check(L.OPT_DARK_MODE, function() return NS.db.theme.darkMode end,
+        function(value)
+            NS.db.theme.darkMode = value
+            changed()
+            for _, name in ipairs(MEDIA_MODULES) do NS.Modules:Refresh(name) end   -- couleurs de vie reposées
+        end)
+    layout:Hint(L.OPT_DARK_MODE_HINT)
+    layout:Title(L.OPT_MEDIA_BY_MODULE)
+    for _, name in ipairs(MEDIA_MODULES) do
+        local module = NS.Modules:Get(name)
+        if module and module.title then
+            local function own() return NS.db.theme.moduleMedia[name] end
+            local function set(field, value)
+                local media = NS.db.theme.moduleMedia
+                media[name] = media[name] or {}
+                media[name][field] = value ~= "inherit" and value or nil
+                if not next(media[name]) then media[name] = nil end
+                changed()
+            end
+            layout:Dropdown(module.title .. " : " .. L.OPT_FONT, function() return FontChoices(true) end,
+                function() return own() and own().font or "inherit" end,
+                function(value) set("font", value) end, 20)
+            layout:Dropdown(module.title .. " : " .. L.OPT_STATUSBAR, function() return TextureChoices(true) end,
+                function() return own() and own().statusbar or "inherit" end,
+                function(value) set("statusbar", value) end, 20)
+        end
+    end
+    layout:Finish()
+    return panel
+end
+
 local function BuildModuleList()
-    local panel, layout = NewPage("modules")
-    layout:Header(L.OPT_MODULES)
-    layout:Note(L.OPT_MODULES_HINT)
+    local panel, layout = NewPage("modules", L.OPT_MODULES, L.OPT_MODULES_HINT)
     for _, module in ipairs(NS.Modules:SortedList()) do
         if module.title then
             local name = module.name
@@ -305,9 +553,7 @@ local function BuildModuleList()
 end
 
 local function BuildProfiles()
-    local panel, layout = NewPage("profiles")
-    layout:Header(L.OPT_PROFILES)
-    layout:Note(L.OPT_PROFILES_HINT)
+    local panel, layout = NewPage("profiles", L.OPT_PROFILES, L.OPT_PROFILES_HINT)
     layout:Dropdown(L.OPT_PROFILE_ACTIVE, function()
             local list = {}
             for _, name in ipairs(NS.Database:ListProfiles()) do list[#list + 1] = { name = name, value = name } end
@@ -328,9 +574,35 @@ local function BuildProfiles()
         if name == NS.Database.DEFAULT_PROFILE then return end
         Confirm("AEONUI_PROFILE_DELETE", string.format(L.MSG_PROFILE_DELETE_CONFIRM, name), function()
             NS:SwitchProfile(NS.Database.DEFAULT_PROFILE)
-            NS:RunOutOfCombat(function() NS.Database:DeleteProfile(name) end)
+            NS:RunOutOfCombat(function()
+                NS.Database:DeleteProfile(name)
+                NS:BindProfileHotkeys()   -- sa touche est libérée
+            end)
         end)
     end)
+    -- Renommer ou dupliquer le profil actif sous le nom saisi.
+    local naming = { text = "" }
+    layout:EditBox(L.OPT_PROFILE_NEW_NAME,
+        function() return naming.text end, function(value) naming.text = value end, 1)
+    layout:Button(L.OPT_PROFILE_RENAME, function()
+        local renamed = NS.Database:RenameProfile(NS.Database:ActiveProfileName(), naming.text)
+        if not renamed then NS.Print(L.MSG_PROFILE_NAME_INVALID) return end
+        naming.text = ""
+        NS:BindProfileHotkeys()
+        NS:Fire("PROFILE_CHANGED")
+    end)
+    layout:Button(L.OPT_PROFILE_DUPLICATE, function()
+        local name = NS.Database.ValidProfileName(naming.text)
+        if not name or NS.global.profiles[name] then NS.Print(L.MSG_PROFILE_NAME_INVALID) return end
+        naming.text = ""
+        NS:SwitchProfile(name, NS.Database:ActiveProfileName())
+    end)
+    layout:EditBox(L.OPT_PROFILE_HOTKEY,
+        function() return NS.global.profileHotkeys[NS.Database:ActiveProfileName()] or "" end,
+        function(value)
+            NS.global.profileHotkeys[NS.Database:ActiveProfileName()] = value ~= "" and value or nil
+            NS:BindProfileHotkeys()
+        end, 1)
 
     -- Partage : la chaîne exportée se colle sur un autre personnage ou chez un autre joueur.
     layout:Title(L.OPT_PROFILE_SHARE)
@@ -372,7 +644,28 @@ local function BuildProfiles()
         layout:Refresh()
         box:SelectAll()
     end)
-    layout:Button(L.OPT_PROFILE_IMPORT, function() NS:ImportProfile(transfer.text) end)
+    layout:Button(L.OPT_PROFILE_EXPORT_ACCOUNT, function()
+        local text = NS.Database.Export(NS.Database:AccountExport())
+        -- Au-delà de la borne de l'import collé, la chaîne serait refusée : rien plutôt qu'un export inutilisable.
+        if not NS.Database.Deserialize(text, NS.Database.PastedLimit(true)) then NS.Print(L.MSG_EXPORT_ACCOUNT_TOO_LARGE) return end
+        transfer.text = text
+        layout:Refresh()
+        box:SelectAll()
+    end)
+    layout:Button(L.OPT_PROFILE_IMPORT, function()
+        local text = transfer.text
+        local parsed = NS.Database.Deserialize(text, NS.Database.PastedLimit(true))
+        if not (parsed and parsed.account) then NS:ImportProfile(text, false) return end
+        -- Export du compte : les profils de même nom sont remplacés, le joueur confirme d'abord.
+        local replaced = {}
+        for profileName in pairs(type(parsed.profiles) == "table" and parsed.profiles or {}) do
+            local valid = NS.Database.ValidProfileName(profileName)
+            if valid and NS.global.profiles[valid] then replaced[#replaced + 1] = valid end
+        end
+        table.sort(replaced)
+        Confirm("AEONUI_IMPORT_ACCOUNT", string.format(L.MSG_IMPORT_ACCOUNT_CONFIRM, #replaced,
+            #replaced > 0 and table.concat(replaced, ", ") or "-"), function() NS:ImportProfile(text, true) end)
+    end)
     layout:Button(L.OPT_PROFILE_SEND, function() NS.ProfileShare:Send() end)
 
     -- Un profil par spécialisation : bascule automatique au changement de spé.
@@ -389,6 +682,22 @@ local function BuildProfiles()
             function() return NS.Database:GetSpecProfile(spec.index) or false end,
             function(value)
                 NS.Database:SetSpecProfile(spec.index, value or nil)
+                NS:CheckSpecProfile()
+            end)
+    end
+
+    -- Un profil par contexte : prime sur la spé, bascule à l'écran de chargement, hors combat.
+    layout:Title(L.OPT_PROFILE_BY_CONTEXT)
+    layout:Note(L.OPT_PROFILE_BY_CONTEXT_HINT)
+    for _, context in ipairs({ "world", "dungeon", "raid", "pvp" }) do
+        layout:Dropdown(L["PROFILE_CONTEXT_" .. context:upper()], function()
+                local list = { { name = L.OPT_PROFILE_BY_SPEC_OFF, value = false } }
+                for _, name in ipairs(NS.Database:ListProfiles()) do list[#list + 1] = { name = name, value = name } end
+                return list
+            end,
+            function() return NS.Database:GetContextProfile(context) or false end,
+            function(value)
+                NS.Database:SetContextProfile(context, value or nil)
                 NS:CheckSpecProfile()
             end)
     end
@@ -425,14 +734,34 @@ local function BuildProfiles()
             NS.Modules:RefreshAll()
         end)
     end)
+
+    -- Profils de classe : styles jouables de la classe du joueur (section absente sans classe lisible).
+    local styles = NS.Install.ClassStyles()
+    if #styles > 0 then
+        layout:Title(L.OPT_PROFILE_CLASSES)
+        local classPick = { style = styles[1] }
+        layout:Note(L.OPT_PROFILE_CLASS_HINT)
+        local choices = {}
+        for _, style in ipairs(styles) do choices[#choices + 1] = { name = L["INSTALL_ROLE_" .. style:upper()], value = style } end
+        layout:Dropdown(L.OPT_PROFILE_CLASS_STYLE, choices,
+            function() return classPick.style end, function(value) classPick.style = value end)
+        layout:Button(L.OPT_PROFILE_CLASS_APPLY, function()
+            NS:RunOutOfCombat(function() NS.Install:ApplyClassSettings(classPick.style) end)
+        end)
+        layout:Button(L.OPT_PROFILE_CLASS_SWITCH, function()
+            NS:RunOutOfCombat(function()
+                -- Profil déjà là : simple bascule, ApplyClass écraserait positions et réglages du joueur.
+                local name = NS.Install.ClassProfileName(classPick.style)
+                if NS.global.profiles[name] then NS:SwitchProfile(name) else NS.Install:ApplyClass(classPick.style) end
+            end)
+        end)
+    end
     layout:Finish()
     return panel
 end
 
 local function BuildMaintenance()
-    local panel, layout = NewPage("maintenance")
-    layout:Header(L.OPT_MAINTENANCE)
-    layout:Note(L.OPT_MAINTENANCE_HINT)
+    local panel, layout = NewPage("maintenance", L.OPT_MAINTENANCE, L.OPT_MAINTENANCE_HINT)
     layout:Button(L.OPT_FIRST_RUN, function() if NS.FirstRun then NS.FirstRun:Show() end end)
     layout:Button(L.OPT_DIAG, function() SlashCmdList.AEONUI("diag") end)
     layout:Button(L.OPT_UNINSTALL, function() SlashCmdList.AEONUI("uninstall") end)
@@ -440,12 +769,14 @@ local function BuildMaintenance()
     return panel
 end
 
---- Pages générales, inscrites dans la fenêtre (tests : construction avec un addon tiers chargé).
+--- Pages générales, inscrites dans la fenêtre et construites à leur première ouverture
+-- (tests : construction avec un addon tiers chargé).
 local function BuildMain()
-    Window:AddPage("general", L.OPT_GENERAL, BuildGeneral(), "general")
-    Window:AddPage("modules", L.OPT_MODULES, BuildModuleList(), "general")
-    Window:AddPage("profiles", L.OPT_PROFILES, BuildProfiles(), "general")
-    Window:AddPage("maintenance", L.OPT_MAINTENANCE, BuildMaintenance(), "general")
+    Window:AddPage("general", L.OPT_GENERAL, BuildGeneral, "general")
+    Window:AddPage("media", L.OPT_MEDIA, BuildMedia, "general")
+    Window:AddPage("modules", L.OPT_MODULES, BuildModuleList, "general")
+    Window:AddPage("profiles", L.OPT_PROFILES, BuildProfiles, "general")
+    Window:AddPage("maintenance", L.OPT_MAINTENANCE, BuildMaintenance, "general")
 end
 
 --------------------------------------------------------------------------------
@@ -464,39 +795,186 @@ local function ResetModule(name)
 end
 Options.ResetModule = ResetModule
 
-local function BuildModulePage(module)
-    local panel, layout, content = NewPage(module.name)
-    local name = module.name
-    -- Titre tronqué avant le bouton de droite.
-    local header = layout:Header(module.title)
-    header:SetWidth(PAGE_WIDTH - 190)
-    header:SetJustifyH("LEFT")
-    if header.SetWordWrap then header:SetWordWrap(false) end
-    local reset = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    reset:SetSize(180, 22)
-    reset:SetPoint("TOPRIGHT", content, "TOPLEFT", layout.x + PAGE_WIDTH, -16)
-    reset:SetText(L.OPT_RESET_MODULE)
-    NS.Widgets.FitText(reset, 180)
-    header:SetWidth(PAGE_WIDTH - reset:GetWidth() - 10)
-    reset:SetScript("OnClick", function()
-        Confirm("AEONUI_MODULE_RESET", string.format(L.MSG_RESET_MODULE_CONFIRM, module.title),
-            function() ResetModule(name) end)
+--------------------------------------------------------------------------------
+-- Aperçu cliquable à droite d'une page de module
+--------------------------------------------------------------------------------
+
+local PREVIEW_HEIGHT = 140
+local PREVIEW_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
+
+--- Outils de dessin passés à module:BuildPreview(p). Chaque objet a un identifiant : il est créé
+-- au premier appel puis réutilisé ; p.Begin() cache tout avant de repeindre. Coordonnées en
+-- pixels depuis le coin haut gauche du canevas (y vers le bas).
+--   p.width, p.height : taille du canevas ; p.DB() : réglages du module ;
+--   p.Fit(w, h, marge) : échelle (au plus 2) et origine (x, y) qui centrent un dessin w x h ;
+--   p.Box(id, x, y, w, h, r, g, b, a, sublevel) : rectangle plein ;
+--   p.Edge(id, x, y, w, h[, r, g, b, a]) : liseré de 1 px autour d'une forme, dessiné dessous ;
+--   p.Bar(id, x, y, w, h, r, g, b, part) : barre sur fond sombre, remplie à `part`, texture du module ;
+--   p.Icon(id, x, y, taille, texture, zoom) : icône carrée ;
+--   p.Text(id, x, y, texte, taille, point) : texte (point d'ancrage, TOPLEFT par défaut) ;
+--   p.ClassColor(classFile) : couleur de classe (du joueur sans argument) ;
+--   p.Region(id, x, y, w, h) : cadre invisible, support d'une zone cliquable ;
+--   p.Hotspot(region, hint, tab) : un clic sur `region` ouvre le réglage (ou l'onglet) dont le
+--     libellé vaut `hint`, dans l'onglet `tab` si donné.
+local function PreviewKit(p, canvas, owner)
+    local objects, spots = {}, {}
+    local function get(id, create)
+        local object = objects[id]
+        if not object then
+            object = create()
+            objects[id] = object
+        end
+        object:Show()
+        return object
+    end
+    local function place(region, x, y, width, height)
+        region:ClearAllPoints()
+        region:SetPoint("TOPLEFT", canvas, "TOPLEFT", x, -y)
+        region:SetSize(math.max(1, width), math.max(1, height))
+    end
+    function p.Begin()
+        for _, object in pairs(objects) do object:Hide() end
+        for _, spot in pairs(spots) do spot:Hide() end
+    end
+    function p.Fit(width, height, margin)
+        margin = margin or 8
+        local scale = math.min(2, (p.width - 2 * margin) / math.max(1, width), (p.height - 2 * margin) / math.max(1, height))
+        return scale, (p.width - width * scale) / 2, (p.height - height * scale) / 2
+    end
+    function p.Box(id, x, y, width, height, r, g, b, a, sublevel)
+        local box = get(id, function() return canvas:CreateTexture(nil, "ARTWORK", nil, sublevel or 0) end)
+        place(box, x, y, width, height)
+        box:SetVertexColor(1, 1, 1, 1)
+        NS.SetSolidColor(box, r, g, b, a or 1)
+        return box
+    end
+    --- Liseré noir derrière une forme (sous-niveau le plus bas : jamais par-dessus).
+    function p.Edge(id, x, y, width, height, r, g, b, a)
+        return p.Box(id, x - 1, y - 1, width + 2, height + 2, r or 0, g or 0, b or 0, a or 1, -8)
+    end
+    function p.Bar(id, x, y, width, height, r, g, b, part)
+        local background = p.Box(id .. ":bg", x, y, width, height, 0, 0, 0, 0.7, -4)
+        local fill = get(id, function() return canvas:CreateTexture(nil, "ARTWORK", nil, 1) end)
+        fill:SetTexture(NS.Media:StatusBarTexture(owner))
+        fill:SetVertexColor(r, g, b, 1)
+        place(fill, x, y, width * (part or 1), height)
+        return background
+    end
+    function p.Icon(id, x, y, size, texture, zoom)
+        local icon = get(id, function() return canvas:CreateTexture(nil, "ARTWORK", nil, 2) end)
+        icon:SetTexture(texture or PREVIEW_ICON)
+        zoom = zoom or 0.07
+        icon:SetTexCoord(zoom, 1 - zoom, zoom, 1 - zoom)
+        place(icon, x, y, size, size)
+        return icon
+    end
+    function p.Text(id, x, y, text, size, point)
+        local fontString = get(id, function() return canvas:CreateFontString(nil, "OVERLAY") end)
+        fontString:SetFont((NS.Media:Font(owner)), math.max(6, size or 11), "OUTLINE")
+        fontString:ClearAllPoints()
+        fontString:SetPoint(point or "TOPLEFT", canvas, "TOPLEFT", x, -y)
+        fontString:SetText(text)
+        return fontString
+    end
+    --- Couleur de classe (`classFile`, ou celle du joueur) ; vert si illisible.
+    function p.ClassColor(classFile)
+        if not classFile and _G.UnitClass then
+            local _, own = UnitClass("player")
+            if own and not NS.IsSecret(own) then classFile = own end
+        end
+        if classFile then return NS.ClassColor(classFile) end
+        return 0.2, 0.75, 0.2
+    end
+    function p.Region(id, x, y, width, height)
+        local region = get(id, function() return CreateFrame("Frame", nil, canvas) end)
+        place(region, x, y, width, height)
+        return region
+    end
+    function p.Hotspot(region, hint, tab)
+        local spot = spots[region]
+        if not spot then
+            spot = CreateFrame("Button", nil, canvas)
+            spot:SetAllPoints(region)
+            local glow = spot:CreateTexture(nil, "HIGHLIGHT")
+            glow:SetAllPoints()
+            NS.Widgets.Accented(glow, function()
+                local r, g, b = NS.Media:Accent()
+                NS.SetSolidColor(glow, r, g, b, 0.3)
+            end)
+            spot:SetScript("OnClick", function(self) Options.RevealModule(owner, self.hint, self.tab) end)
+            spot:SetScript("OnEnter", function(self) NS.Widgets.ShowTooltip(self, self.hint) end)
+            spot:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            spots[region] = spot
+        end
+        spot:SetFrameLevel(canvas:GetFrameLevel() + 10)
+        spot.hint, spot.tab = hint, tab
+        spot:Show()
+        return spot
+    end
+end
+
+--- Aperçu dans la colonne de droite (panel.side), décrit par module:BuildPreview(p) (outils :
+-- PreviewKit), qui rend la fonction qui le repeint. Il reste visible quand les réglages défilent ;
+-- repeint à chaque réglage changé et au changement de thème.
+local function BuildPreview(module, o, layout, preview)
+    local height = module.previewHeight or PREVIEW_HEIGHT
+    local width = PREVIEW_COLUMN - 16
+    local background = preview:CreateTexture(nil, "BACKGROUND")
+    background:SetAllPoints()
+    NS.SetSolidColor(background, 0, 0, 0, 0.3)
+    local canvas = CreateFrame("Frame", nil, preview)
+    canvas:SetPoint("TOPLEFT", preview, "TOPLEFT", 8, -8)
+    canvas:SetSize(width, height)
+    local hint = preview:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    hint:SetPoint("TOPLEFT", canvas, "BOTTOMLEFT", 0, -8)
+    hint:SetWidth(width)
+    hint:SetJustifyH("LEFT")
+    hint:SetText(L.OPT_PREVIEW_HINT)
+    preview:SetHeight(height + 24 + (hint:GetStringHeight() or 12))
+    local p = { canvas = canvas, width = width, height = height }
+    function p.DB() return o:DB() end
+    PreviewKit(p, canvas, module.name)
+    local paint = module:BuildPreview(p)
+    o.preview = paint
+    layout.refreshers[#layout.refreshers + 1] = paint
+    NS:On("THEME_CHANGED", function() if preview:IsVisible() then paint() end end)
+    preview:SetScript("OnShow", function()
+        NS.Widgets.Tip(canvas, "preview", L.OPT_TIP_PREVIEW)
     end)
-    layout:Note(module.description)
-    -- « Activer » au premier niveau : tout le reste de la page est grisé quand il est décoché.
-    local yieldedBy = NS.Modules:YieldedBy(name)
-    local enable = layout:Check(string.format(L.OPT_ENABLE, module.title),
-        function() return NS.db.modules[name].enabled end,
-        function(value) SetModuleEnabled(name, value) end)
-    if yieldedBy then
-        enable:Disable()
-        layout:Hint(L.MSG_YIELDED_HINT)
-    end
-    if module.BuildOptions then
-        module:BuildOptions(setmetatable({ name = name, layout = layout }, ModuleOptions))
-    end
+    preview:SetScript("OnHide", function() NS.Widgets.HideTip() end)
+    return preview
+end
+
+local function BuildModulePage(module)
+    local panel, layout = NewPage(module.name, module.title, module.description,
+        module.BuildPreview and PREVIEW_COLUMN)
+    local name = module.name
+    local o = setmetatable({ name = name, layout = layout }, ModuleOptions)
+    if module.BuildPreview then BuildPreview(module, o, layout, panel.side) end
+    -- Case du module à droite du titre : toute la page est grisée quand elle est décochée.
+    local label = string.format(L.OPT_ENABLE, module.title)
+    local function get() return NS.db.modules[name].enabled end
+    local enable = NS.Widgets.CheckBox(panel.header, 18)
+    enable:SetPoint("LEFT", panel.titleText, "LEFT", (panel.titleText:GetStringWidth() or 0) + 14, 0)
+    enable:SetScript("OnClick", function(self)
+        if layout.refreshing then return end
+        SetModuleEnabled(name, self:GetChecked() and true or false)
+        self.Paint()
+        layout:UpdateDependencies()
+    end)
+    if enable.SetMotionScriptsWhileDisabled then enable:SetMotionScriptsWhileDisabled(true) end
+    local yielded = NS.Modules:YieldedBy(name)
+    enable:SetScript("OnEnter", function(self)
+        NS.Widgets.ShowTooltip(self, yielded and (label .. "\n|cffcccccc" .. L.MSG_YIELDED_HINT .. "|r") or label)
+    end)
+    enable:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    if yielded then enable:Disable() end
+    layout.refreshers[#layout.refreshers + 1] = function() enable:SetChecked(get() and true or false) end
+    layout.parents[#layout.parents + 1] = { indent = -1, get = get }   -- jamais retiré par un retrait
+    layout:Label(label, enable)
+    if module.BuildOptions then module:BuildOptions(o) end
     layout:Finish()
-    Window:AddPage(name, module.title, panel, "modules")
+    return panel
 end
 
 --------------------------------------------------------------------------------
@@ -506,10 +984,10 @@ end
 local MAX_RESULTS = 40
 
 --- Pages dans l'ordre de la fenêtre : { key, title }.
-local function SearchablePages()
+local function SearchablePages(onlyKey)
     local list = {}
     for _, key in ipairs(Window.order) do
-        list[#list + 1] = { key = key, title = Window.pages[key].title }
+        if not onlyKey or key == onlyKey then list[#list + 1] = { key = key, title = Window.pages[key].title } end
     end
     return list
 end
@@ -537,15 +1015,20 @@ end
 -- dans n'importe quel ordre (« haut fps » trouve « Barre du haut > Garder FPS… ») ; le libellé
 -- lui-même doit en contenir au moins un. Sinon, la page seule si son titre ou sa description
 -- contient tous les mots.
-function Options.Search(query)
+function Options.Search(query, onlyKey)
     local words = {}
     for word in Normalize(query):gmatch("%S+") do words[#words + 1] = word end
     local results = {}
     if #table.concat(words) < 2 then return results end
+    -- ponytail: index = libellés des pages construites ; la première recherche construit les autres
+    -- d'un coup. Index sans cadres (libellés relevés à part) si ce pic se sent en jeu.
+    for _, key in ipairs(Window.order) do
+        if not onlyKey or key == onlyKey then Window:Ensure(key) end
+    end
     local function add(result)
         if #results < MAX_RESULTS then results[#results + 1] = result end
     end
-    for _, page in ipairs(SearchablePages()) do
+    for _, page in ipairs(SearchablePages(onlyKey)) do
         local layout = layouts[page.key]
         local module = NS.Modules:Get(page.key)
         local title = Normalize(page.title)
@@ -583,26 +1066,69 @@ local function Flash(layout, frame)
     local r, g, b = NS.Media:Accent()
     NS.SetSolidColor(glow, r, g, b, 0.35)
     glow:ClearAllPoints()
-    glow:SetPoint("TOPLEFT", frame, "TOPLEFT", -6, 6)
-    glow:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", -6, -6)
-    glow:SetWidth(layout.width)
+    -- Grille : la ligne du réglage entière ; sinon le widget, sur la largeur de la page.
+    local row = frame.gridRow
+    if row then
+        glow:SetParent(row)
+        glow:SetAllPoints(row)
+    else
+        glow:SetParent(layout.root)
+        glow:SetPoint("TOPLEFT", frame, "TOPLEFT", -6, 6)
+        glow:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", -6, -6)
+        glow:SetWidth(layout.width)
+    end
     glow:SetAlpha(1)
     glow:Show()
     glow.timer.left = 1.5
     glow.timer:Show()
 end
 
---- Ouvre la page d'un résultat et amène son réglage à l'écran.
-function Options.Reveal(result)
+--- Ouvre la page d'un résultat et amène son réglage à l'écran. `typing` (recherche en cours de
+-- frappe) : un réglage masqué par le mode simple ne fait pas basculer la fenêtre.
+function Options.Reveal(result, typing)
     Window:Show(result.module)
     local layout, scroll = layouts[result.module], scrolls[result.module]
     if not (result.entry and result.entry.frame and layout) then return end
+    -- Réglage avancé trouvé en mode simple : la fenêtre passe en mode avancé pour le montrer.
+    if layout:ModeHidden(result.entry) then
+        if typing then return end
+        Options.SetMode("advanced")
+    end
     local offset = layout:OffsetOf(result.entry)
     -- Onglet changé : la hauteur défilable est à recalculer avant de la lire.
     if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
     local range = scroll:GetVerticalScrollRange() or 0
     scroll:SetVerticalScroll(math.max(0, math.min(range, offset - 60)))
-    Flash(layout, result.entry.frame)
+    -- Case de l'en-tête : hors de la zone défilante, déjà visible, pas de surlignage.
+    local frame = result.entry.frame
+    if layout.grid and not (frame.gridRow or frame.layoutY) then return end
+    Flash(layout, frame)
+end
+
+--- Ouvre la page d'un module et surligne le réglage dont l'onglet ou le libellé vaut `hint`
+-- (clic droit sur un mover : son libellé ; aperçu), dans l'onglet `inTab` si donné, sinon le
+-- premier réglage de la page.
+function Options.RevealModule(name, hint, inTab)
+    Window:Show(name)
+    local layout = layouts[name]
+    local labels = layout and layout.labels or {}
+    local wanted = hint and Normalize(hint)
+    local wantedTab = inTab and Normalize(inTab)
+    local chosen
+    for _, entry in ipairs(labels) do
+        local tab = entry.tab and layout.tabs[entry.tab].label
+        local tabMatches = not wantedTab or (tab and Normalize(tab) == wantedTab)
+        if wanted and tabMatches and ((tab and Normalize(tab) == wanted) or Normalize(entry.text) == wanted) then
+            chosen = entry
+            break
+        end
+    end
+    if not chosen then   -- premier réglage de la grille (pas la case de l'en-tête)
+        for _, entry in ipairs(labels) do
+            if entry.frame and (entry.frame.gridRow or entry.frame.layoutY) then chosen = entry break end
+        end
+    end
+    if chosen then Options.Reveal({ module = name, entry = chosen }) end
 end
 
 --- Ouvre la page d'un module.
@@ -621,7 +1147,20 @@ function Options:Refresh()
     Window:RenderList()
 end
 
-function Options:GetLayout(key) return layouts[key] end
+--- Mode de la fenêtre : "simple" (réglages avancés masqués) ou "advanced". Pages déjà construites replacées.
+function Options.SetMode(mode)
+    NS.global.optionsMode = mode
+    for key, layout in pairs(layouts) do
+        layout:Reflow()
+        scrolls[key]:SetVerticalScroll(0)
+    end
+    Window:PaintMode()
+end
+
+function Options:GetLayout(key)
+    if not layouts[key] then Window:Ensure(key) end
+    return layouts[key]
+end
 
 Window.StateOf = function(key)
     local module = NS.Modules:Get(key)
@@ -629,6 +1168,35 @@ Window.StateOf = function(key)
     if NS.Modules:IsYielded(key) then return "yielded" end
     return module.enabled and "on" or "off"
 end
+
+-- Groupes de la liste de gauche ; un module absent d'ici va dans le dernier groupe.
+local MODULE_GROUPS = {
+    frames = { "unitframes", "frames", "groupframes", "nameplateframes", "nameplates", "resourcebars", "gcdbar",
+               "swingtimer", "cotank", "clickcast" },
+    combat = { "actionbars", "cooldownmanager", "cooldownbars", "aurabars", "tracker", "raidcooldowns", "reminders",
+               "alerts", "movementalert", "quickdraw" },
+    interface = { "topbar", "datapanels", "databars", "minimap", "chat", "chatbubbles", "questtracker", "bags", "bank",
+                  "loot", "cursor", "blizzardframes", "shifter", "skin", "interface", "gear" },
+    qol = { "automation", "afk", "groupfinder", "raidutility" },
+}
+local groupByModule = {}
+for group, names in pairs(MODULE_GROUPS) do
+    for _, name in ipairs(names) do groupByModule[name] = group end
+end
+Window.GroupOf = function(key) return groupByModule[key] end
+
+Window.ResetOf = function(key)
+    local module = NS.Modules:Get(key)
+    if not module then return nil end
+    return L.OPT_RESET_MODULE, function()
+        Confirm("AEONUI_MODULE_RESET", string.format(L.MSG_RESET_MODULE_CONFIRM, module.title),
+            function() ResetModule(key) end)
+    end
+end
+
+NS.Widgets.TipSeen = function(key) return NS.global ~= nil and NS.global.tipsSeen[key] == true end
+NS.Widgets.MarkTipSeen = function(key) if NS.global then NS.global.tipsSeen[key] = true end end
+NS.Widgets.SimpleMode = function() return NS.global ~= nil and NS.global.optionsMode == "simple" end
 
 -- Un module activé ailleurs, un changement de profil : resynchroniser les cases et les repères.
 NS:On("MODULE_TOGGLED", function() Options:Refresh() end)
@@ -720,9 +1288,17 @@ end
 NS:On("LOGIN", Options.SetupGameMenu)
 
 NS:On("PROFILE_READY", function()
+    -- Libellés des groupes lus ici : la langue est posée.
+    Window.groups = {
+        { key = "frames", label = L.OPT_GROUP_FRAMES }, { key = "combat", label = L.OPT_GROUP_COMBAT },
+        { key = "interface", label = L.OPT_GROUP_INTERFACE }, { key = "qol", label = L.OPT_GROUP_QOL },
+    }
     BuildMain()
+    -- Pages inscrites seulement : chacune est construite à sa première ouverture.
     for _, module in ipairs(NS.Modules:SortedList()) do
-        if module.title then BuildModulePage(module) end
+        if module.title then
+            Window:AddPage(module.name, module.title, function() return BuildModulePage(module) end, "modules")
+        end
     end
     NS.RegisterOptionsPanel(BuildBlizzardPanel(), "AeonUI")
 end)

@@ -8,6 +8,7 @@
 --   interval          -> secondes entre deux rafraîchissements par minuterie (facultatif)
 --   secret            -> le texte peut être secret : largeur inconnue, exclu des emplacements
 --                        qui se dimensionnent au texte (barre du haut)
+--   name              -> libellé dans les listes, à défaut de L["DATATEXT_<CLÉ>"] (LibDataBroker)
 -- Les textes de la barre du haut (amis, guilde, heure, or…) sont inscrits par Modules/TopBar.lua.
 local _, NS = ...
 local L = NS.L
@@ -27,7 +28,7 @@ function DataTexts:Choices(sizedSlot)
     local list = {}
     for key, def in pairs(self.registry) do
         if not (sizedSlot and def.secret) then
-            list[#list + 1] = { name = L["DATATEXT_" .. key:upper()] or key, value = key }
+            list[#list + 1] = { name = def.name or L["DATATEXT_" .. key:upper()] or key, value = key }
         end
     end
     table.sort(list, function(a, b) return a.name < b.name end)
@@ -222,3 +223,203 @@ DataTexts:Register("dps", {
     end,
     events = { "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" },
 })
+
+--------------------------------------------------------------------------------
+-- Métiers
+--------------------------------------------------------------------------------
+
+--- Métiers { name, rank, max } : GetProfessions (moteur retail), sinon lignes de compétence
+-- abandonnables. ponytail: le repli ne voit que les métiers principaux (cuisine, pêche,
+-- secourisme ne sont pas abandonnables).
+function DataTexts.Professions()
+    local list = {}
+    if _G.GetProfessions and _G.GetProfessionInfo then
+        local indices = { GetProfessions() }
+        for i = 1, 6 do
+            if indices[i] then
+                local name, _, rank, max = GetProfessionInfo(indices[i])
+                if name then list[#list + 1] = { name = name, rank = rank or 0, max = max or 0 } end
+            end
+        end
+        if #list > 0 then return list end
+    end
+    if _G.GetNumSkillLines and _G.GetSkillLineInfo then
+        for i = 1, GetNumSkillLines() do
+            local name, isHeader, _, rank, _, _, max, isAbandonable = GetSkillLineInfo(i)
+            if name and not isHeader and isAbandonable then
+                list[#list + 1] = { name = name, rank = rank or 0, max = max or 0 }
+            end
+        end
+    end
+    return list
+end
+
+DataTexts:Register("professions", {
+    text = function()
+        local parts = {}
+        for _, profession in ipairs(DataTexts.Professions()) do
+            if #parts < 2 then parts[#parts + 1] = profession.rank .. "/" .. profession.max end
+        end
+        return Dim(L.DATATEXT_PROFESSIONS_SHORT) .. " " .. (#parts > 0 and table.concat(parts, Dim(" | ")) or "-")
+    end,
+    tooltip = function(tt)
+        tt:AddLine(L.DATATEXT_PROFESSIONS)
+        for _, profession in ipairs(DataTexts.Professions()) do
+            tt:AddDoubleLine(profession.name, profession.rank .. "/" .. profession.max, 0.8, 0.8, 0.8, 1, 1, 1)
+        end
+    end,
+    events = { "SKILL_LINES_CHANGED", "TRADE_SKILL_LIST_UPDATE" },
+})
+
+--------------------------------------------------------------------------------
+-- Niveau d'objet moyen
+--------------------------------------------------------------------------------
+
+DataTexts:Register("itemlevel", {
+    text = function()
+        local average = Known(NS.GetAverageItemLevel())
+        if not average then return Dim(L.DATATEXT_ITEMLEVEL_SHORT) .. " -" end
+        return Dim(L.DATATEXT_ITEMLEVEL_SHORT) .. " " .. string.format("%.1f", average)
+    end,
+    tooltip = function(tt) tt:AddLine(L.DATATEXT_ITEMLEVEL) end,
+    events = { "PLAYER_EQUIPMENT_CHANGED", "PLAYER_AVG_ITEM_LEVEL_UPDATE" },
+})
+
+--------------------------------------------------------------------------------
+-- Durée du combat
+--------------------------------------------------------------------------------
+
+local combatStart, lastCombat = nil, 0
+
+--- Secondes du combat en cours, sinon du dernier combat.
+function DataTexts.CombatTime()
+    if combatStart then return GetTime() - combatStart end
+    return lastCombat
+end
+
+local function FormatDuration(seconds)
+    seconds = math.floor(seconds)
+    return string.format("%d:%02d", math.floor(seconds / 60), seconds % 60)
+end
+
+DataTexts:Register("combat", {
+    interval = 1,
+    text = function()
+        local color = combatStart and "|cffff6060" or "|cffffffff"
+        return Dim(L.DATATEXT_COMBAT_SHORT) .. " " .. color .. FormatDuration(DataTexts.CombatTime()) .. "|r"
+    end,
+    tooltip = function(tt) tt:AddLine(L.DATATEXT_COMBAT) end,
+    events = { "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" },
+})
+
+--------------------------------------------------------------------------------
+-- Monnaies suivies (sac à dos)
+--------------------------------------------------------------------------------
+
+--- Monnaies affichées dans le sac à dos { name, quantity, icon } (3 au plus côté client).
+function DataTexts.WatchedCurrencies()
+    local list = {}
+    local info = _G.C_CurrencyInfo and C_CurrencyInfo.GetBackpackCurrencyInfo
+    if not info then return list end
+    for index = 1, 10 do
+        local currency = info(index)
+        if not currency then break end
+        list[#list + 1] = { name = currency.name, quantity = currency.quantity or 0, icon = currency.iconFileID }
+    end
+    return list
+end
+
+DataTexts:Register("currency", {
+    text = function()
+        local parts = {}
+        for _, currency in ipairs(DataTexts.WatchedCurrencies()) do
+            parts[#parts + 1] = (currency.icon and ("|T" .. currency.icon .. ":0|t ") or "") .. currency.quantity
+        end
+        if #parts == 0 then return Dim(L.DATATEXT_CURRENCY) .. " -" end
+        return table.concat(parts, "  ")
+    end,
+    tooltip = function(tt)
+        tt:AddLine(L.DATATEXT_CURRENCY)
+        local list = DataTexts.WatchedCurrencies()
+        if #list == 0 then tt:AddLine(L.DATATEXT_CURRENCY_NONE, 0.6, 0.6, 0.6) end
+        for _, currency in ipairs(list) do
+            tt:AddDoubleLine(currency.name or "?", currency.quantity, 0.8, 0.8, 0.8, 1, 1, 1)
+        end
+    end,
+    events = { "CURRENCY_DISPLAY_UPDATE" },
+})
+
+--------------------------------------------------------------------------------
+-- Or de tous les personnages
+--------------------------------------------------------------------------------
+
+--- Relève l'or du personnage dans NS.global.goldLedger (par « Perso - Royaume »).
+function DataTexts.RecordGold()
+    if not (NS.global and _G.GetMoney) then return end
+    NS.global.goldLedger = NS.global.goldLedger or {}
+    NS.global.goldLedger[NS.Database.CharacterKey()] = GetMoney()
+end
+
+--- Lignes de l'infobulle d'or : chaque personnage (le plus riche d'abord) puis le total.
+function DataTexts.GoldLedgerTooltip(tt)
+    local ledger = NS.global and NS.global.goldLedger
+    if not ledger then return end
+    local names, total = {}, 0
+    for name, copper in pairs(ledger) do names[#names + 1] = name total = total + copper end
+    if #names < 2 then return end
+    table.sort(names, function(a, b) return ledger[a] > ledger[b] end)
+    tt:AddLine(" ")
+    for _, name in ipairs(names) do
+        tt:AddDoubleLine(name, NS.FormatMoney(ledger[name]), 0.8, 0.8, 0.8, 1, 1, 1)
+    end
+    tt:AddDoubleLine(L.DATATEXT_GOLD_TOTAL, NS.FormatMoney(total), 1, 0.82, 0, 1, 1, 1)
+end
+
+--------------------------------------------------------------------------------
+-- LibDataBroker : les textes des autres addons, s'ils en publient
+--------------------------------------------------------------------------------
+
+local function RegisterBroker(name, object)
+    if type(name) ~= "string" or type(object) ~= "table" then return end
+    DataTexts:Register("ldb:" .. name, {
+        name = "LDB : " .. name,
+        interval = 1,   -- ponytail: relu à 1 Hz, pas sur LibDataBroker_AttributeChanged
+        text = function()
+            local icon = object.icon and ("|T" .. tostring(object.icon) .. ":0|t ") or ""
+            return icon .. tostring(object.text or object.label or name)
+        end,
+        tooltip = object.OnTooltipShow and function(tt) object.OnTooltipShow(tt) end or nil,
+        click = function(frame, mouseButton) if object.OnClick then object.OnClick(frame, mouseButton) end end,
+    })
+end
+
+local brokerHooked = false
+function DataTexts.RegisterBrokers()
+    local broker = _G.LibStub and LibStub("LibDataBroker-1.1", true)
+    if not broker then return end
+    for name, object in broker:DataObjectIterator() do RegisterBroker(name, object) end
+    if not brokerHooked and broker.RegisterCallback then
+        brokerHooked = true
+        broker.RegisterCallback(DataTexts, "LibDataBroker_DataObjectCreated", function(_, name, object)
+            RegisterBroker(name, object)
+        end)
+    end
+end
+
+local events = CreateFrame("Frame")
+events:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_REGEN_DISABLED" then
+        combatStart = GetTime()
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        if combatStart then lastCombat = GetTime() - combatStart end
+        combatStart = nil
+    elseif event == "PLAYER_LOGIN" then
+        DataTexts.RegisterBrokers()
+        DataTexts.RecordGold()
+    else
+        DataTexts.RecordGold()
+    end
+end)
+for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_LOGIN", "PLAYER_MONEY" }) do
+    NS.RegisterEventSafe(events, event)
+end

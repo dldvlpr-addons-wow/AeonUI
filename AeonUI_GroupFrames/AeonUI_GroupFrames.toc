@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: |cff3fa9f5Aeon|rUI Group Frames
+## Title-frFR: |cff3fa9f5Aeon|rUI Cadres de groupe
+## Notes: AeonUI party and raid frames, click casting.
+## Notes-frFR: Cadres de groupe et de raid AeonUI, sorts au clic.
+## Version: @project-version@
+## Dependencies: AeonUI
+## Group: AeonUI
+## IconTexture: Interface\AddOns\AeonUI\Media\Logo
+## Category: User Interface
+## Category-frFR: Interface utilisateur
+## X-License: All Rights Reserved
+
+GroupFrames.lua
+ClickCast.lua

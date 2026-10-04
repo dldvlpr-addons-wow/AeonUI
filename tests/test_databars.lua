@@ -44,3 +44,22 @@ test("data bars : cachée au niveau max, valeurs secrètes acceptées", function
     eq(DB.frames.xp.rested:IsShown(), false, "repos secret : pas de comparaison, barre de repos cachée")
     Disable()
 end)
+
+test("data bars : orientation verticale, longueur et épaisseur échangées", function()
+    reset()
+    Mock.units.player.level = 12
+    local cfg = NS.db.modules.databars.bars.xp
+    cfg.orientation = "VERTICAL"
+    Enable()
+    local xp = DB.frames.xp
+    eq(xp.bar.orientation, "VERTICAL")
+    eq(xp.rested.orientation, "VERTICAL")
+    local width, height = xp:GetWidth(), xp:GetHeight()
+    truthy(height > width, "barre haute et fine")
+    cfg.orientation = "HORIZONTAL"
+    NS.Modules:Refresh("databars")
+    eq(xp.bar.orientation, "HORIZONTAL")
+    width, height = xp:GetWidth(), xp:GetHeight()
+    truthy(width > height)
+    Disable()
+end)
