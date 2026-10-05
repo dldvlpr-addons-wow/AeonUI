@@ -1,3 +1,8 @@
+# AeonUI 1.0.1
+
+## Changes
+- Quickdraw is now called Radial menu, and Shifter is now Movable windows. Your settings are kept.
+
 # AeonUI 1.0.0
 
 ## Split into separate addons
