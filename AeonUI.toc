@@ -57,9 +57,9 @@ Modules\UnitFrameElements.lua
 Modules\SwingTimer.lua
 Modules\GCDBar.lua
 Modules\RaidCooldowns.lua
-Modules\Quickdraw.lua
+Modules\RadialMenu.lua
 Modules\MovementAlert.lua
-Modules\Shifter.lua
+Modules\MovableWindows.lua
 Modules\AuraBars.lua
 Modules\CooldownBars.lua
 Modules\Loot.lua

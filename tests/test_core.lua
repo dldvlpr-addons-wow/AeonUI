@@ -420,6 +420,19 @@ test("migration v2 -> v3 : les profils existants gardent leur échelle (pixelPer
     eq(fresh.theme.pixelPerfect, true, "profil neuf : pixel perfect")
 end)
 
+test("migration v6 -> v7 : réglages des modules renommés repris sous le nouveau nom", function()
+    local db = { version = 6, profiles = { A = {
+        theme = { moduleMedia = { quickdraw = { font = "F" } } },
+        modules = { quickdraw = { enabled = true, key = "SHIFT-Q" }, shifter = { enabled = true } } } } }
+    NS.Database.Migrate(db)
+    local profile = db.profiles.A
+    eq(profile.modules.radialmenu.key, "SHIFT-Q")
+    eq(profile.modules.movablewindows.enabled, true)
+    eq(profile.modules.quickdraw, nil)
+    eq(profile.modules.shifter, nil)
+    eq(profile.theme.moduleMedia.radialmenu.font, "F")
+end)
+
 test("migration en échec : la suivante est jouée, l'erreur figure dans /aeon diag", function()
     local Database = NS.Database
     local db = { version = 1, theme = {}, anchors = {}, modules = {}, profiles = "abîmé" }

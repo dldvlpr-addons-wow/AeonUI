@@ -15,7 +15,7 @@ local _, NS = ...
 local Database = {}
 NS.Database = Database
 
-Database.VERSION = 6
+Database.VERSION = 7
 Database.DEFAULT_PROFILE = "Default"
 
 Database.GLOBAL_DEFAULTS = {
@@ -79,6 +79,22 @@ function Database.DeepCopy(value)
     local copy = {}
     for k, v in pairs(value) do copy[k] = Database.DeepCopy(v) end
     return copy
+end
+
+local RENAMED_MODULES = { quickdraw = "radialmenu", shifter = "movablewindows" }
+
+--- Réglages d'un module renommé repris sous son nouveau nom. Joué par la migration v7 et à
+-- l'import : les chaînes de profil ne portent pas de version.
+function Database.RenameModules(profile)
+    if type(profile) ~= "table" then return end
+    local media = type(profile.theme) == "table" and type(profile.theme.moduleMedia) == "table"
+        and profile.theme.moduleMedia or {}
+    for old, new in pairs(RENAMED_MODULES) do
+        if type(profile.modules) == "table" and profile.modules[new] == nil then
+            profile.modules[new], profile.modules[old] = profile.modules[old], nil
+        end
+        if media[new] == nil then media[new], media[old] = media[old], nil end
+    end
 end
 
 -- [version cible] = function(db)
@@ -159,6 +175,10 @@ Database.MIGRATIONS = {
                 end
             end
         end
+    end,
+    -- v6 -> v7 : modules renommés, réglages et police propre suivent le nouveau nom.
+    [7] = function(db)
+        for _, profile in pairs(db.profiles or {}) do Database.RenameModules(profile) end
     end,
 }
 
@@ -564,9 +584,9 @@ Database.SENSITIVE = {
     "modules.automation.repair", "modules.automation.repairGuild", "modules.automation.sellJunk",
     "modules.automation.acceptInvites", "modules.automation.autoQuests", "modules.automation.fastDelete",
     "modules.automation.announceReset",   -- message envoyé au groupe au nom du joueur
-    "modules.quickdraw.key",   -- une touche reçue (W, ÉCHAP) prendrait la place d'un raccourci du joueur
-    "modules.quickdraw.palettes.palette2.key", "modules.quickdraw.palettes.palette3.key",
-    "modules.quickdraw.palettes.palette4.key",
+    "modules.radialmenu.key",   -- une touche reçue (W, ÉCHAP) prendrait la place d'un raccourci du joueur
+    "modules.radialmenu.palettes.palette2.key", "modules.radialmenu.palettes.palette3.key",
+    "modules.radialmenu.palettes.palette4.key",
     "modules.raidutility.countdownKey", "modules.raidutility.countdown2Key", "modules.raidutility.countdown3Key",
 }
 local ANCHOR_LIMIT = 10000
@@ -646,11 +666,13 @@ function Database:ImportProfile(text, allowAccount)
     local name = self:ActiveProfileName()
     local current = self.global.profiles[name]
     DropNonFinite(imported, 0)
+    self.RenameModules(imported)
     if imported.account then
         -- Export du compte : chaque profil créé ou remplacé sous son nom, le profil actif compris.
         for profileName, profile in pairs(type(imported.profiles) == "table" and imported.profiles or {}) do
             local valid = self.ValidProfileName(profileName)
             if valid and type(profile) == "table" then
+                self.RenameModules(profile)
                 local mine = self.global.profiles[valid] or current
                 self.global.profiles[valid] = self.Sanitize(self.FillProfile(profile), mine)
             end

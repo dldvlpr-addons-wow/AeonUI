@@ -1,4 +1,4 @@
--- Modules/Quickdraw.lua
+-- Modules/RadialMenu.lua
 -- Menu radial : maintenir une touche ouvre un anneau (ou une grille) d'entrées autour du
 -- curseur, relâcher sur une entrée la lance. Entrées : sorts, objets, macros, montures, et
 -- sous-menus (« menu:2 ») : survoler l'entrée un instant ouvre la palette 2 à sa place.
@@ -13,9 +13,9 @@ local _, NS = ...
 local L = NS.L
 local Media = NS.Media
 
-local Quickdraw = NS.Modules:Register("quickdraw", {
-    titleKey = "QUICKDRAW_TITLE",
-    descKey = "QUICKDRAW_DESC",
+local RadialMenu = NS.Modules:Register("radialmenu", {
+    titleKey = "RADIAL_MENU_TITLE",
+    descKey = "RADIAL_MENU_DESC",
     secure = true,
     defaults = {
         enabled = false,
@@ -51,7 +51,7 @@ local hovered, hoveredSince
 --------------------------------------------------------------------------------
 
 --- Texte des options -> liste { kind, value } (lignes invalides ignorées, 16 au plus).
-function Quickdraw.ParseEntries(text)
+function RadialMenu.ParseEntries(text)
     local list = {}
     for line in (text or ""):gmatch("[^\r\n]+") do
         local kind, value = line:match("^%s*(%a+)%s*:%s*(.-)%s*$")
@@ -68,7 +68,7 @@ function Quickdraw.ParseEntries(text)
 end
 
 --- Position (x, y) de l'entrée `index` sur `count`, par rapport au centre de la palette.
-function Quickdraw.SlotPosition(layout, index, count, radius, size)
+function RadialMenu.SlotPosition(layout, index, count, radius, size)
     if layout == "grid" then
         local columns = math.ceil(math.sqrt(count))
         local rows = math.ceil(count / columns)
@@ -88,11 +88,11 @@ function Quickdraw.SlotPosition(layout, index, count, radius, size)
 end
 
 --- Entrée visée par un curseur décalé de (dx, dy) : la plus proche, nil dans la zone morte.
-function Quickdraw.Pick(layout, dx, dy, count, radius, size)
+function RadialMenu.Pick(layout, dx, dy, count, radius, size)
     if count == 0 or (dx * dx + dy * dy) < DEADZONE * DEADZONE then return nil end
     local best, bestDistance
     for i = 1, count do
-        local x, y = Quickdraw.SlotPosition(layout, i, count, radius, size)
+        local x, y = RadialMenu.SlotPosition(layout, i, count, radius, size)
         local distance
         if layout == "grid" then
             distance = (dx - x) ^ 2 + (dy - y) ^ 2
@@ -111,7 +111,7 @@ end
 --------------------------------------------------------------------------------
 
 --- Réglages de la palette `index` : la première à la racine, les autres dans `palettes`.
-function Quickdraw:PaletteConfig(index)
+function RadialMenu:PaletteConfig(index)
     if index == 1 then return self.db end
     return self.db.palettes["palette" .. index]
 end
@@ -139,16 +139,16 @@ local function EntryIcon(entry)
 end
 
 --- Nom affiché de l'entrée survolée ; nil si le client ne le connaît pas encore.
-function Quickdraw.EntryName(entry)
+function RadialMenu.EntryName(entry)
     if entry.kind == "spell" then return NS.GetSpellName(entry.value) end
     if entry.kind == "item" then
         if C_Item and C_Item.GetItemNameByID then return C_Item.GetItemNameByID(entry.value) end
         return C_Item and C_Item.GetItemInfo and (C_Item.GetItemInfo(entry.value)) or nil
     end
     if entry.kind == "macro" then return entry.value end
-    if entry.kind == "menu" then return string.format(L.QUICKDRAW_SUBMENU, entry.value) end
-    if entry.kind == "marker" then return entry.value > 0 and _G["RAID_TARGET_" .. entry.value] or L.QUICKDRAW_MARKER_CLEAR end
-    if entry.kind == "mount" and entry.value == 0 then return L.QUICKDRAW_RANDOM_MOUNT end
+    if entry.kind == "menu" then return string.format(L.RADIAL_MENU_SUBMENU, entry.value) end
+    if entry.kind == "marker" then return entry.value > 0 and _G["RAID_TARGET_" .. entry.value] or L.RADIAL_MENU_MARKER_CLEAR end
+    if entry.kind == "mount" and entry.value == 0 then return L.RADIAL_MENU_RANDOM_MOUNT end
     if entry.kind == "mount" and C_MountJournal and C_MountJournal.GetMountInfoByID then
         return (C_MountJournal.GetMountInfoByID(entry.value))
     end
@@ -156,7 +156,7 @@ function Quickdraw.EntryName(entry)
 end
 
 --- Attributs du bouton sécurisé pour une entrée ; nil pour une monture (appel direct) ou un sous-menu.
-function Quickdraw.Attributes(entry)
+function RadialMenu.Attributes(entry)
     if entry.kind == "spell" then return "spell", "spell", entry.value end
     if entry.kind == "item" then return "item", "item", "item:" .. entry.value end
     if entry.kind == "macro" then return "macro", "macro", entry.value end
@@ -164,7 +164,7 @@ function Quickdraw.Attributes(entry)
 end
 
 --- Ligne d'entrée pour ce que le joueur tient sur le curseur (sort, objet, macro, monture).
-function Quickdraw.CursorEntry()
+function RadialMenu.CursorEntry()
     if not _G.GetCursorInfo then return nil end
     local kind, a, b, c = GetCursorInfo()
     if kind == "spell" then
@@ -186,7 +186,7 @@ end
 --------------------------------------------------------------------------------
 
 local function Paint()
-    local db = Quickdraw.db
+    local db = RadialMenu.db
     local selection = db.selectionColor
     local border = NS.db.theme.border
     for i, icon in ipairs(icons) do
@@ -198,17 +198,17 @@ local function Paint()
         end
     end
     local entry = hovered and entries[hovered]
-    palette.label:SetText(db.showLabel and entry and Quickdraw.EntryName(entry) or "")
+    palette.label:SetText(db.showLabel and entry and RadialMenu.EntryName(entry) or "")
 end
 
 local Open
 
 local function Track()
-    local db = Quickdraw.db
+    local db = RadialMenu.db
     local x, y = GetCursorPosition()
     local scale = UIParent:GetEffectiveScale()
     local dx, dy = x / scale - palette.cx, y / scale - palette.cy
-    local pick = Quickdraw.Pick(db.layout, dx, dy, #entries, db.radius, db.iconSize)
+    local pick = RadialMenu.Pick(db.layout, dx, dy, #entries, db.radius, db.iconSize)
     if pick ~= hovered then
         hovered, hoveredSince = pick, GetTime()
         Paint()
@@ -217,14 +217,14 @@ local function Track()
     local entry = hovered and entries[hovered]
     if entry and entry.kind == "menu" and entry.value ~= current and #(lists[entry.value] or {}) > 0
         and GetTime() - hoveredSince >= SUBMENU_DELAY then
-        local sx, sy = Quickdraw.SlotPosition(db.layout, hovered, #entries, db.radius, db.iconSize)
+        local sx, sy = RadialMenu.SlotPosition(db.layout, hovered, #entries, db.radius, db.iconSize)
         Open(entry.value, palette.cx + sx, palette.cy + sy)
     end
 end
 
 --- Ouvre la palette `index`, centrée sur (x, y) ou, par défaut, sur le curseur.
 function Open(index, x, y)
-    local db = Quickdraw.db
+    local db = RadialMenu.db
     current, entries = index, lists[index] or {}
     if not x then
         local scale = UIParent:GetEffectiveScale()
@@ -245,7 +245,7 @@ function Open(index, x, y)
         end
         icon:SetSize(db.iconSize, db.iconSize)
         icon:ClearAllPoints()
-        icon:SetPoint("CENTER", palette, "CENTER", Quickdraw.SlotPosition(db.layout, i, #entries, db.radius, db.iconSize))
+        icon:SetPoint("CENTER", palette, "CENTER", RadialMenu.SlotPosition(db.layout, i, #entries, db.radius, db.iconSize))
         icon.texture:SetTexture(EntryIcon(entry) or 134400)
         icon:Show()
     end
@@ -261,7 +261,7 @@ local function Close()
 end
 
 local function Build()
-    palette = CreateFrame("Frame", "AeonUIQuickdrawPalette", UIParent)
+    palette = CreateFrame("Frame", "AeonUIRadialMenuPalette", UIParent)
     palette:SetFrameStrata("DIALOG")
     palette:SetSize(1, 1)
     palette.label = Media:CreateText(palette, "OVERLAY", 2)
@@ -269,7 +269,7 @@ local function Build()
     palette:SetScript("OnUpdate", Track)
     palette:Hide()
 
-    button = CreateFrame("Button", "AeonUIQuickdrawButton", UIParent, "SecureActionButtonTemplate")
+    button = CreateFrame("Button", "AeonUIRadialMenuButton", UIParent, "SecureActionButtonTemplate")
     button:RegisterForClicks("AnyDown", "AnyUp")
     -- ActionButtonUseKeyDown à 1 : sans ceci, le modèle n'agit qu'à l'appui, avant nos attributs.
     button:SetAttribute("useOnKeyDown", false)
@@ -286,7 +286,7 @@ local function Build()
         Track()
         local entry = hovered and entries[hovered]
         if not entry then return end
-        local kind, attribute, value = Quickdraw.Attributes(entry)
+        local kind, attribute, value = RadialMenu.Attributes(entry)
         if kind then
             self:SetAttribute("type", kind)
             self:SetAttribute(attribute, value)
@@ -303,10 +303,10 @@ local function Build()
     end)
 end
 
-function Quickdraw:GetButton() return button, palette end
+function RadialMenu:GetButton() return button, palette end
 
 --- Relie la touche au bouton (hors combat : SetOverrideBindingClick est protégé).
-function Quickdraw:Bind(on)
+function RadialMenu:Bind(on)
     NS:RunOutOfCombat(function()
         ClearOverrideBindings(button)
         for index = 1, on and PALETTE_COUNT or 0 do
@@ -320,57 +320,57 @@ function Quickdraw:Bind(on)
 end
 
 local function ReadLists()
-    for index = 1, PALETTE_COUNT do lists[index] = Quickdraw.ParseEntries(Quickdraw:PaletteConfig(index).entries) end
+    for index = 1, PALETTE_COUNT do lists[index] = RadialMenu.ParseEntries(RadialMenu:PaletteConfig(index).entries) end
 end
 
-function Quickdraw:OnEnable()
+function RadialMenu:OnEnable()
     if not button then Build() end
     ReadLists()
     self:Bind(true)
 end
 
-function Quickdraw:OnDisable()
+function RadialMenu:OnDisable()
     if not button then return end
     Close()
     self:Bind(false)
 end
 
-function Quickdraw:OnRefresh()
+function RadialMenu:OnRefresh()
     ReadLists()
     self:Bind(true)
 end
 
-function Quickdraw:BuildOptions(o)
-    o:Note(L.QUICKDRAW_NOTE)
-    o:EditBox("key", L.OPT_QUICKDRAW_KEY, 1)
-    o:Dropdown("layout", L.OPT_QUICKDRAW_LAYOUT, {
-        { name = L.OPT_QUICKDRAW_ARC, value = "arc" }, { name = L.OPT_QUICKDRAW_FAN, value = "fan" },
-        { name = L.OPT_QUICKDRAW_GRID, value = "grid" },
+function RadialMenu:BuildOptions(o)
+    o:Note(L.RADIAL_MENU_NOTE)
+    o:EditBox("key", L.OPT_RADIAL_MENU_KEY, 1)
+    o:Dropdown("layout", L.OPT_RADIAL_MENU_LAYOUT, {
+        { name = L.OPT_RADIAL_MENU_ARC, value = "arc" }, { name = L.OPT_RADIAL_MENU_FAN, value = "fan" },
+        { name = L.OPT_RADIAL_MENU_GRID, value = "grid" },
     })
     o:Advanced()
-    o:Slider("radius", L.OPT_QUICKDRAW_RADIUS, 50, 200, 5)
+    o:Slider("radius", L.OPT_RADIAL_MENU_RADIUS, 50, 200, 5)
     o:EndAdvanced()
-    o:Slider("iconSize", L.OPT_QUICKDRAW_ICON_SIZE, 20, 64, 2)
-    o:Color("selectionColor", L.OPT_QUICKDRAW_SELECTION_COLOR)
-    o:Check("showLabel", L.OPT_QUICKDRAW_SHOW_LABEL)
-    o:Title(L.OPT_QUICKDRAW_ENTRIES)
-    o:Note(L.OPT_QUICKDRAW_ENTRIES_HINT)
-    o:Note(L.OPT_QUICKDRAW_SUBMENU_HINT)
+    o:Slider("iconSize", L.OPT_RADIAL_MENU_ICON_SIZE, 20, 64, 2)
+    o:Color("selectionColor", L.OPT_RADIAL_MENU_SELECTION_COLOR)
+    o:Check("showLabel", L.OPT_RADIAL_MENU_SHOW_LABEL)
+    o:Title(L.OPT_RADIAL_MENU_ENTRIES)
+    o:Note(L.OPT_RADIAL_MENU_ENTRIES_HINT)
+    o:Note(L.OPT_RADIAL_MENU_SUBMENU_HINT)
     for index = 1, PALETTE_COUNT do
         local prefix = index == 1 and "" or ("palettes.palette" .. index .. ".")
         if index > 1 then
-            o:Title(string.format(L.QUICKDRAW_SUBMENU, index))
-            o:EditBox(prefix .. "key", L.OPT_QUICKDRAW_KEY, 1)
+            o:Title(string.format(L.RADIAL_MENU_SUBMENU, index))
+            o:EditBox(prefix .. "key", L.OPT_RADIAL_MENU_KEY, 1)
         end
-        o:EditBox(prefix .. "entries", L.OPT_QUICKDRAW_ENTRIES, index == 1 and 8 or 5)
-        o:Button(L.OPT_QUICKDRAW_ADD_CURSOR, function()
-            local line = Quickdraw.CursorEntry()
-            if not line then NS.Print(L.MSG_QUICKDRAW_CURSOR_EMPTY) return end
+        o:EditBox(prefix .. "entries", L.OPT_RADIAL_MENU_ENTRIES, index == 1 and 8 or 5)
+        o:Button(L.OPT_RADIAL_MENU_ADD_CURSOR, function()
+            local line = RadialMenu.CursorEntry()
+            if not line then NS.Print(L.MSG_RADIAL_MENU_CURSOR_EMPTY) return end
             local config = self:PaletteConfig(index)
             local text = config.entries
             config.entries = (text ~= "" and not text:find("\n$") and (text .. "\n") or text) .. line
             if ClearCursor then ClearCursor() end
-            NS.Modules:Refresh("quickdraw")
+            NS.Modules:Refresh("radialmenu")
             NS.Options:Refresh()
         end)
     end

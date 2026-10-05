@@ -1,4 +1,4 @@
--- Modules/Shifter.lua
+-- Modules/MovableWindows.lua
 -- Fenêtres Blizzard déplaçables à la souris : Maj + glisser pose la fenêtre pour de bon (gardé
 -- dans le profil), Ctrl + glisser pour cette ouverture seulement. La position est reposée à
 -- chaque ouverture et après le rangement des panneaux par Blizzard (UpdateUIPanelPositions).
@@ -6,9 +6,9 @@
 local _, NS = ...
 local L = NS.L
 
-local Shifter = NS.Modules:Register("shifter", {
-    titleKey = "SHIFTER_TITLE",
-    descKey = "SHIFTER_DESC",
+local MovableWindows = NS.Modules:Register("movablewindows", {
+    titleKey = "MOVABLE_WINDOWS_TITLE",
+    descKey = "MOVABLE_WINDOWS_DESC",
     defaults = {
         enabled = false,
         positions = {},           -- [nom du cadre] = { point, relativePoint, x, y } (relatif à UIParent)
@@ -36,9 +36,9 @@ local function Place(frame, position)
 end
 
 --- Repose la position gardée (ouverture en cours d'abord) ; rien en combat.
-function Shifter.Restore(frame)
+function MovableWindows.Restore(frame)
     if not active or NS.InCombat() then return end
-    local position = temporary[frame] or Shifter.db.positions[hooked[frame]]
+    local position = temporary[frame] or MovableWindows.db.positions[hooked[frame]]
     if position then Place(frame, position) end
 end
 
@@ -60,7 +60,7 @@ local function StopDrag(frame)
     if not point then return end
     local position = { point, relativePoint, x, y }
     if mode == "save" then
-        Shifter.db.positions[hooked[frame]] = position
+        MovableWindows.db.positions[hooked[frame]] = position
         temporary[frame] = nil
     else
         temporary[frame] = position
@@ -75,42 +75,42 @@ local function Hook(name)
     if frame.SetClampedToScreen then frame:SetClampedToScreen(true) end
     frame:HookScript("OnMouseDown", StartDrag)
     frame:HookScript("OnMouseUp", StopDrag)
-    frame:HookScript("OnShow", Shifter.Restore)
+    frame:HookScript("OnShow", MovableWindows.Restore)
     frame:HookScript("OnHide", function(self) temporary[self] = nil StopDrag(self) end)
 end
 
-function Shifter.HookAll()
+function MovableWindows.HookAll()
     if NS.InCombat() then return end   -- SetMovable d'un cadre protégé : refait hors combat
     for _, name in ipairs(FRAMES) do Hook(name) end
 end
 
-function Shifter.IsHooked(frame) return hooked[frame] ~= nil end
+function MovableWindows.IsHooked(frame) return hooked[frame] ~= nil end
 
 local panelsHooked = false
 local events = CreateFrame("Frame")
-events:SetScript("OnEvent", function() if active then Shifter.HookAll() end end)
+events:SetScript("OnEvent", function() if active then MovableWindows.HookAll() end end)
 
-function Shifter:OnEnable()
+function MovableWindows:OnEnable()
     active = true
-    Shifter.HookAll()
+    MovableWindows.HookAll()
     NS.RegisterEventSafe(events, "ADDON_LOADED")
     NS.RegisterEventSafe(events, "PLAYER_REGEN_ENABLED")
     if not panelsHooked and _G.UpdateUIPanelPositions then
         panelsHooked = true
         hooksecurefunc("UpdateUIPanelPositions", function()
             for frame in pairs(hooked) do
-                if frame:IsShown() then Shifter.Restore(frame) end
+                if frame:IsShown() then MovableWindows.Restore(frame) end
             end
         end)
     end
 end
 
-function Shifter:OnDisable()
+function MovableWindows:OnDisable()
     active = false
     events:UnregisterAllEvents()
 end
 
-function Shifter:BuildOptions(o)
-    o.layout:Note(L.NOTE_SHIFTER, 20)
-    o:Button(L.OPT_SHIFTER_RESET, function() Shifter.db.positions = {} end, 20)
+function MovableWindows:BuildOptions(o)
+    o.layout:Note(L.NOTE_MOVABLE_WINDOWS, 20)
+    o:Button(L.OPT_MOVABLE_WINDOWS_RESET, function() MovableWindows.db.positions = {} end, 20)
 end

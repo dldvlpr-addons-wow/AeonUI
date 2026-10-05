@@ -38,7 +38,7 @@ Unofficial addon, not affiliated with Blizzard Entertainment. World of Warcraft 
 | **Resource bars** | Health (option), power, combo points and druid form mana in separate bars, each on its own mover: width, heights, text, class color, threshold marker, always visible or only in combat / with a hostile target, opacity out of combat. | off |
 | **Swing timer** | One bar per weapon (main hand, off hand, ranged) counting down to the next swing, a separate color when a next-swing attack is queued. Needs the client's `PLAYER_SWING` event: without it, the module is inactive (says so in its options). | off |
 | **Raid cooldowns** | In-combat combat res charges for the group in an instance, and your Bloodlust / Heroism lockout. Shows nothing until the client provides this data (Classic content). | off |
-| **Quickdraw** | Hold a key: spells, items, macros and mounts in a ring or grid around the cursor, release over one to cast it. Out of combat only (the client doesn't compile the secure code this needs in combat). | off |
+| **Radial menu** | Hold a key: spells, items, macros and mounts in a ring or grid around the cursor, release over one to cast it. Out of combat only (the client doesn't compile the secure code this needs in combat). | off |
 | **Other tank** | In a raid, the other tank's health bar, clickable to target them, their debuffs below when the client lets you read them: all, important (boss or dispellable by you), or dispellable only, with stack count. | off |
 | **Tracker by ID** | Row of icons for spells and auras chosen by ID: a buff on you or a debuff you put on the target (duration, stacks), otherwise the spell's cooldown; movable. In combat, the game often hides auras. | off |
 | **Group finder** | One-click sign-up when a single role is checked (Shift: manually), remembered application note. | off |
@@ -343,7 +343,7 @@ Syntax, the headless suite (303 tests against a client mock) and `.toc` ↔ file
 95. Profile by spec: link a spec to another profile (Profiles > Profile by specialization), change spec: the profile switches and the chat announces it.
 96. Export per module: uncheck everything but one module, export (an `AEON2:` string), import on another character: only that module changes.
 97. Diagnostic: check for `C_SwingTimer`, `GetSpecialization`, `GetActiveTalentGroup`; Swing timer inactive if `C_SwingTimer` is missing.
-98. Quickdraw: SHIFT-Q key, entries added from the cursor; out of combat releasing it casts the hovered entry; in combat the key does nothing.
+98. Radial menu: SHIFT-Q key, entries added from the cursor; out of combat releasing it casts the hovered entry; in combat the key does nothing.
 99. Look "Character sheet and friends window in the theme": flat background, quality borders; unchecking restores the Blizzard art.
 100. Client in German, Russian or Chinese: translated options window, readable characters.
 

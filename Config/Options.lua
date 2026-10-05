@@ -1174,9 +1174,9 @@ local MODULE_GROUPS = {
     frames = { "unitframes", "frames", "groupframes", "nameplateframes", "nameplates", "resourcebars", "gcdbar",
                "swingtimer", "cotank", "clickcast" },
     combat = { "actionbars", "cooldownmanager", "cooldownbars", "aurabars", "tracker", "raidcooldowns", "reminders",
-               "alerts", "movementalert", "quickdraw" },
+               "alerts", "movementalert", "radialmenu" },
     interface = { "topbar", "datapanels", "databars", "minimap", "chat", "chatbubbles", "questtracker", "bags", "bank",
-                  "loot", "cursor", "blizzardframes", "shifter", "skin", "interface", "gear" },
+                  "loot", "cursor", "blizzardframes", "movablewindows", "skin", "interface", "gear" },
     qol = { "automation", "afk", "groupfinder", "raidutility" },
 }
 local groupByModule = {}

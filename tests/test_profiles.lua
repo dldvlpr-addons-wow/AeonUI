@@ -34,6 +34,19 @@ test("profils : un export partiel ne change que ses sections à l'import", funct
     eq(NS.db, original)
 end)
 
+test("profils : chaîne antérieure à la v7, réglages des modules renommés repris", function()
+    reset()
+    local name, original = Database:ActiveProfileName(), NS.db
+    local text = Database.Serialize({ modules = {
+        quickdraw = { enabled = true, entries = "spell:133", layout = "grid" }, shifter = { enabled = true } } })
+    local profile = Database:ImportProfile(text)
+    NS.global.profiles[name] = original
+    eq(profile.modules.radialmenu.entries, "spell:133")
+    eq(profile.modules.radialmenu.layout, "grid")
+    eq(profile.modules.movablewindows.enabled, true)
+    eq(profile.modules.quickdraw, nil, "ancienne clé retirée")
+end)
+
 test("profils : renommer, dupliquer, raccourci par profil", function()
     reset()
     local char = Database.CharacterKey()

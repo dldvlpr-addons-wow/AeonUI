@@ -187,10 +187,10 @@ end)
 
 test("fenêtres déplaçables : Maj garde la place, Ctrl pour cette ouverture, rien sans touche ni en combat", function()
     reset()
-    local Shifter = NS.Modules:Get("shifter")
+    local MovableWindows = NS.Modules:Get("movablewindows")
     local frame = _G.MerchantFrame or CreateFrame("Frame", "MerchantFrame", UIParent)
-    NS.Modules:SetEnabled("shifter", true)
-    truthy(Shifter.IsHooked(frame), "fenêtre prise en charge")
+    NS.Modules:SetEnabled("movablewindows", true)
+    truthy(MovableWindows.IsHooked(frame), "fenêtre prise en charge")
     local function Drag(x, y)
         frame:GetScript("OnMouseDown")(frame, "LeftButton")
         frame:ClearAllPoints()
@@ -198,11 +198,11 @@ test("fenêtres déplaçables : Maj garde la place, Ctrl pour cette ouverture, r
         frame:GetScript("OnMouseUp")(frame, "LeftButton")
     end
     Drag(10, 10)
-    eq(NS.db.modules.shifter.positions.MerchantFrame, nil, "sans touche : rien")
+    eq(NS.db.modules.movablewindows.positions.MerchantFrame, nil, "sans touche : rien")
     Mock.shift = true
     Drag(100, 500)
     Mock.shift = false
-    eq(NS.db.modules.shifter.positions.MerchantFrame[3], 100, "Maj : gardée")
+    eq(NS.db.modules.movablewindows.positions.MerchantFrame[3], 100, "Maj : gardée")
     Mock.ctrl = true
     Drag(300, 400)
     Mock.ctrl = false
@@ -217,8 +217,8 @@ test("fenêtres déplaçables : Maj garde la place, Ctrl pour cette ouverture, r
     frame:GetScript("OnShow")(frame)
     eq(frame:GetPoint(1), nil, "combat : pas touchée")
     Mock.SetCombat(false)
-    NS.db.modules.shifter.positions = {}
-    NS.Modules:SetEnabled("shifter", false)
+    NS.db.modules.movablewindows.positions = {}
+    NS.Modules:SetEnabled("movablewindows", false)
 end)
 
 test("barres d'auras : la plus courte en tête, débuff au type, permanentes écartées, temps qui défile", function()

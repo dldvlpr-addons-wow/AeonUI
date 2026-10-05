@@ -477,16 +477,16 @@ end)
 
 test("profil importé : la touche du menu radial reste celle du joueur", function()
     reset()
-    NS.db.modules.quickdraw.key = "SHIFT-Q"
+    NS.db.modules.radialmenu.key = "SHIFT-Q"
     local copy = NS.Database.DeepCopy(NS.db)
-    copy.modules.quickdraw.key = "W"
+    copy.modules.radialmenu.key = "W"
     copy.modules.raidutility.countdownKey = "W"
     -- Même chemin que ImportProfile, sans remplacer le profil actif (les modules gardent leur table).
     local imported = NS.Database.Deserialize(NS.Database.Export(copy))
     local profile = NS.Database.Sanitize(NS.Database.FillProfile(imported), NS.db)
-    eq(profile.modules.quickdraw.key, "SHIFT-Q")
+    eq(profile.modules.radialmenu.key, "SHIFT-Q")
     eq(profile.modules.raidutility.countdownKey, "", "touche du compte à rebours gardée")
-    NS.db.modules.quickdraw.key = ""
+    NS.db.modules.radialmenu.key = ""
 end)
 
 test("movers : aimant en direct pendant le glisser, lignes guides, interrupteur", function()

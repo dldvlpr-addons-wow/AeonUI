@@ -111,7 +111,7 @@ local FILES = {
     "tests/test_profiles.lua",
     "tests/test_resourcebars.lua",
     "tests/test_raidcooldowns.lua",
-    "tests/test_quickdraw.lua",
+    "tests/test_radial_menu.lua",
     "tests/test_skinwindows.lua",
 }
 for _, file in ipairs(FILES) do
