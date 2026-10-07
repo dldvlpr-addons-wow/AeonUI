@@ -987,6 +987,8 @@ NS.locales.koKR = {
     OPT_CAST_TARGET = "시전 바: 주문 대상 표시",
     OPT_CAST_INTERRUPT_READY = "차단 기술이 준비되면 시전 바 색상 변경",
     OPT_CAST_INTERRUPT_READY_COLOR = "차단 준비 색상",
+    OPT_CAST_IMPORTANT = "주문이 중요로 표시되면 시전 바 색상 변경",
+    OPT_CAST_IMPORTANT_COLOR = "중요 주문 색상",
     -- Utilitaire de raid : trois comptes à rebours, conversion, dissolution
     RAIDUTILITY_SECONDS = "%d초",
     RAIDUTILITY_TO_RAID = "공격대로 전환",

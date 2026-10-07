@@ -987,6 +987,8 @@ NS.locales.itIT = {
     OPT_CAST_TARGET = "Barra di lancio: bersaglio dell'incantesimo",
     OPT_CAST_INTERRUPT_READY = "Barra di lancio colorata quando la tua interruzione è pronta",
     OPT_CAST_INTERRUPT_READY_COLOR = "Colore «interruzione pronta»",
+    OPT_CAST_IMPORTANT = "Barra di lancio colorata quando l'incantesimo è segnato come importante",
+    OPT_CAST_IMPORTANT_COLOR = "Colore «incantesimo importante»",
     -- Utilitaire de raid : trois comptes à rebours, conversion, dissolution
     RAIDUTILITY_SECONDS = "%d s",
     RAIDUTILITY_TO_RAID = "Converti in incursione",

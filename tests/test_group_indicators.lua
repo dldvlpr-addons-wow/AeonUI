@@ -111,6 +111,35 @@ test("indicateurs : prédiction de soins et absorption, valeurs secrètes passé
     Disable()
 end)
 
+test("indicateurs : prédiction de soins par le calculateur du moteur, montants plafonnés", function()
+    reset()
+    Enable()
+    Mock.SetGroup(2, false)
+    local ami = GF:GetButton("party1")
+    local modes = {}
+    local secret = Mock.SetSecret(25)
+    _G.Enum.UnitIncomingHealClampMode = { MissingHealth = 0, MaximumHealth = 1 }
+    _G.CreateUnitHealPredictionCalculator = function()
+        return {
+            SetIncomingHealClampMode = function(_, mode) modes.incoming = mode end,
+            GetIncomingHeals = function(self) return self.unit == "party1" and 80 or nil end,
+            GetDamageAbsorbs = function() return secret end,
+            GetHealAbsorbs = function() return nil end,
+        }
+    end
+    _G.UnitGetDetailedHealPrediction = function(unit, healer, calc) calc.unit = unit end
+    _G.UnitGetIncomingHeals = function() return 999 end
+    Mock.FireEvent("UNIT_HEAL_PREDICTION", "party1")
+    eq(modes.incoming, 0, "soins entrants plafonnés à la vie manquante")
+    truthy(ami.healPrediction:IsShown())
+    eq(ami.healPrediction:GetValue(), 80, "montant du calculateur, pas de l'API simple")
+    eq(ami.absorb:GetValue(), secret, "absorption secrète posée telle quelle")
+    _G.CreateUnitHealPredictionCalculator, _G.UnitGetDetailedHealPrediction = nil, nil
+    _G.UnitGetIncomingHeals, _G.Enum.UnitIncomingHealClampMode = nil, nil
+    Mock.secret = {}
+    Disable()
+end)
+
 test("indicateurs : cadres des tanks principaux, unité présente deux fois", function()
     reset()
     Enable()

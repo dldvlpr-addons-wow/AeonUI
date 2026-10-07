@@ -84,7 +84,12 @@ function CooldownBars:UpdateBar(index)
             if icon.texture.SetDesaturated then icon.texture:SetDesaturated(cfg.desaturate and not ready) end
             NS.SetSpellCooldown(icon.cooldown, spell.id)
             local current, max = NS.GetSpellCharges(spell.id)
-            icon.count:SetText((current and max and max > 1) and tostring(current) or "")
+            if NS.IsSecret(current) then
+                -- combat : le moteur affiche, rien n'est comparé
+                if max > 1 then icon.count:SetText(current) else icon.count:SetText("") end
+            else
+                icon.count:SetText((current and max and max > 1) and tostring(current) or "")
+            end
             icon:Show()
         end
     end

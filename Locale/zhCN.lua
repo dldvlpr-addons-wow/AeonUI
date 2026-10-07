@@ -987,6 +987,8 @@ NS.locales.zhCN = {
     OPT_CAST_TARGET = "施法条：显示法术目标",
     OPT_CAST_INTERRUPT_READY = "打断技能就绪时为施法条着色",
     OPT_CAST_INTERRUPT_READY_COLOR = "打断就绪颜色",
+    OPT_CAST_IMPORTANT = "法术被标记为重要时为施法条着色",
+    OPT_CAST_IMPORTANT_COLOR = "重要法术颜色",
     -- Utilitaire de raid : trois comptes à rebours, conversion, dissolution
     RAIDUTILITY_SECONDS = "%d秒",
     RAIDUTILITY_TO_RAID = "转化为团队",

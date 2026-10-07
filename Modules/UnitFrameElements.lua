@@ -629,24 +629,39 @@ local function Amount(name, unit)
     return value or 0
 end
 
-local function UpdatePredictionBar(bar, api, on, unit)
-    if on and _G[api] then
+local function UpdatePredictionBar(bar, on, unit, amount)
+    if on then
         bar:SetMinMaxValues(0, UnitHealthMax(unit))
-        bar:SetValue(Amount(api, unit))
+        bar:SetValue(amount)
         bar:Show()
     else
         bar:Hide()
     end
 end
 
+local function UpdatePredictionBarFromApi(bar, api, on, unit)
+    on = on and _G[api]
+    UpdatePredictionBar(bar, on, unit, on and Amount(api, unit))
+end
+
 --- Soins entrants et absorptions (global.healPrediction), valeurs peut-être secrètes : les barres
--- les reçoivent sans comparaison. Sans l'API du client, barre cachée.
+-- les reçoivent sans comparaison. Calculateur du moteur si présent (montants plafonnés), sinon
+-- les API simples ; sans aucune, barre cachée.
 function Elements.UpdateHealPrediction(frame)
     if not frame.healPrediction then return end
     local on = frame.global and frame.global.healPrediction
-    UpdatePredictionBar(frame.healPrediction, "UnitGetIncomingHeals", on, frame.unit)
-    UpdatePredictionBar(frame.absorb, "UnitGetTotalAbsorbs", on, frame.unit)
-    if frame.healAbsorb then UpdatePredictionBar(frame.healAbsorb, "UnitGetTotalHealAbsorbs", on, frame.unit) end
+    local unit = frame.unit
+    local incoming, absorb, healAbsorb
+    if on then incoming, absorb, healAbsorb = NS.GetHealPrediction(frame, unit) end
+    if isSecret(incoming) or incoming ~= nil then
+        UpdatePredictionBar(frame.healPrediction, on, unit, incoming)
+        UpdatePredictionBar(frame.absorb, on, unit, absorb)
+        if frame.healAbsorb then UpdatePredictionBar(frame.healAbsorb, on, unit, healAbsorb) end
+        return
+    end
+    UpdatePredictionBarFromApi(frame.healPrediction, "UnitGetIncomingHeals", on, unit)
+    UpdatePredictionBarFromApi(frame.absorb, "UnitGetTotalAbsorbs", on, unit)
+    if frame.healAbsorb then UpdatePredictionBarFromApi(frame.healAbsorb, "UnitGetTotalHealAbsorbs", on, unit) end
 end
 
 --- Portrait 2D de l'unité (cfg.portrait).
@@ -1007,6 +1022,7 @@ function Elements.StartCast(frame)
     end
     if isSecret(texture) or texture ~= nil then bar.icon:SetTexture(texture) else bar.icon:SetTexture(QUESTION_ICON) end
     bar.notInterruptible = notInterruptible
+    bar.spellID = spellID
     Elements.UpdateCastColor(frame)
 
     local durationApi = channeling and _G.UnitChannelDuration or _G.UnitCastingDuration
@@ -1030,13 +1046,20 @@ end
 local UNINTERRUPTIBLE = { 0.6, 0.6, 0.6 }
 
 --- Couleur de la barre : grise si non interruptible (drapeau peut-être secret : le moteur choisit),
--- sinon l'accent, ou la couleur « interruption prête » quand l'interruption du joueur est disponible.
+-- sinon la couleur « sort important », sinon « interruption prête », sinon l'accent.
 function Elements.UpdateCastColor(frame)
     local bar = frame.castbar
     local r, g, b = Media:Accent()
     local global = frame.global
     if global and global.interruptReady and frame.unit ~= "player" then
         r, g, b = NS.InterruptReadyColor(global.interruptReadyColor, r, g, b)
+    end
+    if global and global.importantCast and frame.unit ~= "player" then
+        local important = NS.IsSpellImportant(bar.spellID)
+        if isSecret(important) or important ~= nil then
+            local c = global.importantCastColor
+            r, g, b = NS.ColorFromBoolean(important, c.r, c.g, c.b, r, g, b)
+        end
     end
     local locked = bar.notInterruptible
     if not isSecret(locked) and locked == nil then locked = false end

@@ -987,6 +987,8 @@ NS.locales.ptBR = {
     OPT_CAST_TARGET = "Barra de lançamento: alvo do feitiço",
     OPT_CAST_INTERRUPT_READY = "Barra de lançamento colorida quando sua interrupção estiver pronta",
     OPT_CAST_INTERRUPT_READY_COLOR = "Cor de “interrupção pronta”",
+    OPT_CAST_IMPORTANT = "Barra de lançamento colorida quando o feitiço é marcado como importante",
+    OPT_CAST_IMPORTANT_COLOR = "Cor de “feitiço importante”",
     -- Utilitaire de raid : trois comptes à rebours, conversion, dissolution
     RAIDUTILITY_SECONDS = "%d s",
     RAIDUTILITY_TO_RAID = "Converter em raide",

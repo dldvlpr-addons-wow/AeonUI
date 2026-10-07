@@ -74,6 +74,8 @@ local NamePlateFrames = NS.Modules:Register("nameplateframes", {
         castTarget = true,           -- barre d'incantation : cible du sort après son nom
         interruptReady = true,       -- barre d'incantation colorée quand ton interruption est prête
         interruptReadyColor = { r = 0.2, g = 0.85, b = 0.35 },
+        importantCast = true,        -- barre d'incantation colorée quand le sort est marqué important
+        importantCastColor = { r = 0.9, g = 0.3, b = 0.9 },
         styleRules = STYLE_RULES,    -- filtres de style, dans l'ordre de priorité
         friendlyNpcs = true,         -- plaques sur les PNJ alliés
         pets = true,                 -- plaques sur les familiers et gardiens
@@ -683,6 +685,10 @@ function NamePlateFrames:BuildOptions(o)
     o:Check("interruptReady", L.OPT_CAST_INTERRUPT_READY, 36)
     o:Advanced()
     o:Color("interruptReadyColor", L.OPT_CAST_INTERRUPT_READY_COLOR, 52)
+    o:EndAdvanced()
+    o:Check("importantCast", L.OPT_CAST_IMPORTANT, 36)
+    o:Advanced()
+    o:Color("importantCastColor", L.OPT_CAST_IMPORTANT_COLOR, 52)
     o:EndAdvanced()
     o:Check("showAuras", L.OPT_NPF_AURAS)
     o:Check("showBuffs", L.OPT_NPF_BUFFS, 36)

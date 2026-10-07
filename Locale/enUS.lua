@@ -988,6 +988,8 @@ NS.locales.enUS = {
     OPT_CAST_TARGET = "Cast bar: show the spell's target",
     OPT_CAST_INTERRUPT_READY = "Cast bar colored when your interrupt is ready",
     OPT_CAST_INTERRUPT_READY_COLOR = "Interrupt ready color",
+    OPT_CAST_IMPORTANT = "Cast bar colored when the spell is marked important",
+    OPT_CAST_IMPORTANT_COLOR = "Important spell color",
     -- Utilitaire de raid : trois comptes à rebours, conversion, dissolution
     RAIDUTILITY_SECONDS = "%d s",
     RAIDUTILITY_TO_RAID = "Convert to raid",

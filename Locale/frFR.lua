@@ -987,6 +987,8 @@ NS.locales.frFR = {
     OPT_CAST_TARGET = "Barre d'incantation : cible du sort",
     OPT_CAST_INTERRUPT_READY = "Barre d'incantation colorée quand ton interruption est prête",
     OPT_CAST_INTERRUPT_READY_COLOR = "Couleur « interruption prête »",
+    OPT_CAST_IMPORTANT = "Barre d'incantation colorée quand le sort est marqué important",
+    OPT_CAST_IMPORTANT_COLOR = "Couleur « sort important »",
     -- Utilitaire de raid : trois comptes à rebours, conversion, dissolution
     RAIDUTILITY_SECONDS = "%d s",
     RAIDUTILITY_TO_RAID = "Convertir en raid",

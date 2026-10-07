@@ -396,7 +396,8 @@ function NS.IsSpellReady(spellID)
 end
 
 --- Charges d'un sort : current, max, début, durée de recharge ; nil si le sort n'a pas de
--- charges ou si le nombre de charges est secret. Recharge secrète : début et durée à 0.
+-- charges ou si le maximum est secret. current peut être secret (combat) : l'appelant l'affiche
+-- sans le comparer (SetFormattedText). Recharge secrète : début et durée à 0.
 function NS.GetSpellCharges(spellID)
     local info
     if C_Spell and C_Spell.GetSpellCharges then
@@ -408,8 +409,8 @@ function NS.GetSpellCharges(spellID)
     if type(info) ~= "table" then return nil end
     local current, max = info.currentCharges, info.maxCharges
     local start, duration = info.cooldownStartTime, info.cooldownDuration
-    if isSecret(current) or isSecret(max) then return nil end
-    if type(current) ~= "number" or type(max) ~= "number" then return nil end
+    if isSecret(max) or type(max) ~= "number" then return nil end
+    if not isSecret(current) and type(current) ~= "number" then return nil end
     if isSecret(start) or isSecret(duration) then start, duration = 0, 0 end
     return current, max, start or 0, duration or 0
 end
@@ -1835,6 +1836,39 @@ function NS.ColorFromBoolean(value, r1, g1, b1, r2, g2, b2)
     local pick = _G.C_CurveUtil and C_CurveUtil.EvaluateColorValueFromBoolean
     if not pick then return r2, g2, b2 end
     return pick(value, r1, r2), pick(value, g1, g2), pick(value, b1, b2)
+end
+
+--- Soins entrants, absorptions et soins absorbés calculés par le moteur (plafonnés à la vie
+-- manquante, peut-être secrets) ; nil sans l'API. Un calculateur par cadre, gardé dans holder.
+function NS.GetHealPrediction(holder, unit)
+    local create, fill = _G.CreateUnitHealPredictionCalculator, _G.UnitGetDetailedHealPrediction
+    if not (create and fill) then return nil end
+    local calc = holder.healCalculator
+    if not calc then
+        calc = create()
+        holder.healCalculator = calc
+        local enum = _G.Enum or {}
+        if enum.UnitIncomingHealClampMode then
+            pcall(calc.SetIncomingHealClampMode, calc, enum.UnitIncomingHealClampMode.MissingHealth)
+        end
+        if enum.UnitHealAbsorbMode then
+            pcall(calc.SetHealAbsorbMode, calc, enum.UnitHealAbsorbMode.ReducedByIncomingHeals)
+        end
+        if enum.UnitHealAbsorbClampMode then
+            pcall(calc.SetHealAbsorbClampMode, calc, enum.UnitHealAbsorbClampMode.CurrentHealth)
+        end
+    end
+    if not pcall(fill, unit, nil, calc) then return nil end
+    local function amount(value) if isSecret(value) then return value end return value or 0 end
+    return amount((calc:GetIncomingHeals())), amount((calc:GetDamageAbsorbs())), amount((calc:GetHealAbsorbs()))
+end
+
+--- Sort marqué important par le client (booléen peut-être secret) ; nil sans l'API ou sans sort.
+function NS.IsSpellImportant(spellID)
+    local api = C_Spell and C_Spell.IsSpellImportant
+    if not api or (not isSecret(spellID) and spellID == nil) then return nil end
+    local ok, important = pcall(api, spellID)
+    if ok then return important end
 end
 
 --- Alpha d'après la portée. Moteur : SetAlphaFromBoolean (booléen secret accepté).

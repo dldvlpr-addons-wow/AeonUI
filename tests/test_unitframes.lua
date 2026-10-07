@@ -659,3 +659,31 @@ test("unitframes : castbar avec cible du sort, interruption prête, éclair à l
     Mock.FireEvent("SPELLS_CHANGED")
     Disable()
 end)
+
+test("unitframes : castbar colorée pour un sort important, gris non interruptible prioritaire", function()
+    reset()
+    Enable()
+    local target = Target()
+    local bar = Frame("target").castbar
+    local important = true
+    C_Spell.IsSpellImportant = function(spellID) return spellID == 118 and important end
+    target.casting = { name = "Métamorphose", spellID = 118, startTime = 1000000, endTime = 1002500 }
+    Mock.FireEvent("UNIT_SPELLCAST_START", "target")
+    eq(bar.barColor[1], UF.db.importantCastColor.r, "sort important")
+    important = Mock.SetSecret(true)
+    Mock.FireEvent("UNIT_SPELLCAST_START", "target")
+    eq(bar.barColor[1], UF.db.importantCastColor.r, "booléen secret : le moteur choisit")
+    target.casting.notInterruptible = true
+    Mock.FireEvent("UNIT_SPELLCAST_START", "target")
+    eq(bar.barColor[1], 0.6, "non interruptible : gris")
+    target.casting.notInterruptible, important = nil, false
+    Mock.secret = {}
+    Mock.FireEvent("UNIT_SPELLCAST_START", "target")
+    eq(bar.barColor[1], NS.db.theme.accent.r, "sort ordinaire : accent")
+    UF.db.importantCast, important = false, true
+    Mock.FireEvent("UNIT_SPELLCAST_START", "target")
+    eq(bar.barColor[1], NS.db.theme.accent.r, "option coupée")
+    UF.db.importantCast = true
+    target.casting, C_Spell.IsSpellImportant = nil, nil
+    Disable()
+end)

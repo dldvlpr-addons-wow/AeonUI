@@ -116,6 +116,14 @@ test("barres de recharges personnalisées : sorts connus dans l'ordre, grisés e
     eq(select(4, second:GetPoint(1)), cfg.size + cfg.spacing, "Nova inconnue écartée : Transfert en second")
     eq(first.texture.desaturatedTexture, false, "Contresort prêt : en couleur")
     eq(second.texture.desaturatedTexture, true, "Transfert en recharge : grisé")
+    local secret, max = Mock.SetSecret(2), 3
+    C_Spell.GetSpellCharges = function(spell) if spell == 2139 then return { currentCharges = secret, maxCharges = max } end end
+    NS.Modules:Refresh("cooldownbars")
+    eq(first.count.text, secret, "charges secrètes en combat : nombre posé tel quel")
+    max = 1
+    NS.Modules:Refresh("cooldownbars")
+    eq(first.count.text, "", "une seule charge : rien")
+    C_Spell.GetSpellCharges, Mock.secret = nil, {}
     cfg.hideReady = true
     NS.Modules:Refresh("cooldownbars")
     eq(first.texture.desaturatedTexture, true, "prêts masqués : Transfert seul, en tête")

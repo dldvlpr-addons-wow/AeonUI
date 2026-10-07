@@ -987,6 +987,8 @@ NS.locales.ruRU = {
     OPT_CAST_TARGET = "Полоса заклинания: цель заклинания",
     OPT_CAST_INTERRUPT_READY = "Окрашивать полосу, когда ваше прерывание готово",
     OPT_CAST_INTERRUPT_READY_COLOR = "Цвет «прерывание готово»",
+    OPT_CAST_IMPORTANT = "Полоса заклинания окрашивается, когда заклинание отмечено как важное",
+    OPT_CAST_IMPORTANT_COLOR = "Цвет «важное заклинание»",
     -- Utilitaire de raid : trois comptes à rebours, conversion, dissolution
     RAIDUTILITY_SECONDS = "%d с",
     RAIDUTILITY_TO_RAID = "Преобразовать в рейд",

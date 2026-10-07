@@ -58,6 +58,10 @@ local function BattleRes(icon)
     if _G.IsInInstance then inInstance, kind = IsInInstance() end
     if not (inInstance and (kind == "party" or kind == "raid")) then return false end
     local current, _, start, duration = NS.GetSpellCharges(BATTLE_RES_SPELL)
+    if NS.IsSecret(current) then
+        icon.text:SetText(current)   -- combat : nombre affiché sans le minuteur, illisible
+        return true
+    end
     if not current then return false end
     local text = tostring(current)
     if duration > 0 then text = text .. " | " .. RaidCooldowns.FormatTime(start + duration - GetTime()) end

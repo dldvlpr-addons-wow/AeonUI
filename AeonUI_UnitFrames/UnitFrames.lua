@@ -65,6 +65,8 @@ local UnitFrames = NS.Modules:Register("unitframes", {
         castGCD = false,          -- barre du joueur : repère de fin de la recharge globale
         interruptReady = true,    -- barre d'incantation colorée quand ton interruption est prête
         interruptReadyColor = { r = 0.2, g = 0.85, b = 0.35 },
+        importantCast = true,     -- barre d'incantation colorée quand le sort est marqué important
+        importantCastColor = { r = 0.9, g = 0.3, b = 0.9 },
         units = {
             player       = Unit(220, 42, { combo = true, comboPips = false, comboSpacing = 2,
                                              comboColor = { r = 1, g = 0.82, b = 0 },
@@ -505,6 +507,10 @@ function UnitFrames:BuildOptions(o)
     o:Check("interruptReady", L.OPT_CAST_INTERRUPT_READY)
     o:Advanced()
     o:Color("interruptReadyColor", L.OPT_CAST_INTERRUPT_READY_COLOR, 36)
+    o:EndAdvanced()
+    o:Check("importantCast", L.OPT_CAST_IMPORTANT)
+    o:Advanced()
+    o:Color("importantCastColor", L.OPT_CAST_IMPORTANT_COLOR, 36)
     layout:Note(L.NOTE_UF_TEXT_TOKENS, 20)
     o:EndAdvanced()
     layout:Title(L.OPT_AURA_LISTS)

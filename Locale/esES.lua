@@ -987,6 +987,8 @@ NS.locales.esES = {
     OPT_CAST_TARGET = "Barra de lanzamiento: objetivo del hechizo",
     OPT_CAST_INTERRUPT_READY = "Barra de lanzamiento coloreada cuando tu interrupción está lista",
     OPT_CAST_INTERRUPT_READY_COLOR = "Color de «interrupción lista»",
+    OPT_CAST_IMPORTANT = "Barra de lanzamiento coloreada cuando el hechizo está marcado como importante",
+    OPT_CAST_IMPORTANT_COLOR = "Color de «hechizo importante»",
     -- Utilitaire de raid : trois comptes à rebours, conversion, dissolution
     RAIDUTILITY_SECONDS = "%d s",
     RAIDUTILITY_TO_RAID = "Convertir en banda",

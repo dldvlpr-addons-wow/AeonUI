@@ -987,6 +987,8 @@ NS.locales.deDE = {
     OPT_CAST_TARGET = "Zauberleiste: Ziel des Zaubers",
     OPT_CAST_INTERRUPT_READY = "Zauberleiste einfärben, wenn deine Unterbrechung bereit ist",
     OPT_CAST_INTERRUPT_READY_COLOR = "Farbe „Unterbrechung bereit“",
+    OPT_CAST_IMPORTANT = "Zauberleiste eingefärbt, wenn der Zauber als wichtig markiert ist",
+    OPT_CAST_IMPORTANT_COLOR = "Farbe „Wichtiger Zauber“",
     -- Utilitaire de raid : trois comptes à rebours, conversion, dissolution
     RAIDUTILITY_SECONDS = "%d s",
     RAIDUTILITY_TO_RAID = "In Schlachtzug umwandeln",

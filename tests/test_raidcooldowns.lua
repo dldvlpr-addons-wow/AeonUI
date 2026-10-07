@@ -26,6 +26,18 @@ test("recharges de raid : rez en combat en instance si le client donne des charg
     Mock.FireEvent("SPELL_UPDATE_CHARGES")
     truthy(icons.battleRes:IsShown(), "en raid")
     eq(icons.battleRes.text.text, "2 | 1:30")
+    local secret = Mock.SetSecret(3)
+    C_Spell.GetSpellCharges = function(id)
+        if id ~= 20484 then return nil end
+        return { currentCharges = secret, maxCharges = 5, cooldownStartTime = Mock.SetSecret(7), cooldownDuration = 90 }
+    end
+    Mock.FireEvent("SPELL_UPDATE_CHARGES")
+    truthy(icons.battleRes:IsShown(), "charges secrètes en combat : icône gardée")
+    eq(icons.battleRes.text.text, secret, "nombre secret posé tel quel, sans minuteur")
+    C_Spell.GetSpellCharges = function() return { currentCharges = 2, maxCharges = Mock.SetSecret(6) } end
+    Mock.FireEvent("SPELL_UPDATE_CHARGES")
+    eq(icons.battleRes:IsShown(), false, "maximum secret : rien")
+    Mock.secret = {}
     Mock.debuffs.player = { { icon = 99, duration = 600, expirationTime = GetTime() + 300, spellId = 57724 } }
     Mock.FireEvent("UNIT_AURA", "player")
     truthy(icons.bloodlust:IsShown(), "Rassasié")
