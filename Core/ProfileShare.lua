@@ -89,7 +89,8 @@ StaticPopupDialogs["AEONUI_PROFILE_RECEIVED"] = {
     button1 = YES,
     button2 = NO,
     -- Profil passé en `data` : une seconde réception remplace la fenêtre sans perdre le sien.
-    OnAccept = function(_, data) if data then NS:ImportProfile(data) end end,
+    -- « Oui » ouvre l'aperçu de la page Profils (sections, confirmation) au lieu d'importer.
+    OnAccept = function(_, data) if data and NS.Options then NS.Options:ShowImport(data) end end,
     timeout = 0,
     whileDead = true,
     hideOnEscape = true,

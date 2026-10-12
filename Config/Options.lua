@@ -552,6 +552,9 @@ local function BuildModuleList()
     return panel
 end
 
+-- Chaîne de la boîte d'import/export ; `received` : dernière chaîne reçue du groupe (Options:ShowImport).
+local transfer = { text = "" }
+
 local function BuildProfiles()
     local panel, layout = NewPage("profiles", L.OPT_PROFILES, L.OPT_PROFILES_HINT)
     layout:Dropdown(L.OPT_PROFILE_ACTIVE, function()
@@ -568,6 +571,15 @@ local function BuildProfiles()
         Confirm("AEONUI_PROFILE_RESET",
             string.format(L.MSG_PROFILE_RESET_CONFIRM, NS.Database:ActiveProfileName()),
             function() NS:ResetProfile() end)
+    end)
+    -- Profils d'avant le dernier import, remise à zéro ou restauration (échange : réversible).
+    layout:Button(L.OPT_PROFILE_RESTORE, function()
+        local backup = NS.Database:Backup()
+        if not backup then NS.Print(L.MSG_BACKUP_NONE) return end
+        local when = type(backup.time) == "number" and date("%Y-%m-%d %H:%M", backup.time) or "?"
+        local why = L["BACKUP_REASON_" .. string.upper(tostring(backup.reason))] or "?"
+        Confirm("AEONUI_PROFILE_RESTORE", string.format(L.MSG_BACKUP_RESTORE_CONFIRM, when, why),
+            function() NS:RestoreBackup() end)
     end)
     layout:Button(L.OPT_PROFILE_DELETE, function()
         local name = NS.Database:ActiveProfileName()
@@ -606,7 +618,6 @@ local function BuildProfiles()
 
     -- Partage : la chaîne exportée se colle sur un autre personnage ou chez un autre joueur.
     layout:Title(L.OPT_PROFILE_SHARE)
-    local transfer = { text = "" }
     layout:Note(L.OPT_PROFILE_TRANSFER_HINT)
     local box = layout:EditBox(L.OPT_PROFILE_STRING,
         function() return transfer.text end, function(value) transfer.text = value end, 10)
@@ -654,8 +665,39 @@ local function BuildProfiles()
     end)
     layout:Button(L.OPT_PROFILE_IMPORT, function()
         local text = transfer.text
-        local parsed = NS.Database.Deserialize(text, NS.Database.PastedLimit(true))
-        if not (parsed and parsed.account) then NS:ImportProfile(text, false) return end
+        -- Chaîne reçue du groupe (Options:ShowImport) : jamais un export du compte, borne d'un envoi.
+        local allowAccount = text ~= transfer.received
+        local parsed = NS.Database.Deserialize(text, NS.Database.PastedLimit(allowAccount))
+        if not parsed or (parsed.account and not allowAccount) then NS.Print(L.MSG_IMPORT_FAILED) return end
+        if not parsed.account then
+            -- Profil simple : les cases de l'export filtrent aussi l'import ; aperçu de ce qui change.
+            NS.Database.RenameModules(parsed)
+            local names, skipped, filtered = {}, 0, false
+            for _, section in ipairs(NS.Database.ImportedSections(parsed)) do
+                if Picked(section) then
+                    local module = NS.Modules:Get(section)
+                    -- Module inconnu de ce client : nom venu d'un tiers, jamais affiché.
+                    local title = (section == "theme" and L.OPT_PROFILE_EXPORT_THEME)
+                        or (section == "auraLists" and L.OPT_PROFILE_EXPORT_AURAS) or (module and module.title)
+                    if title then names[#names + 1] = title end
+                else
+                    skipped, filtered = skipped + 1, true
+                end
+            end
+            if #names == 0 then NS.Print(L.MSG_IMPORT_NOTHING) return end
+            local sections
+            if filtered then
+                sections = { theme = Picked("theme") or nil, auraLists = Picked("auraLists") or nil }
+                for _, module in ipairs(NS.Modules:List()) do sections[module.name] = Picked(module.name) or nil end
+            end
+            local list = #names <= 8 and table.concat(names, ", ") or string.format(L.MSG_IMPORT_SECTIONS, #names)
+            local message = string.format(L.MSG_IMPORT_CONFIRM, NS.Database:ActiveProfileName(), list)
+            if skipped > 0 then message = message .. "\n" .. string.format(L.MSG_IMPORT_SKIPPED, skipped) end
+            -- Même borne que l'aperçu ; la chaîne est déjà reconnue comme profil simple.
+            Confirm("AEONUI_IMPORT_PROFILE", message .. "\n" .. L.MSG_IMPORT_BACKUP_NOTE,
+                function() NS:ImportProfile(text, allowAccount, sections) end)
+            return
+        end
         -- Export du compte : les profils de même nom sont remplacés, le joueur confirme d'abord.
         local replaced = {}
         for profileName in pairs(type(parsed.profiles) == "table" and parsed.profiles or {}) do
@@ -663,8 +705,14 @@ local function BuildProfiles()
             if valid and NS.global.profiles[valid] then replaced[#replaced + 1] = valid end
         end
         table.sort(replaced)
-        Confirm("AEONUI_IMPORT_ACCOUNT", string.format(L.MSG_IMPORT_ACCOUNT_CONFIRM, #replaced,
-            #replaced > 0 and table.concat(replaced, ", ") or "-"), function() NS:ImportProfile(text, true) end)
+        local message = string.format(L.MSG_IMPORT_ACCOUNT_CONFIRM, #replaced,
+            #replaced > 0 and table.concat(replaced, ", ") or "-")
+        -- Les cases ne filtrent pas un export du compte : le joueur qui en a décoché une le sait.
+        for _, picked in pairs(exportPick) do
+            if picked == false then message = message .. "\n" .. L.MSG_IMPORT_ACCOUNT_ALL break end
+        end
+        Confirm("AEONUI_IMPORT_ACCOUNT", message .. "\n" .. L.MSG_IMPORT_BACKUP_NOTE,
+            function() NS:ImportProfile(text, true) end)
     end)
     layout:Button(L.OPT_PROFILE_SEND, function() NS.ProfileShare:Send() end)
 
@@ -1138,6 +1186,14 @@ function Options.OpenModule(name) Window:Show(name) end
 function Options:Open(key)
     if not key and Window:IsShown() then Window:Hide() return end
     Window:Show(key)
+end
+
+--- Ouvre la page Profils avec `text` dans la boîte d'import : aperçu, cases et confirmation
+-- habituels (profil reçu du groupe).
+function Options:ShowImport(text)
+    transfer.text, transfer.received = text, text
+    self:GetLayout("profiles"):Refresh()
+    Options.RevealModule("profiles", L.OPT_PROFILE_IMPORT)   -- le bouton est sous les cases
 end
 
 function Options:BuildMain() return BuildMain() end

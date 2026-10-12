@@ -110,6 +110,7 @@ loader:SetScript("OnEvent", function(self, event, name)
         NS.db = NS.Database:ActiveProfile()
         NS:Fire("PROFILE_READY")
         NS:Fire("LOGIN")
+        if NS.Database.migrationRolledBack then NS.Print(L.MSG_MIGRATION_ROLLBACK) end
         -- Miroir : recopie toutes les 5 s par OnUpdate (pas C_Timer : règle de persistance Forever),
         -- n'écrit que si la table a changé, plus à la déconnexion.
         local mirror, elapsedTotal = CreateFrame("Frame"), 0
@@ -128,8 +129,9 @@ end)
 
 --- Rebranche tous les modules sur un autre profil (hors combat : la barre est sécurisée).
 -- Cadres Blizzard rendus par le nouveau profil : /reload proposé (BLIZZARD_FRAMES_RELEASED).
+-- Faux si différé à la fin du combat.
 local function Reload(getProfile)
-    NS:RunOutOfCombat(function()
+    return NS:RunOutOfCombat(function()
         NS.Modules:DisableAll()
         NS.db = getProfile()
         NS.Modules:EnableAll()
@@ -147,18 +149,57 @@ function NS:ResetProfile()
 end
 
 --- Importe une chaîne de profil (voir Database.Serialize) dans le profil actif. Un export du
--- compte (tous les profils) n'est accepté qu'avec `allowAccount`.
-function NS:ImportProfile(text, allowAccount)
+-- compte (tous les profils) n'est accepté qu'avec `allowAccount`. `sections` : voir
+-- Database:ImportProfile. Les corrections faites à la chaîne sont annoncées.
+function NS:ImportProfile(text, allowAccount, sections)
     local parsed = NS.Database.Deserialize(text, NS.Database.PastedLimit(allowAccount))
     if not parsed or (parsed.account and not allowAccount) then
         NS.Print(L.MSG_IMPORT_FAILED)
         return false
     end
+    -- Positions lues tant que les modules sont actifs : Reload les désactive (movers retirés).
+    local anchorKeys
+    if sections and not parsed.account then
+        NS.Database.RenameModules(parsed)
+        anchorKeys = NS.Database.ImportedAnchors(parsed, sections)
+    end
     Reload(function()
-        local profile = NS.Database:ImportProfile(text, allowAccount)
+        local profile, report = NS.Database:ImportProfile(text, allowAccount, sections, anchorKeys)
         NS.Print(L.MSG_IMPORT_OK)
+        if report.clamped + report.anchors + report.sensitive > 0 then
+            NS.Print(string.format(L.MSG_IMPORT_REPORT, report.clamped, report.anchors, report.sensitive))
+        end
         return profile
     end)
+    return true
+end
+
+-- Restauration en attente de la fin du combat : une seule (une seconde échangerait à nouveau).
+local restorePending = false
+
+--- Rend les profils sauvegardés avant la dernière migration, import, remise à zéro ou restauration.
+function NS:RestoreBackup()
+    if not NS.Database:Backup() then
+        NS.Print(L.MSG_BACKUP_NONE)
+        return false
+    end
+    if restorePending then
+        NS.Print(L.MSG_BACKUP_AFTER_COMBAT)
+        return true
+    end
+    local now = Reload(function()
+        restorePending = false
+        -- Sauvegarde d'un ancien format dont la migration échoue : profils actuels gardés.
+        local restored, defaultsLost = NS.Database:RestoreBackup()
+        NS:BindProfileHotkeys()
+        NS.Print(restored and L.MSG_BACKUP_RESTORED or L.MSG_MIGRATION_ROLLBACK)
+        if defaultsLost then NS.Print(L.MSG_BACKUP_DEFAULTS_LOST) end
+        return NS.Database:ActiveProfile()
+    end)
+    if not now then
+        restorePending = true
+        NS.Print(L.MSG_BACKUP_AFTER_COMBAT)
+    end
     return true
 end
 
@@ -361,6 +402,8 @@ function commands.reset()
     NS:ResetProfile()
     NS.Print(L.MSG_RESET)
 end
+
+function commands.restore() NS:RestoreBackup() end
 
 --- /aeon pull [secondes] : compte à rebours, le premier réglé par défaut ; 0 l'annule.
 function commands.pull(args)

@@ -7,6 +7,10 @@
 --   lastSpec["Perso - Royaume"] = index de spé                -- la spé n'est pas lisible dès la connexion
 --   contextProfiles["Perso - Royaume"][contexte] = nom       -- donjon, raid, pvp, world : prime sur la spé
 --   cvarBackup[cvar] = valeur d'origine, avant que AeonUI ne la change
+--   profileBackup = { reason, version, time, profiles, defaults } : profils d'avant la dernière migration,
+--     import, remise à zéro ou restauration (un seul emplacement, ni exporté ni recopié dans le miroir CVar ;
+--     réduite aux écarts aux défauts, joints en chaîne d'export, sauf celle d'une migration, complète)
+--   migrationSnapshot : table entière d'avant une migration en échec, rejouée à la session suivante
 -- NS.global pointe sur AeonUIDB, NS.db sur le profil actif.
 -- Les défauts sont fusionnés sans jamais écraser une valeur existante ; les migrations
 -- sont numérotées et jouées une fois.
@@ -61,12 +65,15 @@ Database.PROFILE_DEFAULTS = {
     modules = {},
 }
 
-function Database.MergeDefaults(defaults, target)
+--- `report` (Database.NewImportReport, facultatif) : valeurs de mauvais type remplacées, dans `clamped`.
+function Database.MergeDefaults(defaults, target, report)
     for key, value in pairs(defaults) do
+        local wrongType = target[key] ~= nil and type(target[key]) ~= type(value)
+        if wrongType and report then report.clamped = report.clamped + 1 end
         if type(value) == "table" then
             if type(target[key]) ~= "table" then target[key] = {} end
-            Database.MergeDefaults(value, target[key])
-        elseif target[key] == nil or type(target[key]) ~= type(value) then
+            Database.MergeDefaults(value, target[key], report)
+        elseif target[key] == nil or wrongType then
             -- Type différent : scalaire venu d'une chaîne importée, le défaut le remplace.
             target[key] = value
         end
@@ -184,21 +191,56 @@ Database.MIGRATIONS = {
 
 -- Migrations en échec de la session : { "v3 : message" }, lues par /aeon diag.
 Database.migrationErrors = {}
+-- true si une migration a échoué et que la table a été rendue telle qu'avant (message à la connexion).
+Database.migrationRolledBack = false
 
 --- Chaque migration sous pcall : une table abîmée ne doit pas empêcher l'addon de charger.
--- En échec, la suite est jouée quand même ; FillProfile rétablit les types au chargement.
+-- En échec, la table revient telle qu'avant la première migration et garde son ancienne
+-- version : jamais de profil à moitié migré. La session tourne ensuite sur des profils remplis
+-- des défauts actuels, qui fausseraient le rejeu (v3, v7) : les profils d'avant sont gardés
+-- intacts dans `migrationSnapshot` et la session suivante les reprend une seule fois (le reste
+-- de la table, relevés du compte compris, reste celui de la session). Second échec : profils de
+-- la session gardés, profils intacts rangés dans la sauvegarde (/aeon restore les migrera).
+-- En succès, les profils d'avant deviennent la sauvegarde.
 function Database.Migrate(db)
+    local pending = db.migrationSnapshot
+    db.migrationSnapshot = nil
+    local replayed = type(pending) == "table" and type(pending.profiles) == "table"
+    local sessionProfiles = db.profiles
+    if replayed then
+        db.profiles, db.version = pending.profiles, pending.version
+    end
     local from = tonumber(db.version) or Database.VERSION
+    if from >= Database.VERSION then
+        db.version = Database.VERSION
+        return
+    end
+    local snapshot = Database.DeepCopy(db)
     for version = from + 1, Database.VERSION do
         local migrate = Database.MIGRATIONS[version]
         if migrate then
             local ok, err = pcall(migrate, db)
             if not ok then
                 Database.migrationErrors[#Database.migrationErrors + 1] = "v" .. version .. " : " .. tostring(err)
+                -- Même table (AeonUIDB, rangée par référence dans la table hôte) : vidée puis remplie.
+                for key in pairs(db) do db[key] = nil end
+                for key, value in pairs(snapshot) do db[key] = value end
+                db.version = from
+                if replayed then
+                    db.profileBackup = { reason = "migration", version = from, time = time(), profiles = snapshot.profiles }
+                    db.profiles = sessionProfiles
+                elseif type(snapshot.profiles) == "table" then
+                    db.migrationSnapshot = { version = from, profiles = Database.DeepCopy(snapshot.profiles) }
+                end
+                Database.migrationRolledBack = true
+                return
             end
         end
     end
     db.version = Database.VERSION
+    if type(snapshot.profiles) == "table" then
+        db.profileBackup = { reason = "migration", version = from, time = time(), profiles = snapshot.profiles }
+    end
 end
 
 -- Un point inconnu (profil importé) ferait lever SetPoint après ClearAllPoints : module cassé.
@@ -207,44 +249,63 @@ local POINTS = {
     BOTTOMLEFT = true, BOTTOM = true, BOTTOMRIGHT = true,
 }
 
+local ANCHOR_LIMIT = 10000
+
+--- Coordonnée utilisable : nombre fini (ni NaN ni infini), à moins de ANCHOR_LIMIT.
+local function Coordinate(value)
+    return type(value) == "number" and value == value and math.abs(value) <= ANCHOR_LIMIT
+end
+
+--- Retire `node[key]` s'il est présent et pas `valid` ; compte le retrait dans `report.clamped`.
+local function Discard(node, key, valid, report)
+    if node[key] == nil or valid then return end
+    node[key] = nil
+    if report then report.clamped = report.clamped + 1 end
+end
+
 --- Complète un profil avec les défauts du cœur et de chaque module enregistré.
-function Database.FillProfile(profile)
-    Database.MergeDefaults(Database.PROFILE_DEFAULTS, profile)
+-- `report` (facultatif) : valeurs de mauvais type remplacées et positions écartées.
+function Database.FillProfile(profile, report)
+    Database.MergeDefaults(Database.PROFILE_DEFAULTS, profile, report)
     for _, module in ipairs(NS.Modules:List()) do
         -- Un scalaire à la place d'une table (chaîne importée hostile) est écarté.
-        if type(profile.modules[module.name]) ~= "table" then profile.modules[module.name] = {} end
-        Database.MergeDefaults(module.defaults, profile.modules[module.name])
+        if type(profile.modules[module.name]) ~= "table" then
+            if profile.modules[module.name] ~= nil and report then report.clamped = report.clamped + 1 end
+            profile.modules[module.name] = {}
+        end
+        Database.MergeDefaults(module.defaults, profile.modules[module.name], report)
     end
     -- Exceptions par module : chaînes seulement (chemin de police, nom de texture).
     for name, own in pairs(profile.theme.moduleMedia) do
-        if type(own) ~= "table" then
-            profile.theme.moduleMedia[name] = nil
-        else
-            if type(own.font) ~= "string" then own.font = nil end
-            if type(own.statusbar) ~= "string" then own.statusbar = nil end
+        Discard(profile.theme.moduleMedia, name, type(own) == "table", report)
+        if type(own) == "table" then
+            Discard(own, "font", type(own.font) == "string", report)
+            Discard(own, "statusbar", type(own.statusbar) == "string", report)
         end
     end
     for key, anchor in pairs(profile.anchors) do
+        -- Coordonnée lointaine ou non finie : position écartée, comptée une seule fois.
         if type(anchor) ~= "table" or not POINTS[anchor.point] or not POINTS[anchor.relPoint]
-            or type(anchor.x) ~= "number" or type(anchor.y) ~= "number" then
+            or not Coordinate(anchor.x) or not Coordinate(anchor.y) then
             profile.anchors[key] = nil
+            if report then report.anchors = report.anchors + 1 end
         else
             -- Ancrage à un autre mover (Movers) : champs mal typés écartés un à un.
-            if type(anchor.target) ~= "string" then anchor.target = nil end
+            Discard(anchor, "target", type(anchor.target) == "string", report)
             local f = anchor.fallback
-            if type(f) ~= "table" or not POINTS[f.point] or not POINTS[f.relPoint]
-                or type(f.x) ~= "number" or type(f.y) ~= "number" then
-                anchor.fallback = nil
+            Discard(anchor, "fallback", type(f) == "table" and POINTS[f.point] and POINTS[f.relPoint]
+                and Coordinate(f.x) and Coordinate(f.y), report)
+            Discard(anchor, "edgeX", Coordinate(anchor.edgeX), report)
+            Discard(anchor, "edgeY", Coordinate(anchor.edgeY), report)
+            -- Écarts de taille bornés par Sanitize (import) ; NaN écarté ici.
+            for _, field in ipairs({ "widthOffset", "heightOffset" }) do
+                Discard(anchor, field, type(anchor[field]) == "number" and anchor[field] == anchor[field], report)
             end
-            if type(anchor.edgeX) ~= "number" then anchor.edgeX = nil end
-            if type(anchor.edgeY) ~= "number" then anchor.edgeY = nil end
-            if type(anchor.matchWidth) ~= "boolean" then anchor.matchWidth = nil end
-            if type(anchor.matchHeight) ~= "boolean" then anchor.matchHeight = nil end
+            Discard(anchor, "matchWidth", type(anchor.matchWidth) == "boolean", report)
+            Discard(anchor, "matchHeight", type(anchor.matchHeight) == "boolean", report)
             -- Point d'écran épinglé et coin gardé quand la taille change (Movers).
-            if not POINTS[anchor.pin] then anchor.pin = nil end
-            if not POINTS[anchor.grow] then anchor.grow = nil end
-            if type(anchor.widthOffset) ~= "number" then anchor.widthOffset = nil end
-            if type(anchor.heightOffset) ~= "number" then anchor.heightOffset = nil end
+            Discard(anchor, "pin", POINTS[anchor.pin], report)
+            Discard(anchor, "grow", POINTS[anchor.grow], report)
         end
     end
     return profile
@@ -430,8 +491,114 @@ function Database:RenameProfile(old, new)
     return new
 end
 
---- Remet le profil actif aux défauts.
+--------------------------------------------------------------------------------
+-- Sauvegarde des profils : prise avant ce qui remplace des réglages d'un bloc
+--------------------------------------------------------------------------------
+
+--- Copie de `value` sans les scalaires égaux à `defaults` ni les tables vides (recréés par
+-- FillProfile au retour : Init pour le miroir, RestoreBackup pour la sauvegarde).
+local function Prune(value, defaults)
+    local out = {}
+    for key, child in pairs(value) do
+        local default
+        if type(defaults) == "table" then default = defaults[key] end   -- pas de `and/or` : false est un défaut
+        if type(child) == "table" then
+            local pruned = Prune(child, default)
+            if next(pruned) ~= nil then out[key] = pruned end
+        elseif child ~= default then
+            out[key] = child
+        end
+    end
+    return out
+end
+
+--- Défauts d'un profil : cœur et modules. `mirror` : ceux du miroir, plus larges que ceux de
+-- FillProfile (module.mirrorDefaults, entrées créées à la demande).
+local function ProfileDefaults(mirror)
+    local defaults = Database.DeepCopy(Database.PROFILE_DEFAULTS)
+    for _, module in ipairs(NS.Modules:List()) do
+        defaults.modules[module.name] = mirror and module.mirrorDefaults or module.defaults
+    end
+    return defaults
+end
+
+-- Défauts de la session en chaîne d'export, calculés une fois (ils ne bougent pas en session).
+local backupDefaults
+
+--- Sauvegarde de `profiles` réduits aux écarts aux défauts de FillProfile (quelques Ko au lieu de
+-- ~69 Ko par profil). Les défauts sont joints, compressés : une mise à jour qui en change un ne
+-- change pas un profil restauré.
+local function PrunedBackup(reason, profiles)
+    local defaults, out = ProfileDefaults(false), {}
+    -- Niveau 5 : ~35 ms au lieu de ~125 ms au niveau 9, pour une chaîne plus longue de ~2 %.
+    backupDefaults = backupDefaults or Database.Export(defaults, 5)
+    for name, profile in pairs(profiles) do
+        if type(profile) == "table" then out[name] = Prune(profile, defaults) end
+    end
+    return { reason = reason, version = Database.VERSION, time = time(), profiles = out, defaults = backupDefaults }
+end
+
+--- Profils réduits aux écarts aux défauts, `reason` : "import", "reset", "restore" (ou
+-- "migration", posée par Migrate, copie complète). Écrase la précédente. `version` : format des
+-- profils, migrés à la restauration.
+function Database:SaveBackup(reason)
+    self.global.profileBackup = PrunedBackup(reason, self.global.profiles)
+end
+
+--- Sauvegarde utilisable, ou nil.
+function Database:Backup()
+    local backup = self.global.profileBackup
+    if type(backup) == "table" and type(backup.profiles) == "table" then return backup end
+    return nil
+end
+
+--- Échange les profils et la sauvegarde : restaurer deux fois revient au point de départ.
+-- Profils d'une version antérieure migrés d'abord, puis complétés des défauts (modules ajoutés
+-- depuis). false sans sauvegarde ou si la migration échoue (rien n'est changé). Second retour :
+-- true si les défauts joints étaient illisibles (défauts actuels utilisés).
+function Database:RestoreBackup()
+    local backup = self:Backup()
+    if not backup then return false end
+    -- Sauvegarde réduite : ses défauts d'origine d'abord, avant la migration et les défauts actuels.
+    -- Sur une copie : en échec de migration, la sauvegarde reste réduite et rejouable.
+    local restored = backup.profiles
+    local defaults = type(backup.defaults) == "string" and self.Deserialize(backup.defaults, self.PastedLimit(true))
+    -- Défauts joints illisibles : restauration sur les défauts actuels, signalée à l'appelant.
+    local defaultsLost = backup.defaults ~= nil and not defaults
+    if defaults then
+        restored = self.DeepCopy(restored)
+        for _, profile in pairs(restored) do
+            if type(profile) == "table" then self.MergeDefaults(defaults, profile) end
+        end
+    end
+    local version = tonumber(backup.version) or self.VERSION
+    if version < self.VERSION then
+        local rolledBack = self.migrationRolledBack
+        local migrated = { version = version, profiles = restored }
+        self.Migrate(migrated)
+        self.migrationRolledBack = rolledBack
+        if migrated.version ~= self.VERSION then
+            -- Copie complète : `migrated.profiles` est la copie intacte, rejouable.
+            if not defaults then backup.profiles = migrated.profiles end
+            return false
+        end
+        restored = migrated.profiles
+    end
+    local current = self.global.profiles
+    self.global.profiles = restored
+    self.global.profileBackup = PrunedBackup("restore", current)
+    local profiles = self.global.profiles
+    for name, profile in pairs(profiles) do
+        if type(profile) ~= "table" or not self.ValidProfileName(name) then profiles[name] = nil end
+    end
+    profiles[self.DEFAULT_PROFILE] = profiles[self.DEFAULT_PROFILE] or {}
+    for _, profile in pairs(profiles) do self.FillProfile(profile) end
+    return true, defaultsLost
+end
+
+--- Remet le profil actif aux défauts (profils sauvegardés avant).
 function Database:ResetActiveProfile()
+    self:SaveBackup("reset")
     local name = self:ActiveProfileName()
     self.global.profiles[name] = self.FillProfile({})
     return self.global.profiles[name]
@@ -498,15 +665,17 @@ end
 -- tierce ne doit pas faire gonfler la mémoire (un deflate peut multiplier la taille par 1000).
 Database.COMPRESSED_PREFIX = "AEON2:"
 local MAX_COMPRESSED, MAX_EXPANDED = 12000, 262144   -- export complet actuel : ~5,4 Ko
+local MAX_ENTRIES = 20000   -- valeurs d'une chaîne tierce : borne large, bien au-dessus d'un export réel
 
 local function Deflate() return _G.LibStub and LibStub("LibDeflate", true) end
 
 --- Chaîne d'export : AEON2 compressée si LibDeflate est chargée, sinon AEON1.
-function Database.Export(profile)
+-- `level` : niveau de compression (défaut 9, la chaîne la plus courte à partager).
+function Database.Export(profile, level)
     local text = Database.Serialize(profile)
     local deflate = Deflate()
     if not deflate then return text end
-    local compressed = deflate:CompressDeflate(text, { level = 9 })
+    local compressed = deflate:CompressDeflate(text, { level = level or 9 })
     return Database.COMPRESSED_PREFIX .. deflate:EncodeForPrint(compressed)
 end
 
@@ -544,8 +713,12 @@ function Database.Deserialize(text, maxCompressed)
     text = Database.PlainText(text, maxCompressed)
     if not text then return nil, "parse" end
     if text:sub(1, #Database.EXPORT_PREFIX) ~= Database.EXPORT_PREFIX then return nil, "prefix" end
-    local result = {}
+    -- AEON1 collée en clair : même borne que la chaîne décompressée.
+    if #text > MAX_EXPANDED then return nil, "parse" end
+    local result, count = {}, 0
     for pair in (text:sub(#Database.EXPORT_PREFIX + 1) .. ";"):gmatch("([^;]*);") do
+        count = count + 1
+        if count > MAX_ENTRIES then return nil, "parse" end   -- chaîne tierce : nombre de valeurs borné
         if pair ~= "" then
             local path, kind, raw = pair:match("^([^=]+)=([bnst])(.*)$")
             if not path then return nil, "parse" end
@@ -589,21 +762,27 @@ Database.SENSITIVE = {
     "modules.radialmenu.palettes.palette4.key",
     "modules.raidutility.countdownKey", "modules.raidutility.countdown2Key", "modules.raidutility.countdown3Key",
 }
-local ANCHOR_LIMIT = 10000
 local SIZE_OFFSET_LIMIT = 500   -- écart de taille d'un mover qui reprend celle de sa cible
 -- Réglages chiffrés sans curseur (listes de choix).
 Database.bounds["theme.grid"] = { 0, 64 }
 Database.bounds["modules.groupframes.raidThreshold"] = { 5, 40 }
 local COLOR_KEYS = { r = true, g = true, b = true, a = true }
 
+--- Ramène `value` entre `low` et `high` ; compte la correction dans `report.clamped`.
+local function Clamp(value, low, high, report)
+    local clamped = math.max(low, math.min(high, value))
+    if clamped ~= value and report then report.clamped = report.clamped + 1 end
+    return clamped
+end
+
 --- Composantes de couleur (r, g, b, a) ramenées entre 0 et 1, à toute profondeur.
-local function ClampColors(node, depth)
+local function ClampColors(node, depth, report)
     if depth > 16 then return end
     for key, value in pairs(node) do
         if type(value) == "table" then
-            ClampColors(value, depth + 1)
+            ClampColors(value, depth + 1, report)
         elseif COLOR_KEYS[key] and type(value) == "number" then
-            node[key] = math.max(0, math.min(1, value))
+            node[key] = Clamp(value, 0, 1, report)
         end
     end
 end
@@ -618,40 +797,62 @@ local function ResolvePath(root, path)
     return nil
 end
 
---- Nombres non finis (NaN, infini) retirés : FillProfile remettra le défaut.
-local function DropNonFinite(node, depth)
+--- Nombres non finis (NaN, infini) retirés : FillProfile remettra le défaut. Positions laissées
+-- à FillProfile (Coordinate), qui compte une position écartée une seule fois.
+local function DropNonFinite(node, depth, report)
     if depth > 16 then return end
     for key, value in pairs(node) do
         if type(value) == "number" and (value ~= value or value == math.huge or value == -math.huge) then
             node[key] = nil
-        elseif type(value) == "table" then
-            DropNonFinite(value, depth + 1)
+            if report then report.clamped = report.clamped + 1 end
+        elseif type(value) == "table" and not (depth == 0 and key == "anchors") then
+            DropNonFinite(value, depth + 1, report)
         end
     end
 end
 
+--- Corrections d'un import, à montrer au joueur : valeurs bornées ou retirées, positions
+-- écartées, réglages sensibles gardés.
+function Database.NewImportReport()
+    return { clamped = 0, anchors = 0, sensitive = 0 }
+end
+
+--- Réglages sensibles présents dans un profil importé, relevés avant FillProfile : un défaut
+-- posé ensuite n'est pas compté comme gardé.
+function Database.SensitiveGiven(profile)
+    local given = {}
+    for _, path in ipairs(Database.SENSITIVE) do
+        local parent, leaf = ResolvePath(profile, path)
+        if parent and parent[leaf] ~= nil then given[path] = true end
+    end
+    return given
+end
+
 --- Valeurs d'un profil importé ramenées dans leurs bornes ; réglages sensibles repris de `current`.
-function Database.Sanitize(profile, current)
+-- `report` (Database.NewImportReport, facultatif) compte chaque correction ; un réglage
+-- sensible n'y compte que s'il figure dans `given` (Database.SensitiveGiven).
+function Database.Sanitize(profile, current, report, given)
     for path, range in pairs(Database.bounds) do
         local parent, leaf = ResolvePath(profile, path)
         local value = parent and parent[leaf]
-        if type(value) == "number" then parent[leaf] = math.max(range[1], math.min(range[2], value)) end
+        if type(value) == "number" then parent[leaf] = Clamp(value, range[1], range[2], report) end
     end
-    ClampColors(profile, 0)
-    for key, anchor in pairs(profile.anchors) do
-        if math.abs(anchor.x) > ANCHOR_LIMIT or math.abs(anchor.y) > ANCHOR_LIMIT then profile.anchors[key] = nil end
-        local f = anchor.fallback
-        if f and (math.abs(f.x) > ANCHOR_LIMIT or math.abs(f.y) > ANCHOR_LIMIT) then anchor.fallback = nil end
-        if anchor.edgeX and math.abs(anchor.edgeX) > ANCHOR_LIMIT then anchor.edgeX = nil end
-        if anchor.edgeY and math.abs(anchor.edgeY) > ANCHOR_LIMIT then anchor.edgeY = nil end
+    ClampColors(profile, 0, report)
+    -- Coordonnées lointaines ou non finies déjà écartées par FillProfile (Coordinate).
+    for _, anchor in pairs(profile.anchors) do
         for _, field in ipairs({ "widthOffset", "heightOffset" }) do
-            if anchor[field] then anchor[field] = math.max(-SIZE_OFFSET_LIMIT, math.min(SIZE_OFFSET_LIMIT, anchor[field])) end
+            if anchor[field] then anchor[field] = Clamp(anchor[field], -SIZE_OFFSET_LIMIT, SIZE_OFFSET_LIMIT, report) end
         end
     end
     for _, path in ipairs(Database.SENSITIVE) do
         local parent, leaf = ResolvePath(profile, path)
         local mineParent, mineLeaf = ResolvePath(current or {}, path)
-        if parent and mineParent and mineParent[mineLeaf] ~= nil then parent[leaf] = mineParent[mineLeaf] end
+        if parent and mineParent and mineParent[mineLeaf] ~= nil then
+            if report and given and given[path] and parent[leaf] ~= mineParent[mineLeaf] then
+                report.sensitive = report.sensitive + 1
+            end
+            parent[leaf] = mineParent[mineLeaf]
+        end
     end
     return profile
 end
@@ -659,29 +860,69 @@ end
 --- Remplace le profil actif par la chaîne importée (complétée des défauts, valeurs bornées,
 -- réglages sensibles conservés). nil + raison si invalide.
 -- Export du compte accepté seulement si `allowAccount` (collé à la main, jamais reçu du groupe).
-function Database:ImportProfile(text, allowAccount)
+-- `sections` (set, voir PartialProfile) : seules ces sections d'un profil simple sont reprises.
+-- `anchorKeys` : positions retenues, calculées avant que Reload ne désactive les modules (leurs
+-- movers quittent alors le registre) ; à défaut, Database.ImportedAnchors.
+-- Profils sauvegardés avant (Database:RestoreBackup). Rend le profil et le rapport de corrections.
+function Database:ImportProfile(text, allowAccount, sections, anchorKeys)
     local imported, reason = self.Deserialize(text, self.PastedLimit(allowAccount))
     if not imported then return nil, reason end
     if imported.account and not allowAccount then return nil, "account" end
+    self:SaveBackup("import")
+    local report = self.NewImportReport()
     local name = self:ActiveProfileName()
     local current = self.global.profiles[name]
-    DropNonFinite(imported, 0)
+    -- Nombres non finis retirés de ce qui est repris seulement : le rapport ne compte pas une section écartée.
     self.RenameModules(imported)
     if imported.account then
         -- Export du compte : chaque profil créé ou remplacé sous son nom, le profil actif compris.
         for profileName, profile in pairs(type(imported.profiles) == "table" and imported.profiles or {}) do
             local valid = self.ValidProfileName(profileName)
             if valid and type(profile) == "table" then
+                DropNonFinite(profile, 0, report)
                 self.RenameModules(profile)
                 local mine = self.global.profiles[valid] or current
-                self.global.profiles[valid] = self.Sanitize(self.FillProfile(profile), mine)
+                local given = self.SensitiveGiven(profile)
+                self.global.profiles[valid] = self.Sanitize(self.FillProfile(profile, report), mine, report, given)
             end
         end
-        return self.global.profiles[name]
+        return self.global.profiles[name], report
     end
+    if sections then
+        imported = self.PartialProfile(imported, sections, anchorKeys or self.ImportedAnchors(imported, sections))
+    end
+    DropNonFinite(imported, 0, report)   -- l'extrait seul : le profil actuel n'est pas compté
     if imported.partial then imported = self.MergePartial(current, imported) end
-    self.global.profiles[name] = self.Sanitize(self.FillProfile(imported), current)
-    return self.global.profiles[name]
+    local given = self.SensitiveGiven(imported)
+    self.global.profiles[name] = self.Sanitize(self.FillProfile(imported, report), current, report, given)
+    return self.global.profiles[name], report
+end
+
+--- Positions d'un profil importé qui appartiennent aux sections retenues (mover connu de ce
+-- client) ; celles d'un module écarté ou inconnu restent celles du joueur.
+function Database.ImportedAnchors(imported, sections)
+    local keys = {}
+    local registry = NS.Movers and NS.Movers.registry or {}
+    for key in pairs(type(imported.anchors) == "table" and imported.anchors or {}) do
+        local entry = registry[key]
+        if entry and entry.module and sections[entry.module] then keys[#keys + 1] = key end
+    end
+    return keys
+end
+
+--- Sections d'un profil importé, dans l'ordre : "theme", "auraLists", puis les modules.
+function Database.ImportedSections(imported)
+    local list = {}
+    for _, section in ipairs({ "theme", "auraLists" }) do
+        if type(imported[section]) == "table" then list[#list + 1] = section end
+    end
+    local modules = {}
+    for module, settings in pairs(type(imported.modules) == "table" and imported.modules or {}) do
+        if type(module) == "string" and type(settings) == "table" then modules[#modules + 1] = module end
+    end
+    table.sort(modules)
+    for _, module in ipairs(modules) do list[#list + 1] = module end
+    return list
 end
 
 --- Tous les profils du compte, réduits à ce qui diffère des défauts (FillProfile les rend à
@@ -699,11 +940,12 @@ end
 -- modules) et les positions `anchorKeys` (liste de clés de movers). Marqué `partial`.
 function Database.PartialProfile(profile, sections, anchorKeys)
     local out = { partial = true, modules = {}, anchors = {} }
+    local modules = type(profile.modules) == "table" and profile.modules or {}   -- profil importé : rien n'est garanti
     for section in pairs(sections) do
         if section == "theme" or section == "auraLists" then
             out[section] = Database.DeepCopy(profile[section])
-        elseif profile.modules[section] then
-            out.modules[section] = Database.DeepCopy(profile.modules[section])
+        elseif modules[section] then
+            out.modules[section] = Database.DeepCopy(modules[section])
         end
     end
     for _, key in ipairs(anchorKeys or {}) do
@@ -799,35 +1041,19 @@ function Database:ReadMirror()
     return saved
 end
 
---- Copie de `value` sans les scalaires égaux à `defaults` (recréés par Init au retour).
-local function Prune(value, defaults)
-    local out = {}
-    for key, child in pairs(value) do
-        local default
-        if type(defaults) == "table" then default = defaults[key] end   -- pas de `and/or` : false est un défaut
-        if type(child) == "table" then
-            local pruned = Prune(child, default)
-            if next(pruned) ~= nil then out[key] = pruned end
-        elseif child ~= default then
-            out[key] = child
-        end
-    end
-    return out
-end
-
 --- Table globale réduite à ce qui diffère des défauts ; chaque profil reste présent, même vide.
 function Database:MirrorTable()
-    local profileDefaults = self.DeepCopy(self.PROFILE_DEFAULTS)
-    -- mirrorDefaults : défauts plus larges que ceux du module (entrées créées à la demande).
-    for _, module in ipairs(NS.Modules:List()) do profileDefaults.modules[module.name] = module.mirrorDefaults or module.defaults end
+    local profileDefaults = ProfileDefaults(true)
     local defaults = self.DeepCopy(self.GLOBAL_DEFAULTS)
     for name in pairs(self.global.profiles) do defaults.profiles[name] = profileDefaults end
     -- Historique du chat : volumineux et changeant, il ferait vite déborder les tranches ;
     -- la table hôte le garde, le miroir n'est qu'un repli. Écarté avant Prune (pas de copie).
-    local history = self.global.chatHistory
-    self.global.chatHistory = nil
+    -- Sauvegarde des profils et état d'avant une migration en échec : même raison, et jamais
+    -- exportés avec le compte.
+    local history, backup, snapshot = self.global.chatHistory, self.global.profileBackup, self.global.migrationSnapshot
+    self.global.chatHistory, self.global.profileBackup, self.global.migrationSnapshot = nil, nil, nil
     local pruned = Prune(self.global, defaults)
-    self.global.chatHistory = history
+    self.global.chatHistory, self.global.profileBackup, self.global.migrationSnapshot = history, backup, snapshot
     pruned.version = self.global.version or self.VERSION    -- Init n'applique les migrations que si elle existe
     pruned.profiles = pruned.profiles or {}
     for name in pairs(self.global.profiles) do pruned.profiles[name] = pruned.profiles[name] or {} end

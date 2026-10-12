@@ -433,11 +433,13 @@ test("migration v6 -> v7 : réglages des modules renommés repris sous le nouvea
     eq(profile.theme.moduleMedia.radialmenu.font, "F")
 end)
 
-test("migration en échec : la suivante est jouée, l'erreur figure dans /aeon diag", function()
+test("migration en échec : table rendue telle qu'avant, version gardée, erreur dans /aeon diag", function()
     local Database = NS.Database
     local db = { version = 1, theme = {}, anchors = {}, modules = {}, profiles = "abîmé" }
     Database.Migrate(db)
-    eq(db.version, Database.VERSION, "version posée malgré l'échec")
+    eq(db.version, 1, "version gardée : la migration sera rejouée")
+    eq(db.profiles, "abîmé", "table rendue telle qu'avant")
+    truthy(Database.migrationRolledBack, "retour arrière signalé")
     truthy(#Database.migrationErrors > 0, "échec journalisé")
     local found
     for _, line in ipairs(NS.Diagnostic()) do
@@ -445,6 +447,48 @@ test("migration en échec : la suivante est jouée, l'erreur figure dans /aeon d
     end
     truthy(found, "ligne du diagnostic")
     Database.migrationErrors = {}
+    Database.migrationRolledBack = false
+end)
+
+test("migration en échec : rejouée depuis l'état intact, pas depuis la table remplie des défauts", function()
+    local Database = NS.Database
+    local v6 = Database.MIGRATIONS[6]
+    Database.MIGRATIONS[6] = function() error("cassée") end
+    local db = { version = 5, profiles = { A = { theme = {}, modules = { quickdraw = { key = "SHIFT-Q" } } } } }
+    Database.Migrate(db)
+    Database.MIGRATIONS[6] = v6
+    truthy(db.migrationSnapshot, "état d'avant gardé")
+    db.profiles.A.modules.radialmenu = { key = "" }   -- FillProfile de la session en échec
+    db.cvarBackup = { nameplateMaxDistance = "20" }   -- relevé du compte fait pendant la session
+    Database.Migrate(db)
+    eq(db.version, Database.VERSION)
+    eq(db.migrationSnapshot, nil)
+    eq(db.profiles.A.modules.radialmenu.key, "SHIFT-Q", "v7 rejouée sur l'état intact")
+    eq(db.cvarBackup.nameplateMaxDistance, "20", "relevé du compte gardé")
+    eq(db.profileBackup.reason, "migration", "profils d'avant sauvegardés")
+    eq(db.profileBackup.version, 5)
+    eq(db.profileBackup.profiles.A.modules.quickdraw.key, "SHIFT-Q")
+    Database.migrationErrors = {}
+    Database.migrationRolledBack = false
+end)
+
+test("migration en échec deux fois : profils de la session gardés, état intact en sauvegarde", function()
+    local Database = NS.Database
+    local v6 = Database.MIGRATIONS[6]
+    Database.MIGRATIONS[6] = function() error("cassée") end
+    local db = { version = 5, profiles = { A = { theme = { fontSize = 13 }, modules = {} } } }
+    Database.Migrate(db)
+    db.profiles.A.theme.fontSize = 17   -- réglé pendant la session en échec
+    Database.Migrate(db)
+    Database.MIGRATIONS[6] = v6
+    eq(db.version, 5)
+    eq(db.profiles.A.theme.fontSize, 17, "réglage de la session gardé")
+    eq(db.migrationSnapshot, nil, "plus de reprise à la session suivante")
+    eq(db.profileBackup.reason, "migration")
+    eq(db.profileBackup.version, 5)
+    eq(db.profileBackup.profiles.A.theme.fontSize, 13, "état intact restaurable")
+    Database.migrationErrors = {}
+    Database.migrationRolledBack = false
 end)
 
 test("pixel : un seul Apply en file pendant le combat", function()

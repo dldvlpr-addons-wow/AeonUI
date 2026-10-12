@@ -1,6 +1,7 @@
 -- Config/FirstRun.lua
--- Assistant d'installation en six pages : Installation un clic, Modules, Style (AeonUI, Classic,
--- Blizzard), Disposition (Edit Mode), Cooldown Manager, CVars recommandées. Les pages agissent au
+-- Assistant d'installation en huit pages : Installation un clic, Modules, Style (AeonUI, Classic,
+-- Blizzard), Disposition (Edit Mode), Cooldown Manager, CVars recommandées, HUD de classe (Musca
+-- Auras), Résumé. Les pages agissent au
 -- clic (rien à mémoriser), sauf les choix module par module (pages Modules et Style), qui attendent
 -- « Terminer ». Réouvrable par /aeon setup ou depuis les options.
 local _, NS = ...
@@ -213,6 +214,49 @@ pages[6] = { key = "cvars", titleKey = "SETUP_PAGE_CVARS", build = function(page
     layout:Note(L.SETUP_CVARS_HINT)
     for _, entry in ipairs(RECOMMENDED_CVARS) do
         CVarCheck(layout, entry.name, entry.value, L[entry.label])
+    end
+    return { layout }
+end }
+
+pages[7] = { key = "hud", titleKey = "SETUP_PAGE_HUD", build = function(page)
+    local layout = NS.Widgets.NewLayout(page, 20, CONTENT_WIDTH)
+    layout:Header(L.SETUP_PAGE_HUD)
+    layout:Note(L.SETUP_HUD_HINT)
+    -- Musca Auras ouvre sa fenêtre d'import : le joueur confirme, une mise à jour garde la position.
+    local import = _G.WeakAuras and _G.WeakAuras.ImportClassPack
+    local button = layout:Button(L.SETUP_HUD_IMPORT, function()
+        NS:RunOutOfCombat(function()
+            if not import() then NS.Print(L.SETUP_HUD_FAILED) end
+        end)
+    end)
+    if not import then
+        button:Disable()
+        layout:Note(L.SETUP_HUD_NONE)
+    end
+    layout:Button(L.SETUP_HUD_PLACE, function()
+        NS:RunOutOfCombat(function() Report(NS.Install.ApplyHud()) end)
+    end)
+    return { layout }
+end }
+
+pages[8] = { key = "summary", titleKey = "SETUP_PAGE_SUMMARY", build = function(page)
+    local layout = NS.Widgets.NewLayout(page, 20, CONTENT_WIDTH)
+    layout:Header(L.SETUP_PAGE_SUMMARY)
+    local profile = layout:Note(" ")
+    local modules = layout:Note(" ")
+    local hud = layout:Note(" ")
+    layout:Note(L.SETUP_SUMMARY_FINISH)
+    -- Choix encore en attente de « Terminer » : le compte suit la table choices, pas la base.
+    layout.refreshers[#layout.refreshers + 1] = function()
+        local enabled, total = 0, 0
+        for _, module in ipairs(NS.Modules:List()) do
+            total = total + 1
+            -- Même règle que la page Modules : un module cédé à un addon tiers reste décoché.
+            if choices[module.name] and not NS.Modules:YieldedBy(module.name) then enabled = enabled + 1 end
+        end
+        profile:SetText(string.format(L.SETUP_SUMMARY_PROFILE, NS.Database:ActiveProfileName()))
+        modules:SetText(string.format(L.SETUP_SUMMARY_MODULES, enabled, total))
+        hud:SetText(NS.Install.HasMuscaHud() and L.SETUP_SUMMARY_HUD or L.SETUP_SUMMARY_NO_HUD)
     end
     return { layout }
 end }

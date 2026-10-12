@@ -278,3 +278,113 @@ test("assistant : profil de classe déjà là, réinstallé seulement après con
     NS:SwitchProfile(origin)
     NS.Database:DeleteProfile(name)
 end)
+
+test("HUD Musca importé : colonne centrale libre, joueur et cible de part et d'autre, barres AeonUI coupées", function()
+    reset()
+    local Install = NS.Install
+    local origin = NS.Database:ActiveProfileName()
+    Mock.loadedAddons.WeakAuras = true
+    _G.WeakAurasSaved = { displays = {
+        ["Mage (Musca)"] = { load = { class = { single = "MAGE" } } },
+        ["Totem de feu"] = { parent = "Totems" },
+    } }
+    Mock.units.player.class = "SHAMAN"
+    eq(Install.HasMuscaHud(), false, "HUD d'une autre classe ignoré")
+    WeakAurasSaved.displays["Chaman (Musca)"] = { load = { class = { single = "SHAMAN" } } }
+    truthy(Install:ApplyClass("melee"))
+    eq(NS.db.anchors.uf_player.x, -300, "joueur contre le HUD")
+    eq(NS.db.anchors.uf_target.y, -195)
+    eq(NS.db.anchors.uf_totems.y, -270, "HUD posé après la classe")
+    truthy(Install:ApplyRole("heal"))
+    eq(NS.db.anchors.uf_player.x, -300, "HUD reposé après le rôle")
+    eq(NS.db.anchors.uf_tank.x, -800, "tanks hors de la grille de raid")
+    eq(NS.db.anchors.uf_tank.point, "TOP", "tanks grandissent vers le bas")
+    eq(NS.db.anchors.uf_pet.y, -302, "familier sous les totems")
+    eq(NS.db.anchors.pet.x, -360, "barre de familier hors de la colonne")
+    eq(NS.db.modules.unitframes.units.player.castbarDetached, false, "incantation sous le cadre du joueur")
+    eq(NS.Modules:Get("resourcebars").enabled, false, "ressource dessinée par le HUD")
+    eq(NS.Modules:Get("swingtimer").enabled, false)
+    WeakAurasSaved.displays["Chaman (Musca)"] = nil
+    truthy(Install:ApplyClassSettings("melee"))
+    eq(NS.Modules:Get("swingtimer").enabled, true, "HUD supprimé : barres AeonUI revenues")
+    eq(NS.db.anchors.resourcePower.y, -242)
+    Mock.loadedAddons.WeakAuras = nil
+    _G.WeakAurasSaved = nil
+    truthy(Install:ApplyPreset("complete", "dps"))
+    eq(NS.db.anchors.uf_player.x, -330, "sans HUD : disposition de base")
+    NS:SwitchProfile(origin)
+    NS.Database:DeleteProfile(Install.ClassProfileName("melee"))
+end)
+
+test("HUD Musca : bordure à l'accent, repeinte après un réimport, une passe par rafale, rien en combat", function()
+    reset()
+    local Install = NS.Install
+    local added = {}
+    local icon = { parent = "Mage (Musca)", subRegions = { { type = "subborder", border_color = { 0, 0, 0, 1 } } } }
+    local function Border() return icon.subRegions[1].border_color end
+    Mock.loadedAddons.WeakAuras = true
+    Mock.units.player.class = "MAGE"
+    _G.WeakAurasSaved = { displays = {
+        ["Mage (Musca)"] = { load = { class = { single = "MAGE" } }, controlledChildren = { "Icône" } },
+        ["Icône"] = icon,
+    } }
+    _G.WeakAuras = { Add = function(data) added[#added + 1] = data end }
+    local r, g, b = NS.Media:Accent()
+    Install.PaintHud()
+    eq(Border()[1], r) eq(Border()[2], g) eq(Border()[3], b)
+    eq(#added, 1, "icône rechargée")
+    Install.PaintHud()
+    eq(#added, 1, "couleur déjà juste : rien rechargé")
+
+    NS:Fire("LOGIN")   -- pose le crochet sur WeakAuras.Add
+    Mock.Advance(1)
+    icon.subRegions[1].border_color = { 0, 0, 0, 1 }
+    WeakAuras.Add(icon)              -- réimport
+    Mock.Advance(1)
+    eq(Border()[1], r, "repeinte après le réimport")
+
+    icon.subRegions[1].border_color = { 0, 0, 0, 1 }
+    local before = #added
+    NS:Fire("THEME_CHANGED")
+    NS:Fire("THEME_CHANGED")
+    Mock.Advance(1)
+    eq(#added, before + 1, "une seule passe pour la rafale")
+
+    icon.subRegions[1].border_color = { 0, 0, 0, 1 }
+    Mock.SetCombat(true)
+    Install.PaintHud()
+    eq(Border()[1], 0, "rien en combat")
+    Mock.SetCombat(false)
+    Mock.Advance(1)
+
+    -- Changement d'accent : la bordure à l'ancien accent suit, la couleur choisie à la main reste.
+    local manual = { type = "subborder", border_color = { 0.3, 0.6, 0.9, 1 } }
+    icon.subRegions[2] = manual
+    local Accent = NS.Media.Accent
+    NS.Media.Accent = function() return 0.1, 0.2, 0.3 end
+    Install.PaintHud()
+    eq(Border()[1], 0.1, "ancien accent repeint")
+    eq(manual.border_color[1], 0.3, "couleur manuelle gardée")
+    -- Couleur relue des SavedVariables avec un écart d'arrondi : rien rechargé.
+    icon.subRegions[1].border_color = { 0.1000001, 0.2, 0.3, 1 }
+    before = #added
+    Install.PaintHud()
+    eq(#added, before, "écart d'arrondi ignoré")
+
+    -- Deux HUD sur le compte : l'accent changé sur le mage n'empêche pas le chaman de suivre.
+    local shamanIcon = { parent = "Shaman (Musca)", subRegions = { { type = "subborder", border_color = { 0, 0, 0, 1 } } } }
+    WeakAurasSaved.displays["Shaman (Musca)"] = { load = { class = { single = "SHAMAN" } }, controlledChildren = { "Totem" } }
+    WeakAurasSaved.displays["Totem"] = shamanIcon
+    Mock.units.player.class = "SHAMAN"
+    Install.PaintHud()
+    Mock.units.player.class = "MAGE"
+    NS.Media.Accent = function() return 0.4, 0.5, 0.6 end
+    Install.PaintHud()
+    Mock.units.player.class = "SHAMAN"
+    Install.PaintHud()
+    eq(shamanIcon.subRegions[1].border_color[1], 0.4, "HUD de l'autre classe repeint à sa connexion")
+    NS.global.hudBorder = nil
+    NS.Media.Accent = Accent
+    Mock.loadedAddons.WeakAuras = nil
+    _G.WeakAurasSaved, _G.WeakAuras = nil, nil
+end)

@@ -191,6 +191,111 @@ Install.CLASSES = {
     },
 }
 
+-- HUD de classe Musca-Auras (pack « <Classe> (Musca) » importé) : colonne centrée sous le personnage,
+-- 334 de large, de y -30 à -400 environ. Le HUD dessine déjà ressource, coups blancs et incantation :
+-- les barres AeonUI de la colonne se coupent, la barre d'incantation rentre sous le cadre du joueur.
+-- Joueur et cible à 300 du centre, familier et cible de la cible dessous, barre de familier à gauche,
+-- groupe et raid à gauche, tanks et assistants principaux sous la grille de raid.
+-- Posé après le rôle, le style et la classe : il gagne sur leurs ancrages de la colonne centrale.
+local HUD_OVERRIDES = {
+    unitframes = { units = { player = { castbarDetached = false } } },
+    resourcebars = { enabled = false }, swingtimer = { enabled = false }, gcdbar = { enabled = false },
+    anchors = {
+        uf_player = { "CENTER", -300, -195 }, uf_target = { "CENTER", 300, -195 },
+        uf_pet = { "CENTER", -355, -302 }, uf_targettarget = { "CENTER", 355, -302 },
+        pet = { "BOTTOM", -360, 176 },
+        uf_party = { "TOPLEFT", 20, -250 }, uf_raid = { "TOPLEFT", 20, -250 },
+        uf_tank = { "CENTER", -800, 40, "TOP" }, uf_assist = { "CENTER", -800, -170, "TOP" },
+    },
+}
+Install.HUD_OVERRIDES = HUD_OVERRIDES
+-- Totems du chaman sous la barre d'incantation attachée (emplacement des points de combo compris).
+-- Pas pour les autres classes : leurs boutons de totem vides capteraient les clics du familier.
+local HUD_TOTEMS = { uf_totems = { "CENTER", -300, -270 } }
+
+--- Vrai si un HUD de classe Musca-Auras de la classe du joueur est importé (dossier d'addon
+-- WeakAuras, groupe racine « <Classe> (Musca) » chargé pour cette classe). WeakAurasSaved est
+-- partagé par le compte : sans le filtre de classe, le HUD d'un chaman viderait la colonne d'un mage.
+local function MuscaHud()
+    local api, classFile = _G.C_AddOns and C_AddOns.IsAddOnLoaded, Install.PlayerClass()
+    if not (api and classFile) then return end
+    local ok, loaded = pcall(api, "WeakAuras")
+    local saved = ok and loaded and _G.WeakAurasSaved
+    if type(saved) ~= "table" or type(saved.displays) ~= "table" then return end
+    for id, data in pairs(saved.displays) do
+        if type(id) == "string" and id:find(" %(Musca%)$") and type(data) == "table" and not data.parent
+            and type(data.load) == "table" and type(data.load.class) == "table" and data.load.class.single == classFile then
+            return data, saved.displays, id
+        end
+    end
+end
+
+function Install.HasMuscaHud() return MuscaHud() ~= nil end
+
+-- Tolérance : une couleur relue des SavedVariables peut différer au dernier chiffre.
+local function SameColor(color, r, g, b)
+    return type(color[1]) == "number" and type(color[2]) == "number" and type(color[3]) == "number"
+        and math.abs(color[1] - r) < 1e-3 and math.abs(color[2] - g) < 1e-3 and math.abs(color[3] - b) < 1e-3
+end
+
+--- Bordure des icônes du HUD Musca à la couleur d'accent AeonUI. Seules les bordures noires du
+-- pack et celles à l'accent du repeint précédent changent : une couleur choisie à la main dans
+-- WeakAuras est gardée. Seules les icônes dont la couleur change sont rechargées : le repeint qui
+-- suit chaque WeakAuras.Add (réimport du pack) s'arrête donc au second passage.
+function Install.PaintHud()
+    local root, displays, rootId = MuscaHud()
+    local add = _G.WeakAuras and _G.WeakAuras.Add
+    if not (root and add) or InCombatLockdown() then return end
+    local r, g, b = NS.Media:Accent()
+    -- Un accent par HUD : chaque classe est repeinte à la connexion de son personnage.
+    local store = type(NS.global.hudBorder) == "table" and NS.global.hudBorder or {}
+    local painted = store[rootId]
+    local function Paint(data)
+        for _, child in ipairs(type(data.controlledChildren) == "table" and data.controlledChildren or {}) do
+            if type(displays[child]) == "table" then Paint(displays[child]) end
+        end
+        local changed = false
+        for _, sub in ipairs(type(data.subRegions) == "table" and data.subRegions or {}) do
+            local color = sub.type == "subborder" and sub.border_color
+            if type(color) == "table" and not SameColor(color, r, g, b) and (SameColor(color, 0, 0, 0)
+                or type(painted) == "table" and SameColor(color, painted[1], painted[2], painted[3])) then
+                sub.border_color = { r, g, b, color[4] or 1 }
+                changed = true
+            end
+        end
+        if changed then add(data) end
+    end
+    Paint(root)
+    store[rootId] = { r, g, b }
+    NS.global.hudBorder = store
+end
+
+-- THEME_CHANGED arrive à chaque image pendant le glisser de la roue de couleur : un seul repeint
+-- par tranche de 0,2 s. Tant que WeakAuras n'a pas fini sa connexion, le repeint attend.
+local paintQueued = false
+local function QueuePaint()
+    if paintQueued then return end
+    paintQueued = true
+    C_Timer.After(0.2, function()
+        paintQueued = false
+        local weakAuras = _G.WeakAuras
+        if weakAuras and weakAuras.IsLoginFinished and not weakAuras.IsLoginFinished() then return QueuePaint() end
+        NS:RunOutOfCombat(Install.PaintHud)
+    end)
+end
+-- Un réimport du pack (assistant ou bouton Class Pack de Musca) rend les bordures noires :
+-- chaque WeakAuras.Add relance un repeint.
+local addHooked = false
+NS:On("LOGIN", function()
+    local weakAuras = _G.WeakAuras
+    if not addHooked and weakAuras and type(weakAuras.Add) == "function" then
+        hooksecurefunc(weakAuras, "Add", QueuePaint)
+        addHooked = true
+    end
+    QueuePaint()
+end)
+NS:On("THEME_CHANGED", QueuePaint)
+
 local function Merge(target, overrides)
     for key, value in pairs(overrides) do
         if type(value) == "table" and type(target[key]) == "table" then Merge(target[key], value)
@@ -217,10 +322,22 @@ local function ApplyOverrides(overrides)
     SetAnchors(overrides.anchors)
 end
 
+-- Disposition autour du HUD Musca, quand il est importé. Rejouée après chaque couche de réglages
+-- (rôle, style, classe) qui repose des ancrages de la colonne centrale.
+local function ApplyHud()
+    if not Install.HasMuscaHud() then return false, "nohud" end
+    ApplyOverrides(HUD_OVERRIDES)
+    if Install.PlayerClass() == "SHAMAN" then SetAnchors(HUD_TOTEMS) end
+    Install.PaintHud()
+    return true
+end
+Install.ApplyHud = ApplyHud
+
 function Install:ApplyRole(role)
     local overrides = self.ROLES[role]
     if not overrides then return false end
     ApplyOverrides(overrides)
+    ApplyHud()
     return true
 end
 
@@ -233,6 +350,7 @@ function Install:ApplyPreset(presetName, role, extra, label)
     SetAnchors(preset.anchors)
     if role and role ~= "none" then self:ApplyRole(role) end
     for _, overrides in ipairs(extra or {}) do ApplyOverrides(overrides) end
+    if preset.anchors then ApplyHud() end
     for name, enabled in pairs(preset.modules) do
         -- Un module cédé garde le réglage : il s'allumera le jour où l'addon tiers part.
         if NS.Modules:Get(name) then
@@ -411,6 +529,7 @@ function Install:ApplyClassSettings(style)
     end
     self:ApplyRole(self.PLAYSTYLES[style].role)
     for _, overrides in ipairs(ClassOverrides(style)) do ApplyOverrides(overrides) end
+    ApplyHud()
     ApplyHealPresets(style, true)
     NS.Modules:RefreshAll()
     return true

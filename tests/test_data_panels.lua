@@ -165,7 +165,7 @@ test("data texts : métiers, niveau d'objet, durée du combat, monnaies, or de t
     truthy(Text("professions"):find("150/225", 1, true), "premier métier")
     truthy(Text("professions"):find("75/150", 1, true), "trou de GetProfessions sauté")
     _G.GetProfessions, _G.GetProfessionInfo = nil, nil
-    _G.GetAverageItemLevel = function() return 48, 45.25 end
+    _G.GetAverageItemLevel = function() return 48, 45.26 end
     truthy(Text("itemlevel"):find("45.3", 1, true), "moyenne équipée")
     _G.GetAverageItemLevel = nil
     Mock.SetCombat(true)

@@ -414,6 +414,15 @@ end
 
 function Window:IsShown() return frame ~= nil and frame:IsShown() end
 
+-- Entrée en combat : la fenêtre cache le centre de l'écran, elle se ferme d'elle-même.
+local combat = CreateFrame("Frame")
+combat:RegisterEvent("PLAYER_REGEN_DISABLED")
+combat:SetScript("OnEvent", function()
+    if not Window:IsShown() then return end
+    Window:Hide()
+    NS.Print(L.MSG_OPTIONS_COMBAT)
+end)
+
 function Window:GetFrame() return frame end
 
 function Window:Selected() return self.selected end

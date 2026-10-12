@@ -308,6 +308,15 @@ test("options : en combat, /reload proposé par message seul, sans calque d'acti
     Mock.popups.AEONUI_RELOAD_COMBAT = nil
 end)
 
+test("options : fenêtre fermée à l'entrée en combat", function()
+    reset()
+    Window:Show("swingtimer")
+    truthy(Window:IsShown(), "ouverte hors combat")
+    Mock.SetCombat(true)
+    eq(Window:IsShown(), false, "fermée en combat")
+    Mock.SetCombat(false)
+end)
+
 test("options : export du compte collé, import après confirmation seulement", function()
     reset()
     local layout = Options:GetLayout("profiles")

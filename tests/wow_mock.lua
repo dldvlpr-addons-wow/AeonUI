@@ -38,6 +38,7 @@ _G.strmatch = string.match
 _G.tremove = table.remove
 _G.wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 _G.date = os.date
+_G.time = os.time
 _G.debugstack = function() return debug.traceback() end
 
 function _G.Mixin(object, ...)
