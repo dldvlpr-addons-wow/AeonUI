@@ -44,6 +44,14 @@ function T.truthy(value, message)
     if not value then error((message or "attendu vrai") .. " (obtenu " .. tostring(value) .. ")", 2) end
 end
 
+--- Texte qu'afficherait Elements.SetUnitText pour un mode ou format.
+function T.RenderText(unit, kind, format)
+    local probe = { SetText = function(self, t) self.text = t end,
+                    SetFormattedText = function(self, fmt, ...) self.text = string.format(fmt, ...) end }
+    NS.UnitFrameElements.SetUnitText(probe, unit, kind, format)
+    return probe.text
+end
+
 --- Remet l'état de jeu simulé à zéro entre deux tests.
 function T.reset()
     Mock.combat = false

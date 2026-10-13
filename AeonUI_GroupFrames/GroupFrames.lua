@@ -7,8 +7,8 @@
 -- alliés (boss1 à boss5 assistables, rencontres d'escorte ou de soin).
 --
 -- L'en-tête crée et ordonne ses boutons lui-même, hors combat, d'après ses attributs ; un hook
--- de SecureGroupHeader_Update habille chaque bouton neuf (ce moteur n'a pas de loadstring :
--- aucun snippet restreint, donc pas d'initialConfigFunction), une fois par bouton. Les événements d'unité sont reçus
+-- de SecureGroupHeader_Update habille chaque bouton neuf (pas d'initialConfigFunction : aucun
+-- snippet restreint ici), une fois par bouton. Les événements d'unité sont reçus
 -- par un seul écouteur et routés par jeton (byUnit) : le jeton d'un bouton change avec le tri, et
 -- une unité peut avoir deux boutons (raid et tanks principaux).
 local NS = AeonUI
@@ -34,7 +34,7 @@ local GroupFrames = NS.Modules:Register("groupframes", {
         raidUnitsPerColumn = 5, raidColumns = 8, raidSortBy = "ROLE",   -- "GROUP" | "CLASS" | "ROLE" | "NAME"
         raidUnitGrowth = "DOWN", raidGroupGrowth = "RIGHT",   -- membres, puis colonnes : GROWTH
         raidGroups = 8,                 -- raid : groupes 1 à N affichés
-        raidThreshold = 5,              -- cadres de raid au-delà de 5, 10 ou 40 membres (en dessous : disposition du groupe)
+        raidThreshold = 5,              -- cadres de raid au-delà de 5, 10, 15, 20, 25 ou 40 membres (en dessous : disposition du groupe)
         nameLength = 12,                -- caractères du nom (0 = entier)
         namePosition = "TOPLEFT",       -- "TOPLEFT" | "CENTER"
         roleIcons = true, dispel = true, aggro = true,
@@ -136,6 +136,9 @@ local ANY_DISPEL = { Magic = true, Curse = true, Poison = true, Disease = true }
 local GROWTH = { DOWN = { "TOP", 0, -1 }, UP = { "BOTTOM", 0, 1 }, RIGHT = { "LEFT", 1, 0 }, LEFT = { "RIGHT", -1, 0 } }
 GroupFrames.GROWTH_ORDER = { "DOWN", "UP", "RIGHT", "LEFT" }
 local VERTICAL = { DOWN = true, UP = true }
+-- Ordres de tri du raid (groupingOrder), repris par l'aperçu.
+local CLASS_ORDER = { "WARRIOR", "PALADIN", "DRUID", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "HUNTER", "ROGUE" }
+local ROLE_ORDER = { "TANK", "HEALER", "DAMAGER", "NONE" }
 
 local BLIZZARD = { "PartyFrame", "CompactPartyFrame", "CompactRaidFrameContainer" }
 
@@ -811,7 +814,7 @@ local function Apply(header)
         header:SetAttribute("unitsPerColumn", 5)
         if db.partySortRole then
             header:SetAttribute("groupBy", "ASSIGNEDROLE")
-            header:SetAttribute("groupingOrder", "TANK,HEALER,DAMAGER,NONE")
+            header:SetAttribute("groupingOrder", table.concat(ROLE_ORDER, ","))
         else
             header:SetAttribute("groupBy", threshold > 5 and "GROUP" or nil)
             header:SetAttribute("groupingOrder", "1,2,3,4,5,6,7,8")
@@ -856,11 +859,11 @@ local function Apply(header)
             header:SetAttribute("sortMethod", "INDEX")
         elseif db.raidSortBy == "CLASS" then
             header:SetAttribute("groupBy", "CLASS")
-            header:SetAttribute("groupingOrder", "WARRIOR,PALADIN,DRUID,PRIEST,SHAMAN,MAGE,WARLOCK,HUNTER,ROGUE")
+            header:SetAttribute("groupingOrder", table.concat(CLASS_ORDER, ","))
             header:SetAttribute("sortMethod", "NAME")
         elseif db.raidSortBy == "ROLE" then
             header:SetAttribute("groupBy", "ASSIGNEDROLE")
-            header:SetAttribute("groupingOrder", "TANK,HEALER,DAMAGER,NONE")
+            header:SetAttribute("groupingOrder", table.concat(ROLE_ORDER, ","))
             header:SetAttribute("sortMethod", "NAME")
         else
             header:SetAttribute("groupBy", nil)
@@ -933,31 +936,78 @@ end
 -- Aperçu : faux membres (boutons ordinaires, sans unité) posés à la place des en-têtes
 --------------------------------------------------------------------------------
 
--- Nom, classe, rôle, vie en % ; puis au besoin : state (dead | offline), dispel, threat, leader, mark.
-local PREVIEW_PARTY = {
-    { name = "Brannoc", class = "WARRIOR", role = "TANK", hp = 72, threat = 3, leader = true, mark = 8 },
-    { name = "Elowen", class = "PRIEST", role = "HEALER", hp = 100 },
-    { name = "Thalindra", class = "MAGE", role = "DAMAGER", hp = 45, dispel = "Magic" },
-    { name = "Grimjaw", class = "ROGUE", role = "DAMAGER", hp = 0, state = "dead" },
-    { name = "Sylvaris", class = "HUNTER", role = "DAMAGER", hp = 100, state = "offline" },
+local PREVIEW_NAMES = { "Brannoc", "Elowen", "Thalindra", "Grimjaw", "Sylvaris", "Kaldrek", "Maerith", "Oswin",
+                        "Tessaly", "Durnhelm", "Ysolde", "Varric", "Nimue", "Corvash", "Liraen", "Haldor",
+                        "Quenby", "Morwenna", "Taviel", "Ashgar", "Bryndis", "Caelum", "Darrow", "Eirlys",
+                        "Fenwick", "Gwynna", "Hollis", "Isolde", "Jorvik", "Kestrel", "Lunet", "Merrick",
+                        "Nyssa", "Orrin", "Perrin", "Rowena", "Seren", "Torvald", "Ulric", "Wynne" }
+local PREVIEW_CLASSES = {
+    TANK = { "WARRIOR", "DRUID", "PALADIN" },
+    HEALER = { "PRIEST", "DRUID", "PALADIN", "SHAMAN" },
+    DAMAGER = { "MAGE", "ROGUE", "HUNTER", "WARLOCK", "WARRIOR", "SHAMAN", "DRUID", "PRIEST", "PALADIN" },
 }
-local PREVIEW_RAID_CLASSES = { "PALADIN", "DRUID", "SHAMAN", "PRIEST", "MAGE", "WARLOCK", "HUNTER", "ROGUE", "WARRIOR" }
-local POWER_COLORS = { WARRIOR = { 0.78, 0.25, 0.25 }, ROGUE = { 1, 0.96, 0.41 } }   -- sinon mana
-local PREVIEW_NAMES = { "Brannoc", "Kaldrek", "Elowen", "Maerith", "Oswin", "Tessaly", "Thalindra", "Grimjaw",
-                        "Sylvaris", "Durnhelm", "Ysolde", "Varric", "Nimue", "Corvash", "Liraen", "Haldor",
-                        "Quenby", "Morwenna", "Taviel", "Ashgar" }
+local POWER_COLORS = { RAGE = { 0.78, 0.25, 0.25 }, ENERGY = { 1, 0.96, 0.41 }, MANA = { 0, 0.44, 0.87 } }
 local PREVIEW_DEBUFF ={ icon = "Interface\\Icons\\Spell_Shadow_Possession", dispel = "Magic" }
 
-local function PreviewRaid()
+--- `size` faux membres (5 à 40) : tanks, soigneurs puis dégâts, distribués tour à tour dans les
+-- groupes de cinq ; le premier tank mène et a l'agro, puis un dissipable, un mort, un hors ligne.
+-- Liste dans l'ordre du raid (groupe, puis arrivée) ; `index` garde cet ordre.
+function GroupFrames.PreviewRoster(size)
+    local groups = math.ceil(size / 5)
+    local tanks = size >= 40 and 3 or (size > 5 and 2 or 1)
+    local healers = math.max(1, math.floor(size * 0.22 + 0.5))
     local list = {}
-    for i = 1, 20 do
-        local role = i <= 2 and "TANK" or (i <= 6 and "HEALER" or "DAMAGER")
-        local class = role == "TANK" and "WARRIOR" or PREVIEW_RAID_CLASSES[(i % #PREVIEW_RAID_CLASSES) + 1]
-        if role == "HEALER" then class = ({ "PRIEST", "DRUID", "PALADIN", "SHAMAN" })[i - 2] end
-        list[i] = { name = PREVIEW_NAMES[i], class = class, role = role, hp = 40 + (i * 37) % 61 }
+    for k = 1, size do
+        local role, nth = "DAMAGER", k - tanks - healers
+        if k <= tanks then role, nth = "TANK", k elseif k <= tanks + healers then role, nth = "HEALER", k - tanks end
+        local classes = PREVIEW_CLASSES[role]
+        local class = classes[(nth - 1) % #classes + 1]
+        local power = (class == "WARRIOR" or (class == "DRUID" and role == "TANK")) and "RAGE"
+            or (class == "ROGUE" and "ENERGY") or "MANA"
+        list[k] = { name = PREVIEW_NAMES[k], class = class, role = role, power = power, order = k,
+                    group = (k - 1) % groups + 1, hp = 35 + (k * 37) % 66 }
     end
-    list[1].threat, list[1].mark, list[1].leader = 3, 8, true
-    list[5].dispel, list[9].state, list[14].state, list[14].hp = "Magic", "offline", "dead", 0
+    list[1].threat, list[1].leader, list[1].mark = 3, true, 8
+    list[tanks + healers + 1].dispel = "Magic"
+    list[size - 1].state, list[size - 1].hp = "dead", 0
+    list[size].state, list[size].hp = "offline", 100
+    table.sort(list, function(a, b)
+        if a.group ~= b.group then return a.group < b.group end
+        return a.order < b.order
+    end)
+    for index, fake in ipairs(list) do fake.index = index end
+    return list
+end
+
+local CLASS_RANK, ROLE_RANK = {}, {}
+for rank, class in ipairs(CLASS_ORDER) do CLASS_RANK[class] = rank end
+for rank, role in ipairs(ROLE_ORDER) do ROLE_RANK[role] = rank end
+-- Point d'ancrage d'un en-tête -> sens où il empile (x, y).
+-- Tailles d'instance : aperçu et seuil de raid.
+local PREVIEW_SIZES = { 5, 10, 15, 20, 25, 40 }
+local POINT_STEP = { TOP = { 0, -1 }, BOTTOM = { 0, 1 }, LEFT = { 1, 0 }, RIGHT = { -1, 0 } }
+
+--- Membres que l'en-tête montrerait, dans son ordre : groupFilter, groupBy puis sortMethod
+-- (INDEX : ordre du raid, NAME : alphabétique), plafonnés à maxColumns x unitsPerColumn.
+local function PreviewMembers(header, size)
+    local filter, groupBy = header:GetAttribute("groupFilter"), header:GetAttribute("groupBy")
+    local byName = header:GetAttribute("sortMethod") == "NAME"
+    local rank = function() return 0 end
+    if groupBy == "GROUP" then rank = function(fake) return fake.group end
+    elseif groupBy == "CLASS" then rank = function(fake) return CLASS_RANK[fake.class] end
+    elseif groupBy == "ASSIGNEDROLE" then rank = function(fake) return ROLE_RANK[fake.role] end end
+    local list = {}
+    for _, fake in ipairs(GroupFrames.PreviewRoster(size)) do
+        if not filter or ("," .. filter .. ","):find("," .. fake.group .. ",", 1, true) then list[#list + 1] = fake end
+    end
+    table.sort(list, function(a, b)
+        local rankA, rankB = rank(a), rank(b)
+        if rankA ~= rankB then return rankA < rankB end
+        if byName then return a.name < b.name end
+        return a.index < b.index
+    end)
+    local limit = (header:GetAttribute("maxColumns") or 1) * (header:GetAttribute("unitsPerColumn") or 5)
+    for index = #list, limit + 1, -1 do list[index] = nil end
     return list
 end
 
@@ -979,7 +1029,7 @@ local function PaintPreview(button, fake)
     if db.classColor and class then button.name:SetTextColor(class.r, class.g, class.b) else button.name:SetTextColor(1, 1, 1) end
     GroupFrames:UpdatePowerRole(button)
     if button.cfg.power then
-        local p = POWER_COLORS[fake.class] or { 0, 0.44, 0.87 }
+        local p = POWER_COLORS[fake.power] or POWER_COLORS.MANA
         button.power:SetMinMaxValues(0, 100)
         button.power:SetValue(fake.state and 0 or 80)
         button.power:SetStatusBarColor(p[1], p[2], p[3])
@@ -1007,15 +1057,20 @@ local function PaintPreview(button, fake)
     button:SetAlpha(fake.state == "offline" and db.range and db.rangeAlpha or 1)
 end
 
---- Aperçu "party", "raid" ou nil (caché) ; suit les réglages de disposition du groupe ou du raid.
--- ponytail: croissance approchée depuis le coin haut gauche de l'en-tête ; une croissance vers le
--- haut ou la gauche déborde de l'autre côté de l'ancre, à reprendre si l'aperçu doit être exact.
-function GroupFrames:SetPreview(mode)
-    self.preview = active and not NS.InCombat() and mode or nil
+--- Aperçu à l'écran de `size` membres (5 à 40), nil pour aucun. Jusqu'au seuil de raid, il prend
+-- la place de l'en-tête de groupe, au-delà celle du raid, et en recopie la disposition (attributs
+-- posés par Apply) : il montre ce que l'en-tête afficherait. Caché en combat, repris après ;
+-- gardé tant que les options sont ouvertes ou le mode déplacement actif.
+function GroupFrames:SetPreview(size)
+    self.previewSize = size
+    local threshold = tonumber(self.db.raidThreshold) or 5
+    local mode = size and (size <= threshold and "party" or "raid")
+    local header = mode and self.headers[mode]
+    if not (active and header) or inCombat or NS.InCombat() then mode = nil end
+    self.preview = mode
     for key, holder in pairs(previewHeaders) do
-        if key ~= self.preview then holder:Hide() end
+        if key ~= mode then holder:Hide() end
     end
-    mode = self.preview
     if not mode then return end
     local holder = previewHeaders[mode]
     if not holder then
@@ -1024,37 +1079,39 @@ function GroupFrames:SetPreview(mode)
         holder:SetFrameStrata("MEDIUM")
         previewHeaders[mode] = holder
     end
-    local db = self.db
-    local fakes = mode == "raid" and PreviewRaid() or PREVIEW_PARTY
-    for index = #holder.buttons + 1, #fakes do Style(holder, CreateFrame("Button", nil, holder)) end
-    local S = function(n) return NS.Pixel:Scale(n) end
-    local width, height = GroupFrames.Size(mode)
-    local spacing = S(db.spacing)
-    local unitGrowth, columnGrowth, perColumn
-    if mode == "raid" then
-        unitGrowth, perColumn = GROWTH[db.raidUnitGrowth] and db.raidUnitGrowth or "DOWN", db.raidUnitsPerColumn
-        columnGrowth = db.raidGroupGrowth
-        if not GROWTH[columnGrowth] or VERTICAL[columnGrowth] == VERTICAL[unitGrowth] then
-            columnGrowth = VERTICAL[unitGrowth] and "RIGHT" or "DOWN"
-        end
-    else
-        unitGrowth = db.horizontal and (db.reverse and "LEFT" or "RIGHT") or (db.reverse and "UP" or "DOWN")
-        columnGrowth, perColumn = VERTICAL[unitGrowth] and "RIGHT" or "DOWN", 5
-    end
-    local u, c = GROWTH[unitGrowth], GROWTH[columnGrowth]
-    local stepX, stepY = S(width) + spacing, S(height) + spacing
-    local anchor = self.headers[mode] or self.headers.party
+    local fakes = PreviewMembers(header, size)
+    for _ = #holder.buttons + 1, #fakes do Style(holder, CreateFrame("Button", nil, holder)) end
+    -- Le premier membre occupe le coin formé par `point` et `columnAnchorPoint` ; les suivants
+    -- s'empilent depuis ce coin, puis les colonnes.
+    local point, columnPoint = header:GetAttribute("point") or "TOP", header:GetAttribute("columnAnchorPoint") or "LEFT"
+    local unitStep, columnStep = POINT_STEP[point] or POINT_STEP.TOP, POINT_STEP[columnPoint] or POINT_STEP.LEFT
+    local vertical = unitStep[1] == 0
+    local corner = vertical and (point .. columnPoint) or (columnPoint .. point)
+    local width, height = header:GetAttribute("initial-width"), header:GetAttribute("initial-height")
+    local spacing = math.abs(vertical and (header:GetAttribute("yOffset") or 0) or (header:GetAttribute("xOffset") or 0))
+    local columnSpacing = header:GetAttribute("columnSpacing") or 0
+    local perColumn = math.max(1, header:GetAttribute("unitsPerColumn") or 5)
+    local rows, columns = math.min(#fakes, perColumn), math.ceil(#fakes / perColumn)
+    local unitSize, columnSize = vertical and height + spacing or width + spacing, vertical and width + columnSpacing or height + columnSpacing
+    -- Même point fixe que l'en-tête (posé par son mover) : l'aperçu a la taille que l'en-tête prendrait.
+    local anchor = header:GetPoint() or corner
     holder:ClearAllPoints()
-    holder:SetPoint("TOPLEFT", anchor or UIParent, "TOPLEFT", 0, 0)
-    holder:SetSize(S(width), S(height))
+    holder:SetPoint(anchor, header, anchor, 0, 0)
+    if vertical then
+        holder:SetSize(math.max(1, columns * columnSize - columnSpacing), math.max(1, rows * unitSize - spacing))
+    else
+        holder:SetSize(math.max(1, rows * unitSize - spacing), math.max(1, columns * columnSize - columnSpacing))
+    end
     for index, button in ipairs(holder.buttons) do
         local fake = fakes[index]
         if fake then
             Relayout(button)
             local row, column = (index - 1) % perColumn, math.floor((index - 1) / perColumn)
+            button:SetSize(width, height)
             button:ClearAllPoints()
-            button:SetPoint("TOPLEFT", holder, "TOPLEFT", (u[2] * row + c[2] * column) * stepX,
-                (u[3] * row + c[3] * column) * stepY)
+            button:SetPoint(corner, holder, corner,
+                unitStep[1] * row * unitSize + columnStep[1] * column * columnSize,
+                unitStep[2] * row * unitSize + columnStep[2] * column * columnSize)
             PaintPreview(button, fake)
             button:Show()
         else
@@ -1063,6 +1120,9 @@ function GroupFrames:SetPreview(mode)
     end
     holder:Show()
 end
+
+--- Cadre de l'aperçu montré (ses boutons dans `buttons`), nil sans aperçu.
+function GroupFrames:GetPreview() return previewHeaders[self.preview] end
 
 function GroupFrames:Reconcile()
     for _, key in ipairs(HEADER_KEYS) do
@@ -1091,7 +1151,7 @@ function GroupFrames:Reconcile()
         NS.ShowBlizzardFrame("CompactRaidFrameManager")
     end
     ForEach(nil, function(button) self:UpdateAll(button) end)
-    if self.preview then self:SetPreview(self.preview) end
+    if self.previewSize then self:SetPreview(self.previewSize) end
 end
 
 --- Bouton de l'unité ; `key` choisit l'en-tête (défaut : groupe ou raid d'abord).
@@ -1237,7 +1297,8 @@ events:SetScript("OnEvent", function(_, event, unit)
         GroupFrames:UpdateHealerMana()
     elseif event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
         inCombat = event == "PLAYER_REGEN_DISABLED"
-        if inCombat and GroupFrames.preview then GroupFrames:SetPreview(nil) end
+        -- Aperçu caché en combat, repris à la sortie (SetPreview refuse le combat).
+        if GroupFrames.previewSize then GroupFrames:SetPreview(GroupFrames.previewSize) end
         if GroupFrames.db.roleHideInCombat then ForEach(nil, function(button) GroupFrames:UpdateRole(button) end) end
     elseif event == "INCOMING_SUMMON_CHANGED" and not unit then
         ForEach(nil, function(button) GroupFrames:UpdateStatus(button) end)
@@ -1330,18 +1391,26 @@ NS:On("PIXEL_CHANGED", function()
     if active then NS:RunOutOfCombat(function() if active then GroupFrames:Reconcile() end end) end
 end)
 
+-- Aperçu gardé pour placer les en-têtes en mode déplacement, oublié quand options et mode
+-- déplacement sont tous deux fermés.
+local function DropPreview()
+    local window = _G.AeonUIOptionsWindow
+    if GroupFrames.previewSize and not NS.unlocked and not (window and window:IsShown()) then GroupFrames:SetPreview(nil) end
+end
+NS:On("OPTIONS_HIDDEN", DropPreview)
+NS:On("UNLOCK", DropPreview)
+
 --------------------------------------------------------------------------------
 -- Options
 --------------------------------------------------------------------------------
 
 function GroupFrames:BuildOptions(o)
-    local function Preview(mode)
-        return function() NS.Modules:Within("groupframes", function() GroupFrames:SetPreview(mode) end) end
-    end
     o.layout:Note(L.NOTE_GF_RELOAD, 20)
-    o.layout:Button(L.OPT_GF_PREVIEW_PARTY, Preview("party"), 20)
-    o.layout:Button(L.OPT_GF_PREVIEW_RAID, Preview("raid"), 20)
-    o.layout:Button(L.OPT_GF_PREVIEW_HIDE, Preview(nil), 20)
+    local sizes = { { name = L.OPT_GF_PREVIEW_NONE, value = 0 } }
+    for _, size in ipairs(PREVIEW_SIZES) do sizes[#sizes + 1] = { name = tostring(size), value = size } end
+    o.layout:Dropdown(L.OPT_GF_PREVIEW, sizes, function() return GroupFrames.previewSize or 0 end, function(size)
+        NS.Modules:Within("groupframes", function() GroupFrames:SetPreview(size > 0 and size or nil) end)
+    end, 20)
     o.layout:Button(L.OPT_UF_UNLOCK, function() NS:SetUnlocked(not NS.unlocked) end, 20)
     o:Advanced()
     o:Slider("spacing", L.OPT_GF_SPACING, 0, 20, 1)
@@ -1378,8 +1447,9 @@ function GroupFrames:BuildOptions(o)
     o:EndAdvanced()
     o:Advanced()
     o:Slider("raidGroups", L.OPT_GF_RAID_GROUPS, 1, 8, 1)
-    o:Dropdown("raidThreshold", L.OPT_GF_RAID_THRESHOLD, {
-        { name = "5", value = 5 }, { name = "10", value = 10 }, { name = "40", value = 40 } })
+    local thresholds = {}
+    for _, size in ipairs(PREVIEW_SIZES) do thresholds[#thresholds + 1] = { name = tostring(size), value = size } end
+    o:Dropdown("raidThreshold", L.OPT_GF_RAID_THRESHOLD, thresholds)
     o:Hint(L.OPT_GF_RAID_THRESHOLD_HINT)
     o:EndAdvanced()
     o:Check("mainTanks", L.OPT_GF_MAIN_TANKS)
@@ -1503,24 +1573,24 @@ end
 --- Aperçu des options : un groupe de cinq et vingt membres de raid, à leur taille, avec couleurs
 -- de classe, nom et ressource ; un clic ouvre l'onglet Groupe ou Raid.
 GroupFrames.previewHeight = 360
-local PREVIEW_MEMBERS = {
-    { "Aelys", "PALADIN" }, { "Brann", "WARRIOR" }, { "Cyrene", "PRIEST" }, { "Dorn", "ROGUE" }, { "Elwin", "MAGE" },
-    { "Faelan", "DRUID" }, { "Garrok", "SHAMAN" }, { "Hesper", "WARLOCK" }, { "Ilyra", "HUNTER" },
-}
 local PREVIEW_RAID_SIZE = 20
 
 function GroupFrames:BuildPreview(p)
-    local function member(id, index, x, y, width, height, db, scale)
-        local who = PREVIEW_MEMBERS[(index - 1) % #PREVIEW_MEMBERS + 1]
+    -- Mêmes faux membres que l'aperçu à l'écran.
+    local party, raid = GroupFrames.PreviewRoster(5), GroupFrames.PreviewRoster(PREVIEW_RAID_SIZE)
+    local function member(id, who, x, y, width, height, db, scale)
         local r, g, b = 0.2, 0.75, 0.2
-        if db.classColor then r, g, b = p.ClassColor(who[2]) end
+        if db.classColor then r, g, b = p.ClassColor(who.class) end
         local power = db.power and db.powerHeight * scale or 0
         local healthHeight = height - (power > 0 and power + 1 or 0)
         p.Edge(id .. ":edge", x, y, width, height, 0, 0, 0, 1)
-        p.Bar(id, x, y, width, healthHeight, r, g, b, 1 - (index % 4) * 0.18)
-        if power > 0 then p.Bar(id .. ":power", x, y + healthHeight + 1, width, power, 0, 0.44, 0.87, 0.8) end
+        p.Bar(id, x, y, width, healthHeight, r, g, b, who.hp / 100)
+        if power > 0 then
+            local color = POWER_COLORS[who.power]
+            p.Bar(id .. ":power", x, y + healthHeight + 1, width, power, color[1], color[2], color[3], who.state and 0 or 0.8)
+        end
         local length = tonumber(db.nameLength) or 0
-        local name = length > 0 and who[1]:sub(1, length) or who[1]
+        local name = length > 0 and who.name:sub(1, length) or who.name
         p.Text(id .. ":name", x + 3, y + 2, name, math.min(11, healthHeight * 0.4))
     end
     return function()
@@ -1540,13 +1610,13 @@ function GroupFrames:BuildPreview(p)
             local offset = (i - 1) * ((db.horizontal and db.width or db.height) + spacing) * scale
             local x = originX + (db.horizontal and offset or 0)
             local y = originY + (db.horizontal and 0 or offset)
-            member("party" .. i, i, x, y, db.width * scale, db.height * scale, db, scale)
+            member("party" .. i, party[i], x, y, db.width * scale, db.height * scale, db, scale)
         end
         p.Hotspot(p.Region("partyspot", originX, originY, partyWidth * scale, partyHeight * scale), L.UF_UNIT_PARTY)
         local raidTop = originY + (partyHeight + gap) * scale
         for i = 1, math.min(PREVIEW_RAID_SIZE, columns * perColumn) do
             local column, row = math.floor((i - 1) / perColumn), (i - 1) % perColumn
-            member("raid" .. i, i + 1, originX + column * (db.raidWidth + spacing) * scale,
+            member("raid" .. i, raid[i], originX + column * (db.raidWidth + spacing) * scale,
                 raidTop + row * (db.raidHeight + spacing) * scale, db.raidWidth * scale, db.raidHeight * scale, db, scale)
         end
         p.Hotspot(p.Region("raidspot", originX, raidTop, raidWidth * scale, raidHeight * scale), L.UF_UNIT_RAID)

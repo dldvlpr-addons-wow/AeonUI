@@ -76,6 +76,59 @@ test("profil au groupe : découpage, envoi limité par le débit, réception, co
     Mock.groupSize, Mock.groupMembers = 0, {}
 end)
 
+test("profil au groupe : morceaux de 240, doublons, envoi incomplet oublié, taille plafonnée", function()
+    reset()
+    eq(#Share.Split(("x"):rep(240)), 1, "240 octets : un morceau")
+    local parts = Share.Split(("x"):rep(241))
+    eq(#parts, 2, "241 octets : deux morceaux")
+    eq(parts[2], "2/2:x")
+    Mock.groupMembers.Alice = true
+    local profile = Share.Split(NS.Database.Export(NS.db))
+    truthy(#profile >= 2, "profil en plusieurs morceaux")
+    -- Doublon du premier morceau : compté une fois, pas de confirmation avant le dernier.
+    Share.Receive(profile[1], "Alice-Forever")
+    Share.Receive(profile[1], "Alice-Forever")
+    for i = 2, #profile - 1 do Share.Receive(profile[i], "Alice-Forever") end
+    eq(Mock.popups.AEONUI_PROFILE_RECEIVED, nil, "incomplet : pas de confirmation")
+    -- 30 s sans morceau : l'envoi est oublié, le dernier morceau seul ne complète rien.
+    Mock.Advance(31)
+    Share.Receive(profile[#profile], "Alice-Forever")
+    eq(Mock.popups.AEONUI_PROFILE_RECEIVED, nil, "envoi abandonné oublié")
+    for i = 1, #profile do Share.Receive(profile[i], "Alice-Forever") end
+    truthy(Mock.popups.AEONUI_PROFILE_RECEIVED, "renvoi complet : confirmation")
+    Mock.popups = {}
+    Share.Receive("1/401:x", "Alice-Forever")
+    Share.Receive("0/1:x", "Alice-Forever")
+    eq(Mock.popups.AEONUI_PROFILE_RECEIVED, nil, "hors bornes : ignoré")
+    Mock.groupMembers = {}
+end)
+
+test("lueur : changement de style, textures réutilisées, pilote d'animation coupé", function()
+    reset()
+    local frame = CreateFrame("Frame", nil, UIParent)
+    frame:SetSize(40, 40)
+    NS.Glow.Show(frame, "inconnu")
+    eq(NS.Glow.Current(frame), "pixel", "style inconnu : pixel")
+    local pixelParts = frame.aeonGlowParts.pixel
+    truthy(pixelParts[1]:IsShown())
+    truthy(NS.Glow.animated[frame], "animé")
+    NS.Glow.Show(frame, "classic")
+    eq(NS.Glow.Current(frame), "classic")
+    eq(pixelParts[1]:IsShown(), false, "ancien style masqué")
+    eq(NS.Glow.animated[frame], nil, "classic : hors du pilote")
+    NS.Glow.Set(frame, true, "pixel")
+    eq(frame.aeonGlowParts.pixel, pixelParts, "textures réutilisées")
+    NS.Glow.Set(frame, false)
+    eq(NS.Glow.Current(frame), nil)
+    eq(NS.Glow.animated[frame], nil, "éteinte : hors du pilote")
+    NS.Glow.Hide(frame)   -- déjà éteinte : sans effet
+    -- Périmètre parcouru dans le sens horaire depuis le coin haut gauche.
+    local x, y, horizontal = NS.Glow.PerimeterPoint(50, 40, 20)
+    eq(x, 40) eq(y, -10) eq(horizontal, false)
+    x, y = NS.Glow.PerimeterPoint(110, 40, 20)
+    eq(x, 0) eq(y, -10)
+end)
+
 test("movers : molette, Maj et Ctrl, coordonnées saisies", function()
     reset()
     local frame = CreateFrame("Frame", "AeonUITestMover", UIParent)

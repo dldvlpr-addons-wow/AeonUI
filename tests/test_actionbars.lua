@@ -79,7 +79,32 @@ test("barres : glisser-déposer par gestionnaire sécurisé, verrou des barres r
     Mock.cvars.lockActionBars = "0"
     Mock.FireEvent("CVAR_UPDATE", "lockActionBars")
     eq(select(2, Run("OnDragStart", nil, false)), 63, "déverrouillées")
+    Mock.SetCombat(true)
+    Mock.cvars.lockActionBars = "1"
+    Mock.FireEvent("CVAR_UPDATE", "lockActionBars")
+    eq(select(2, Run("OnDragStart", nil, false)), 63, "combat : attribut intouchable")
+    Mock.SetCombat(false)
+    eq(Run("OnDragStart", nil, false), false, "sortie de combat : verrou recopié")
     Mock.cvars.lockActionBars = nil
+end)
+
+test("barres : une barre coupée seule rend la barre Blizzard et prévient du /reload", function()
+    reset()
+    local twin = CreateFrame("CheckButton", nil, MultiBarBottomLeft)
+    MultiBarBottomLeft.actionButtons = { twin }
+    Disable()   -- laissé actif par le test précédent
+    Enable()
+    Mock.printed = {}
+    NS.db.modules.actionbars.bars[2].enabled = false
+    NS.Modules:Refresh("actionbars")
+    eq(NS.IsBlizzardFrameHidden("MultiBarBottomLeft"), false, "barre Blizzard rendue")
+    truthy(Mock.FindPrinted("/reload"), "boutons muets jusqu'au /reload : message")
+    Mock.printed = {}
+    NS.Modules:Refresh("actionbars")
+    eq(Mock.FindPrinted("/reload"), nil, "un seul message")
+    NS.db.modules.actionbars.bars[2].enabled = true
+    MultiBarBottomLeft.actionButtons = nil
+    Disable()
 end)
 
 test("barres : Update en combat (OnShow, page) sans SetAttribute, attribut reposé à la sortie", function()
@@ -157,10 +182,9 @@ test("barres : boutons retirés des diffuseurs Blizzard, recharge peinte sans va
     eq(Mock.FindPrinted("Blizzard"), nil, "aucun échec signalé")
     eq(rawget(button.cooldown, "SetCooldown"), blizzardSetCooldown, "SetCooldown ombré à demeure, rendu tel quel après le dispatch")
     eq(button.UpdateCooldown, nil)
-    -- Hors de notre dispatch (fin d'animation d'incantation) : valeur secrète repeinte par nous.
-    Mock.actionCooldown = { start = 30, duration = 5 }
+    -- Hors de notre dispatch (fin d'animation d'incantation) : valeur secrète jamais transmise.
     button.cooldown:SetCooldown(Mock.SetSecret(31), 5)
-    eq(button.cooldown.painted[1], 30, "secret hors dispatch : relu, jamais transmis")
+    eq(button.cooldown.painted, nil, "secret hors dispatch, sans objet durée : effacé")
     button.cooldown:SetCooldown(40, 5)
     eq(button.cooldown.painted[1], 40, "valeur connue : SetCooldown d'origine")
     Mock.actionCooldown = { start = Mock.SetSecret(20), duration = 5 }
@@ -172,6 +196,9 @@ test("barres : boutons retirés des diffuseurs Blizzard, recharge peinte sans va
     }
     Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
     eq(button.cooldown.painted, object)
+    button.cooldown:Clear()
+    button.cooldown:SetCooldown(Mock.SetSecret(32), 5)
+    eq(button.cooldown.painted, object, "secret hors dispatch : repeint par l'objet durée")
     _G.C_ActionBar.GetActionCooldown = function() return { isActive = false } end
     Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
     eq(button.cooldown.painted, nil)

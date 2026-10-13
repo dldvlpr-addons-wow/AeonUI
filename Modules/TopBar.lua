@@ -42,7 +42,6 @@ local TopBar = NS.Modules:Register("topbar", {
         showResting = true,
         visibility = NS.Visibility.Spec(),   -- conditions communes (Core/Visibility)
         perfInCombat = true,       -- FPS/latence restent visibles quand la barre se masque en combat
-        shiftMinimap = true,       -- barre en haut : descendre la minimap pour ne pas la recouvrir
         extraLeft = "none",        -- data text de l'emplacement libre de gauche (NS.DataTexts)
         extraRight = "none",       -- data text de l'emplacement libre de droite
         show = {
@@ -497,56 +496,6 @@ local function Build()
 end
 
 --------------------------------------------------------------------------------
--- Minimap
---------------------------------------------------------------------------------
--- En haut de l'écran, la barre recouvre le nom de zone et les boutons du haut de la
--- minimap. On descend MinimapCluster de la hauteur de la barre, en gardant son ancrage
--- d'origine pour le rendre au disable. Si Blizzard le repositionne (Edit Mode, changement
--- de zone), le hook reprend la nouvelle position comme base et redécale.
-
-local minimapBase        -- { point, relativeTo, relativePoint, x, y } avant décalage
-local minimapShifting = false
-local minimapHooked = false
-
-local function WantMinimapShift()
-    return active and TopBar.db.position == "TOP" and TopBar.db.shiftMinimap
-end
-
-local function ApplyMinimapShift()
-    local cluster = _G.MinimapCluster
-    if not cluster or not minimapBase then return end
-    minimapShifting = true
-    cluster:ClearAllPoints()
-    local p = minimapBase
-    local y = (p[5] or 0) - (WantMinimapShift() and BAR_HEIGHT or 0)
-    cluster:SetPoint(p[1], p[2], p[3], p[4] or 0, y)
-    minimapShifting = false
-end
-
-local function UpdateMinimapShift()
-    local cluster = _G.MinimapCluster
-    -- Sur un client à Edit Mode, MinimapCluster est un système géré : un ancrage posé par un
-    -- addon casse l'enregistrement des dispositions. Le joueur la place lui-même.
-    if C_EditMode then return end
-    -- Un ancrage multiple (cadre étiré) ne se décale pas proprement : on n'y touche pas.
-    if not cluster or (cluster.GetNumPoints and cluster:GetNumPoints() ~= 1) then return end
-    if not minimapBase then
-        if not WantMinimapShift() then return end
-        minimapBase = { cluster:GetPoint(1) }
-    end
-    if not minimapHooked then
-        minimapHooked = true
-        hooksecurefunc(cluster, "SetPoint", function(frame)
-            if minimapShifting or not WantMinimapShift() then return end
-            minimapBase = { frame:GetPoint(1) }
-            NS:RunOutOfCombat(ApplyMinimapShift)
-        end)
-    end
-    ApplyMinimapShift()
-    if not WantMinimapShift() then minimapBase = nil end
-end
-
---------------------------------------------------------------------------------
 -- Agencement (hors combat uniquement)
 --------------------------------------------------------------------------------
 
@@ -556,7 +505,7 @@ local function ApplyVisibilityDrivers()
     RegisterStateDriver(travelMenu, "visibility", "[combat] hide")
     local db = TopBar.db
     local function Spec() return TopBar.db.visibility end
-    local opts = { secure = true, hoverGroup = "topbar", forceVisible = function() return NS.unlocked end }
+    local opts = { secure = true, hoverGroup = "topbar", forceVisible = function() return NS:Previewing() end }
     NS.Visibility:Register("topbar", bar, Spec, opts)
     -- FPS/latence (fille d'UIParent) : même réglage, sauf « toujours visibles ».
     if db.show.perf and not db.perfInCombat then
@@ -659,7 +608,6 @@ local function Layout()
     end
 
     ApplyVisibilityDrivers()
-    UpdateMinimapShift()
 end
 
 local function SetElementText(key, text)
@@ -766,7 +714,6 @@ function TopBar:OnDisable()
         elements.perf:Hide()   -- fille d'UIParent, pas de la barre
         bar:Hide()
     end
-    UpdateMinimapShift()   -- active = false : rend la position d'origine
 end
 
 function TopBar:OnRefresh()
@@ -796,7 +743,7 @@ function TopBar:Undock(key)
     if active then Layout() end
 end
 
-NS:On("UNLOCK", function()
+NS:On("PREVIEW", function()
     if active then NS:RunOutOfCombat(Layout) end
 end)
 
@@ -816,7 +763,6 @@ function TopBar:BuildOptions(o)
     end, 36)
     o:Advanced()
     o:Slider("backgroundAlpha", L.OPT_TOPBAR_ALPHA, 0, 1, 0.05, 20, "%.2f")
-    if not C_EditMode then o:Check("shiftMinimap", L.OPT_TOPBAR_MINIMAP) end
     o:EndAdvanced()
     o:Check("perfInCombat", L.OPT_TOPBAR_PERF_COMBAT, 20)
     o:Visibility("visibility", L.OPT_VISIBILITY, { secure = true })

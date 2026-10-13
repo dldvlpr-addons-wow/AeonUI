@@ -242,7 +242,7 @@ function SwingTimer:OnEnable()
     NS.Movers:Load("swingTimer")
     -- Déverrouillé : visible pour être placé.
     NS.Visibility:Register("swingTimer", container, function() return self.db.visibility end,
-        { forceVisible = function() return NS.unlocked end })
+        { forceVisible = function() return NS:Previewing() end })
     self:Update()
 end
 
@@ -263,7 +263,7 @@ function SwingTimer:OnRefresh()
     self:Update()
 end
 
-NS:On("UNLOCK", function() SwingTimer:Update() end)
+NS:On("PREVIEW", function() SwingTimer:Update() end)
 
 function SwingTimer:BuildOptions(o)
     if not SwingTimer.Available() then o:Note(L.SWING_UNAVAILABLE) end

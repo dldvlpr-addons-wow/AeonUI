@@ -86,7 +86,7 @@ end
 function RaidCooldowns:Update()
     if not icons.battleRes then return end
     local db = self.db
-    local preview = active and NS.unlocked
+    local preview = active and NS:Previewing()
     icons.battleRes:SetShown(active and db.battleRes and (BattleRes(icons.battleRes) or preview) and true or false)
     icons.bloodlust:SetShown(active and db.bloodlust and (Bloodlust(icons.bloodlust) or preview) and true or false)
 end
@@ -165,7 +165,7 @@ function RaidCooldowns:OnRefresh()
     self:Update()
 end
 
-NS:On("UNLOCK", function() RaidCooldowns:Update() end)
+NS:On("PREVIEW", function() RaidCooldowns:Update() end)
 
 function RaidCooldowns:BuildOptions(o)
     o:Note(L.RAIDCD_NOTE)

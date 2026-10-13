@@ -144,6 +144,10 @@ test("groupe : nom tronqué (UTF-8), tri par rôle, seuil raid 10", function()
     eq(GF.headers.party:GetAttribute("showRaid"), true, "seuil 10 : l'en-tête de groupe montre un petit raid")
     eq(GF.headers.party:GetAttribute("maxColumns"), 2)
     truthy(Mock.stateDrivers[GF.headers.raid].visibility:find("@raid11", 1, true), "raid visible à partir de 11 membres")
+    GF.db.raidThreshold = 25
+    NS.Modules:Refresh("groupframes")
+    eq(GF.headers.party:GetAttribute("maxColumns"), 5, "seuil 25 : cinq groupes de 5")
+    truthy(Mock.stateDrivers[GF.headers.raid].visibility:find("@raid26", 1, true), "raid visible à partir de 26 membres")
     GF.db.raidSortBy, GF.db.raidThreshold = "ROLE", 5
     NS.Modules:Refresh("groupframes")
     eq(GF.headers.party:GetAttribute("showRaid"), false)
@@ -206,6 +210,31 @@ test("groupe : clic-sort par liaison et préréglage de classe, incantation dans
     Mock.units.party1.casting = nil
     GF.db.castbar = false
     NS.Modules:Refresh("groupframes")
+    Disable()
+end)
+
+test("groupe : membre qui rejoint en combat, habillé et lié à la sortie du combat", function()
+    reset()
+    Enable()
+    Mock.SetGroup(2, false)
+    local clickCast = NS.Modules:Get("clickcast")
+    local bindings = clickCast.db.bindings
+    bindings.b1.spell, bindings.b1.mouse, bindings.b1.modifier = "Soins", "1", "shift"
+    NS.Modules:SetEnabled("clickcast", true)
+    local size = #GF.headers.party.children + 1   -- bouton neuf, jamais habillé par un test précédent
+    Mock.SetCombat(true)
+    Mock.SetGroup(size, false)
+    local child = GF.headers.party.children[size]
+    truthy(child, "bouton créé par l'en-tête")
+    eq(child:GetAttribute("*type1"), nil, "combat : aucun attribut posé par l'addon")
+    clickCast:Apply(GF:GetButton("party1"))   -- appel direct en combat : différé, sans erreur
+    Mock.SetCombat(false)
+    eq(child:GetAttribute("*type1"), "target", "sortie de combat : habillé")
+    eq(child:GetAttribute("shift-spell1"), "Soins", "et lié")
+    truthy(GF:GetButton("party" .. (size - 1)), "dernier membre stylé")
+    NS.Modules:SetEnabled("clickcast", false)
+    bindings.b1.spell = ""
+    Mock.SetGroup(0, false)
     Disable()
 end)
 
@@ -330,15 +359,71 @@ test("groupe : tailles du raid séparées, aperçu groupe et raid", function()
     Enable()
     eq(GF.headers.raid:GetAttribute("initial-width"), NS.Pixel:Scale(GF.db.raidWidth))
     eq(GF.headers.party:GetAttribute("initial-width"), NS.Pixel:Scale(GF.db.width))
-    GF:SetPreview("party")
+    GF:SetPreview(5)
     eq(GF.preview, "party")
-    GF:SetPreview("raid")
+    GF:SetPreview(20)
     eq(GF.preview, "raid")
     Mock.SetCombat(true)
     Mock.FireEvent("PLAYER_REGEN_DISABLED")
     eq(GF.preview, nil, "combat : aperçu caché")
     Mock.SetCombat(false)
     Mock.FireEvent("PLAYER_REGEN_ENABLED")
+    eq(GF.preview, "raid", "repris après le combat")
+    GF:SetPreview(nil)
+    Disable()
+end)
+
+test("groupe : aperçu 5 à 40, effectif cohérent et disposition de l'en-tête", function()
+    reset()
+    local roster = GF.PreviewRoster(40)
+    local roles, groups = {}, {}
+    for _, fake in ipairs(roster) do
+        roles[fake.role] = (roles[fake.role] or 0) + 1
+        groups[fake.group] = (groups[fake.group] or 0) + 1
+    end
+    eq(#roster, 40)
+    eq(roles.TANK, 3, "trois tanks à 40")
+    eq(roles.HEALER, 9, "neuf soigneurs à 40")
+    for group = 1, 8 do eq(groups[group], 5, "groupe " .. group .. " complet") end
+    eq(roster[1].group, 1, "ordre du raid : groupe 1 d'abord")
+    eq(GF.PreviewRoster(5)[1].role, "TANK")
+
+    Enable()
+    GF.db.raidThreshold, GF.db.raidGroups, GF.db.raidSortBy = 5, 4, "ROLE"
+    GF.db.raidUnitGrowth, GF.db.raidGroupGrowth = "UP", "RIGHT"
+    NS.Modules:Refresh("groupframes")
+    GF:SetPreview(40)
+    local holder = GF:GetPreview()
+    eq(GF.preview, "raid", "au-delà du seuil : place du raid")
+    local shown = {}
+    for _, button in ipairs(holder.buttons) do
+        if button:IsShown() then shown[#shown + 1] = button end
+    end
+    eq(#shown, 20, "quatre groupes gardés")
+    eq(shown[1].fake.role, "TANK", "trié par rôle")
+    eq(shown[1]:GetPoint(), "BOTTOMLEFT", "croissance vers le haut : coin bas gauche")
+    for _, button in ipairs(shown) do truthy(button.fake.group <= 4, "groupe filtré") end
+
+    GF.db.raidThreshold = 25
+    NS.Modules:Refresh("groupframes")
+    GF:SetPreview(20)
+    eq(GF.preview, "party", "sous le seuil : place du groupe")
+    local buttons = GF:GetPreview().buttons
+    local _, _, _, x5, y5 = buttons[5]:GetPoint()
+    local _, _, _, x6, y6 = buttons[6]:GetPoint()
+    eq(x5, 0)
+    truthy(y5 < 0, "membres vers le bas")
+    truthy(x6 > 0 and y6 == 0, "sixième membre : colonne suivante")
+
+    NS:Fire("OPTIONS_HIDDEN")
+    eq(GF.previewSize, nil, "options fermées : aperçu retiré")
+    GF:SetPreview(10)
+    NS:SetUnlocked(true)
+    eq(GF.previewSize, 10, "mode déplacement : aperçu gardé")
+    NS:SetUnlocked(false)
+    eq(GF.previewSize, nil, "verrouillé, options fermées : retiré")
+    GF.db.raidThreshold, GF.db.raidGroups, GF.db.raidSortBy = 5, 8, "GROUP"
+    GF.db.raidUnitGrowth, GF.db.raidGroupGrowth = "DOWN", "RIGHT"
     Disable()
 end)
 

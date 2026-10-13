@@ -32,6 +32,19 @@ test("plaques : montage à l'apparition, ancrée sur la plaque, démontage, réu
     Mock.namePlates["nameplate1"] = plate
     Mock.FireEvent("NAME_PLATE_UNIT_ADDED", "nameplate1")
     eq(NPF:GetFrame("nameplate1"), frame, "même cadre réutilisé")
+    -- Plaque recyclée pour une autre unité : aucune donnée de l'ancienne ne reste.
+    frame.castbar:Show()
+    Mock.RemoveNamePlate("nameplate1")
+    Enemy("nameplate2", { name = "Ours", health = 50, healthMax = 100, level = 20 })
+    Mock.namePlates["nameplate2"] = plate
+    Mock.FireEvent("NAME_PLATE_UNIT_ADDED", "nameplate2")
+    eq(NPF:GetFrame("nameplate2"), frame, "même cadre, autre unité")
+    eq(NPF:GetFrame("nameplate1"), nil, "ancienne unité oubliée")
+    eq(frame.unit, "nameplate2")
+    eq(frame.name:GetText(), "Ours")
+    eq(frame.level:GetText(), "20")
+    eq(frame.health:GetValue(), 50)
+    eq(frame.castbar:IsShown(), false, "incantation de l'ancienne unité masquée")
     Disable()
     eq(plate.UnitFrame:GetAlpha(), 1, "alpha rendu")
     truthy(Mock.FindPrinted("/reload"))

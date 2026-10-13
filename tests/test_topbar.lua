@@ -140,33 +140,6 @@ test("minimap : jamais déplacée quand Edit Mode gère le cadre", function()
     eq(select(5, MinimapCluster:GetPoint(1)), 0, "Edit Mode présent : intouchée")
 end)
 
-test("minimap : descend sous la barre, suit Blizzard, revient au disable", function()
-    -- Client sans Edit Mode : rendu quoi qu'il arrive, les tests suivants en dépendent.
-    local editMode = C_EditMode
-    C_EditMode = nil
-    local ok, err = pcall(function()
-    reset()
-    NS.Modules:Refresh("topbar")
-    local function y() return select(5, MinimapCluster:GetPoint(1)) end
-    eq(y(), -20, "décalée")
-    NS.db.modules.topbar.position = "BOTTOM"
-    NS.Modules:Refresh("topbar")
-    eq(y(), 0, "barre en bas")
-    NS.db.modules.topbar.position = "TOP"
-    NS.Modules:Refresh("topbar")
-    MinimapCluster:ClearAllPoints()
-    MinimapCluster:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -10, -5)
-    eq(y(), -25, "nouvelle base + décalage")
-    NS.Modules:SetEnabled("topbar", false)
-    eq(y(), -5, "rendue")
-    NS.Modules:SetEnabled("topbar", true)
-    MinimapCluster:ClearAllPoints()
-    MinimapCluster:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", 0, 0)
-    end)
-    C_EditMode = editMode
-    if not ok then error(err, 0) end
-end)
-
 test("formatage : or et classe localisée", function()
     eq(NS.FormatMoney(5), "5|cffeda55fc|r")
     eq(NS.FormatMoney(10203), "1|cffffd700g|r 2|cffc7c7cfs|r 3|cffeda55fc|r")

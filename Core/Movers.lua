@@ -1217,11 +1217,17 @@ combat:SetScript("OnEvent", function(_, event)
         if Movers.unlocked then
             Movers.suspended = true
             Movers:SetUnlocked(false)
+            NS:Fire("PREVIEW", false)
             NS.Print(L.MSG_MOVERS_SUSPENDED)
         end
     elseif Movers.suspended then
         Movers.suspended = nil
         -- Verrouillé pendant le combat (/aeon lock) : rien à reprendre, session close.
-        if NS.unlocked then Movers:SetUnlocked(true) else Movers.session, Movers.filter = nil, nil end
+        if NS.unlocked then
+            Movers:SetUnlocked(true)
+            NS:Fire("PREVIEW", true)
+        else
+            Movers.session, Movers.filter = nil, nil
+        end
     end
 end)

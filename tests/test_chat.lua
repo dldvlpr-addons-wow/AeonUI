@@ -64,6 +64,7 @@ test("chat : habillage, police, onglets, boutons, AddMessage enrobé, rendu au d
     frame.timeVisible = 30
     Disable()
     eq(frame:GetTimeVisible(), 120, "durée Blizzard d'origine rendue")
+    eq(frame:GetMaxLines(), 128, "nombre de lignes Blizzard rendu")
     eq(frame.font, "Fonts\\FRIZQT__.TTF")
     eq(frame.fontSize, 14)
     eq(ChatFrame1Background.alpha, 1)

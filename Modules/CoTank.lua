@@ -209,7 +209,7 @@ end
 function CoTank:Refresh()
     if not button then return end
     local db = self.db
-    local unit = active and (self:FindOtherTank() or (NS.unlocked and "player")) or nil
+    local unit = active and (self:FindOtherTank() or (NS:Previewing() and "player")) or nil
     button:SetSize(db.width, db.height)
     EnsureDebuffIcons()
     watched = unit
@@ -274,7 +274,7 @@ end
 function CoTank:OnRefresh() self:Refresh() end
 
 -- Déverrouillé : aperçu sur soi-même pour placer la barre (hors combat).
-NS:On("UNLOCK", function(unlocked)
+NS:On("PREVIEW", function(unlocked)
     if not button then return end
     NS:RunOutOfCombat(function() CoTank:Refresh() end)
 end)

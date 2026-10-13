@@ -249,14 +249,6 @@ function Elements.SetUnitText(fontString, unit, kind, format)
     fontString:SetFormattedText(entry.pattern, unpack(values, 1, count))
 end
 
---- Texte rendu d'un mode ou format (tests, aperçus).
-function Elements.RenderText(unit, kind, format)
-    local probe = { SetText = function(self, t) self.text = t end,
-                    SetFormattedText = function(self, fmt, ...) self.text = string.format(fmt, ...) end }
-    Elements.SetUnitText(probe, unit, kind, format)
-    return probe.text
-end
-
 --------------------------------------------------------------------------------
 -- Construction
 --------------------------------------------------------------------------------

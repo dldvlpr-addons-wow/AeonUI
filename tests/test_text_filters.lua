@@ -20,13 +20,13 @@ test("textes : jetons compilés, texte libre gardé, % échappé, jeton inconnu 
     local entry = Elements.CompileFormat("[cur] / [max] 100% [foo]")
     eq(entry.pattern, "%s / %s 100%% [foo]")
     eq(#entry.tokens, 2)
-    eq(Elements.RenderText("target", "health", "[cur] / [max] ([perc])"), "1.5k / 3.0k (50%)")
-    eq(Elements.RenderText("target", "power", "[cur]/[max]"), "20/100")
-    eq(Elements.RenderText("target", "health", "texte seul"), "texte seul")
-    eq(Elements.RenderText("target", "health", ""), "")
-    eq(Elements.RenderText("target", "health", "[missing]"), "1.5k")
+    eq(T.RenderText("target", "health", "[cur] / [max] ([perc])"), "1.5k / 3.0k (50%)")
+    eq(T.RenderText("target", "power", "[cur]/[max]"), "20/100")
+    eq(T.RenderText("target", "health", "texte seul"), "texte seul")
+    eq(T.RenderText("target", "health", ""), "")
+    eq(T.RenderText("target", "health", "[missing]"), "1.5k")
     Mock.units.target.health = 3000
-    eq(Elements.RenderText("target", "health", "[missing]"), "", "vie pleine : rien")
+    eq(T.RenderText("target", "health", "[missing]"), "", "vie pleine : rien")
 end)
 
 test("textes : préréglages, format du cadre prioritaire", function()
@@ -40,11 +40,11 @@ end)
 test("textes : statut mort, fantôme, déconnecté ; secret = rien", function()
     reset()
     Target({ dead = true })
-    eq(Elements.RenderText("target", "health", "[status]"), L.TEXT_STATUS_DEAD)
+    eq(T.RenderText("target", "health", "[status]"), L.TEXT_STATUS_DEAD)
     Mock.units.target.dead = Mock.SetSecret("mort?")
-    eq(Elements.RenderText("target", "health", "[status]"), "")
+    eq(T.RenderText("target", "health", "[status]"), "")
     _G.UnitIsConnected = function() return false end
-    eq(Elements.RenderText("target", "health", "[status]"), L.TEXT_STATUS_OFFLINE)
+    eq(T.RenderText("target", "health", "[status]"), L.TEXT_STATUS_OFFLINE)
     _G.UnitIsConnected = nil
 end)
 
@@ -54,12 +54,12 @@ test("textes : pourcentage et manque secrets passent par le moteur sans être lu
     _G.CurveConstants = { ScaleTo100 = "scale" }
     local args
     _G.UnitHealthPercent = function(...) args = { ... } return 42.4 end
-    eq(Elements.RenderText("target", "health", "[perc]"), "42%")
+    eq(T.RenderText("target", "health", "[perc]"), "42%")
     eq(args[2], true); eq(args[3], "scale")
     _G.UnitHealthMissing = function() return 7 end
     local truncated
     C_StringUtil.TruncateWhenZero = function(v) truncated = v return "t" .. v end
-    eq(Elements.RenderText("target", "health", "[missing]"), "t7", "TruncateWhenZero reçoit la valeur")
+    eq(T.RenderText("target", "health", "[missing]"), "t7", "TruncateWhenZero reçoit la valeur")
     eq(truncated, 7)
     _G.CurveConstants, _G.UnitHealthPercent, _G.UnitHealthMissing, C_StringUtil.TruncateWhenZero = nil, nil, nil, nil
 end)

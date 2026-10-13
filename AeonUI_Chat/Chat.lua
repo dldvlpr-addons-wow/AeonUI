@@ -394,7 +394,9 @@ end
 local function Entry(frame)
     local entry = frames[frame]
     if entry then return entry end
-    entry = { original = { font = { frame:GetFont() }, timeVisible = frame.GetTimeVisible and frame:GetTimeVisible() } }
+    entry = { original = { font = { frame:GetFont() }, timeVisible = frame.GetTimeVisible and frame:GetTimeVisible(),
+                           maxLines = frame.GetMaxLines and frame:GetMaxLines(),
+                           clampInsets = frame.GetClampRectInsets and { frame:GetClampRectInsets() } } }
     local bg, edges = Media:CreateBackdrop(frame)
     entry.backdrop = { bg = bg, edges = edges }
     entry.original.addMessage = frame.AddMessage
@@ -741,6 +743,10 @@ local function Restore()
         frame:SetFont(unpack(entry.original.font))
         if frame.SetFading then frame:SetFading(true) end
         if entry.original.timeVisible and frame.SetTimeVisible then frame:SetTimeVisible(entry.original.timeVisible) end
+        -- SetMaxLines vide la fenêtre : seulement si la valeur a changé.
+        local maxLines = entry.original.maxLines
+        if maxLines and frame.SetMaxLines and frame:GetMaxLines() ~= maxLines then frame:SetMaxLines(maxLines) end
+        if entry.original.clampInsets and frame.SetClampRectInsets then frame:SetClampRectInsets(unpack(entry.original.clampInsets)) end
         NS.ShowRegion(_G[name .. "ButtonFrame"] or frame.buttonFrame)
         NS.ShowRegion(frame.ScrollBar)
         NS.ShowRegion(frame.ScrollToBottomButton)

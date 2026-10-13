@@ -389,7 +389,7 @@ function Reminders:Evaluate()
     end
     shown = now
     -- Les icônes sécurisées s'ancrent au cadre, qui devient protégé : en combat, les lignes vides suffisent.
-    if not NS.InCombat() then frame:SetShown(#list > 0 or NS.unlocked) end
+    if not NS.InCombat() then frame:SetShown(#list > 0 or NS:Previewing()) end
     if fresh and self.db.sound and GetTime() - lastSound >= SOUND_THROTTLE then
         lastSound = GetTime()
         NS.PlayPreset(self.db.soundPreset, self.db.soundFile)
@@ -448,7 +448,7 @@ function Reminders:OnEnable()
     -- Mover lié au module : coupé, il n'apparaît plus au déverrouillage.
     NS.Movers:Register("reminders", frame, L.MOVER_REMINDERS, "TOP", 0, -140)
     NS.Movers:Load("reminders")
-    ApplyUnlock(NS.unlocked)
+    ApplyUnlock(NS:Previewing())
     shown = {}
     self:Evaluate()
 end
@@ -471,7 +471,7 @@ end
 
 function Reminders:GetFrame() return frame, lines end
 
-NS:On("UNLOCK", function(unlocked)
+NS:On("PREVIEW", function(unlocked)
     ApplyUnlock(unlocked)
     if active then Reminders:Evaluate() end
 end)

@@ -86,7 +86,7 @@ function MovementAlert:Update()
     local shown = 0
     for _, spell in ipairs(active and self.TrackedSpells() or {}) do
         local ready = NS.IsSpellReady(spell.id)
-        if not ready or NS.unlocked then
+        if not ready or NS:Previewing() then
             shown = shown + 1
             local icon = Icon(shown)
             icon:SetSize(size, size)
@@ -128,7 +128,7 @@ end
 
 function MovementAlert:OnRefresh() self:Update() end
 
-NS:On("UNLOCK", function() MovementAlert:Update() end)
+NS:On("PREVIEW", function() MovementAlert:Update() end)
 
 function MovementAlert:BuildOptions(o)
     o:Slider("iconSize", L.OPT_MOVEMENT_ICON_SIZE, 16, 64, 1)

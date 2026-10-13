@@ -20,6 +20,20 @@ test("alertes : entrée et sortie de combat", function()
     eq(flash:IsShown(), false, "s'efface")
 end)
 
+test("alertes : déverrouillé, l'alerte de sortie de combat rend la place à l'exemple", function()
+    reset()
+    NS:SetUnlocked(true)
+    Mock.SetCombat(true)
+    Mock.SetCombat(false)
+    local flash = M("alerts"):GetFlash()
+    eq(flash.text:GetText(), "- Combat")
+    Mock.Advance(3)
+    eq(flash.text:GetText(), T.L.ALERTS_PREVIEW, "exemple revenu")
+    truthy(flash:IsShown(), "aperçu toujours visible")
+    NS:SetUnlocked(false)
+    eq(flash:IsShown(), false)
+end)
+
 test("son importé : prioritaire sur le preset, repli si fichier absent ou vide", function()
     Mock.sounds = {}
     NS.PlayPreset("raidwarning", "  Interface\\AddOns\\MesSons\\alerte.ogg ")
@@ -184,6 +198,22 @@ test("autre tank : changement de raid en combat attendu, pas de tank = masqué",
     eq(button:GetAttribute("unit"), "raid2", "inchangé en combat")
     Mock.SetCombat(false)
     eq(button:IsShown(), false, "plus d'autre tank")
+    NS.Modules:SetEnabled("cotank", false)
+end)
+
+test("autre tank : aperçu du déverrouillage caché à l'entrée en combat, repris à la sortie", function()
+    reset()
+    NS.Modules:SetEnabled("cotank", true)
+    NS:SetUnlocked(true)
+    local button, watched = M("cotank"):GetButton()
+    eq(watched, "player", "aperçu sur soi")
+    -- Ordre du client : PLAYER_REGEN_DISABLED part avant le verrouillage des cadres sécurisés.
+    Mock.FireEvent("PLAYER_REGEN_DISABLED")
+    Mock.combat, Mock.units.player.combat = true, true
+    eq(button:IsShown(), false, "caché en combat")
+    Mock.SetCombat(false)
+    eq(button:IsShown(), true, "repris après le combat")
+    NS:SetUnlocked(false)
     NS.Modules:SetEnabled("cotank", false)
 end)
 

@@ -82,6 +82,26 @@ test("minimap : boutons d'addons regroupés sous la carte, rendus au disable ; c
     Mock.mapID, Mock.mapPosition = nil, nil
 end)
 
+test("minimap : boutons d'addons ni pris ni rendus en combat, déplacés à la sortie", function()
+    reset()
+    NS.db.modules.minimap.buttonBar = "always"
+    Enable()
+    local bar = _G.AeonUI_MinimapButtons
+    Mock.SetCombat(true)
+    local late = CreateFrame("Button", "LibDBIcon10_LateCombat", Minimap)
+    Mock.FireEvent("PLAYER_ENTERING_WORLD")
+    eq(late:GetParent(), Minimap, "combat : bouton laissé sur la carte")
+    Mock.SetCombat(false)
+    eq(late:GetParent(), bar, "sortie de combat : bouton regroupé")
+    Mock.SetCombat(true)
+    Disable()
+    eq(late:GetParent(), bar, "combat : rendu différé")
+    Mock.SetCombat(false)
+    eq(late:GetParent(), Minimap, "sortie de combat : rendu à la carte")
+    late:SetParent(UIParent)
+    NS.db.modules.minimap.buttonBar = "button"
+end)
+
 test("minimap : coordonnées au survol et précision, FPS/MS, difficulté compacte", function()
     reset()
     local db = NS.db.modules.minimap

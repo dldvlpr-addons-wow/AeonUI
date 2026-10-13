@@ -123,6 +123,9 @@ test("barres de recharges personnalisées : sorts connus dans l'ordre, grisés e
     max = 1
     NS.Modules:Refresh("cooldownbars")
     eq(first.count.text, "", "une seule charge : rien")
+    max = Mock.SetSecret(3)
+    NS.Modules:Refresh("cooldownbars")
+    eq(first.count.text, "", "maximum secret : écarté par NS.GetSpellCharges, aucune comparaison")
     C_Spell.GetSpellCharges, Mock.secret = nil, {}
     cfg.hideReady = true
     NS.Modules:Refresh("cooldownbars")

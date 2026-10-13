@@ -218,7 +218,7 @@ local function Layout(i)
     NS.Movers:Load(MoverKey(i))
     panel:Show()
     NS.Visibility:Register(MoverKey(i), panel, function() return PanelConfig(i).visibility end,
-        { secure = true, forceVisible = function() return NS.unlocked end })
+        { secure = true, forceVisible = function() return NS:Previewing() end })
 end
 
 --- Événements : l'union de ceux des data texts affichés ; « UNIT_* » limités au joueur.

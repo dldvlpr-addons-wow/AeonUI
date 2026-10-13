@@ -11,6 +11,8 @@ end
 -- Bus interne
 --------------------------------------------------------------------------------
 -- "DB_READY", "LOGIN", "THEME_CHANGED", "PIXEL_CHANGED", "UNLOCK"(bool), "MODULE_TOGGLED"(name, enabled)
+-- "PREVIEW"(bool) : aperçus du mode déplacement montrés ou cachés (déverrouillage, suspension en combat)
+-- "OPTIONS_HIDDEN" : fenêtre d'options fermée
 
 local listeners = {}
 
@@ -71,10 +73,20 @@ end)
 
 NS.unlocked = false
 
+--- Aperçus du mode déplacement à montrer : déverrouillé, et pas suspendu par le combat.
+function NS:Previewing()
+    return self.unlocked and not (self.Movers and self.Movers.suspended) or false
+end
+
 function NS:SetUnlocked(unlocked)
     self.unlocked = unlocked and true or false
-    if NS.Movers then NS.Movers:SetUnlocked(self.unlocked) end
+    if NS.Movers then
+        -- Déverrouillé en combat : suspendu d'emblée, Movers reprend et tire PREVIEW à la sortie.
+        if self.unlocked and NS.InCombat() then NS.Movers.suspended = true
+        else NS.Movers:SetUnlocked(self.unlocked) end
+    end
     self:Fire("UNLOCK", self.unlocked)
+    self:Fire("PREVIEW", self:Previewing())
     NS.Print(self.unlocked and L.MSG_UNLOCKED or L.MSG_LOCKED)
 end
 

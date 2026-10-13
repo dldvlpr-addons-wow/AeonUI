@@ -45,7 +45,7 @@ function GCDBar:Update()
     if not (active and start) then
         bar.finish, bar.manual = nil, nil
         -- Déverrouillé : barre pleine, visible pour être placée.
-        if active and NS.unlocked then
+        if active and NS:Previewing() then
             bar:SetMinMaxValues(0, 1)
             bar:SetValue(1)
             holder:Show()
@@ -98,7 +98,7 @@ function GCDBar:OnRefresh()
     self:Update()
 end
 
-NS:On("UNLOCK", function() GCDBar:Update() end)
+NS:On("PREVIEW", function() GCDBar:Update() end)
 
 function GCDBar:BuildOptions(o)
     o:Slider("width", L.OPT_RESOURCE_WIDTH, 60, 500, 2)

@@ -3,12 +3,12 @@
 -- recharge, compteur, portée, raccourci et glisser-déposer dessinés par le code Blizzard, donc
 -- sûrs face aux valeurs secrètes) posés sur des barres AeonUI protégées (SecureFrameTemplate).
 --
--- Pagination sans snippet restreint (ce moteur n'a pas de loadstring : aucun gestionnaire
--- d'état ni initialConfigFunction ne compile) : un pilote d'attribut par bouton de la barre 1
+-- Pagination sans gestionnaire d'état (_onstate-*) : un pilote d'attribut par bouton de la barre 1
 -- (RegisterAttributeDriver "actionpage", formes, furtivité, pages 2-6), relu par le code
 -- Blizzard (ID du bouton + (page - 1) * 12). Raccourcis : SetOverrideBindingClick depuis les
 -- touches Blizzard (ACTIONBUTTONn, MULTIACTIONBARnBUTTONn). Les barres Blizzard remplacées
 -- sont cachées et coupées de leurs événements (jamais reparentées : gérées par Edit Mode).
+-- Seuls snippets restreints : la prise et la pose par glisser-déposer (WrapScript, voir dragHeader).
 local NS = AeonUI
 local L = NS.L
 local Movers = NS.Movers
@@ -123,20 +123,16 @@ local BUTTON_UNIT_EVENTS = {
 function ActionBars.PaintCooldown(button)
     local cooldown, action = button.cooldown, button.action
     if not cooldown or not action then return end
-    if C_ActionBar and C_ActionBar.GetActionCooldownDuration and cooldown.SetCooldownFromDurationObject then
-        local info = C_ActionBar.GetActionCooldown and C_ActionBar.GetActionCooldown(action)
-        local isActive = info and info.isActive
-        if NS.IsSecret(isActive) then isActive = true end
-        local durationObject = isActive and C_ActionBar.GetActionCooldownDuration(action)
-        if durationObject then cooldown:SetCooldownFromDurationObject(durationObject) else cooldown:Clear() end
+    -- Forever 1.60 a l'objet durée ; le GetActionCooldown global n'y vit que par le repli déprécié.
+    if not (C_ActionBar and C_ActionBar.GetActionCooldownDuration and cooldown.SetCooldownFromDurationObject) then
+        cooldown:Clear()
         return
     end
-    local start, duration, _, modRate = GetActionCooldown(action)
-    if start == nil or (issecretvalue and (issecretvalue(start) or issecretvalue(duration))) then
-        cooldown:Clear()
-    else
-        cooldown:SetCooldown(start, duration, modRate)
-    end
+    local info = C_ActionBar.GetActionCooldown and C_ActionBar.GetActionCooldown(action)
+    local isActive = info and info.isActive
+    if NS.IsSecret(isActive) then isActive = true end
+    local durationObject = isActive and C_ActionBar.GetActionCooldownDuration(action)
+    if durationObject then cooldown:SetCooldownFromDurationObject(durationObject) else cooldown:Clear() end
 end
 
 --- Cache une barre Blizzard malgré Edit Mode, qui la remontre à chaque application de disposition.
@@ -162,6 +158,14 @@ local function DetachFromBlizzardDispatch(button)
         local dispatcher = _G[name]
         if dispatcher and type(dispatcher.frames) == "table" then RemoveInPlace(dispatcher.frames, button) end
     end
+end
+
+--- Barre Blizzard rendue sans ses événements : /reload conseillé, une fois par session.
+local reloadWarned = false
+local function WarnReload()
+    if reloadWarned then return end
+    reloadWarned = true
+    NS.Print(L.MSG_AB_SHOW_RELOAD)
 end
 
 local function HideBlizzardBar(def)
@@ -194,17 +198,21 @@ local function HideBlizzardBar(def)
     end
 end
 
+--- Vrai si des boutons coupés de leurs événements reviennent : muets jusqu'au /reload.
 local function ShowBlizzardBar(def)
+    local muted = false
     for _, name in ipairs(def.blizzard) do
         local frame = _G[name]
         if frame then
             for _, button in ipairs(type(frame.actionButtons) == "table" and frame.actionButtons or {}) do
+                if hiddenTwins[button] then muted = true end
                 hiddenTwins[button] = nil
             end
             NS.ShowBlizzardFrame(frame)
             if def.main then frame:SetAlpha(1) frame:EnableMouse(true) end
         end
     end
+    return muted
 end
 
 --- Le code Blizzard du bouton (ActionButton_ApplyCooldown, fonction globale : pas de méthode à
@@ -227,19 +235,14 @@ local function SecretSafeCooldown(button)
     cooldown.SetCooldown = button.aeonShadowSetCooldown
 end
 
---- Pendant notre dispatch : UpdateCooldown du mixin remplacé par notre peinture. Rend la valeur
--- propre du champ SetCooldown pour UnshadowCooldown.
+--- Pendant notre dispatch : UpdateCooldown du mixin remplacé par notre peinture.
 local function ShadowCooldown(button)
-    local cooldown = button.cooldown
-    if not cooldown then return nil end
+    if not button.cooldown then return end
     SecretSafeCooldown(button)
-    local own = rawget(cooldown, "SetCooldown")
     button.aeonOwnUpdateCooldown = rawget(button, "UpdateCooldown")   -- méthode du mixin, rendue ensuite
     button.UpdateCooldown = ActionBars.PaintCooldown    -- si le mixin appelle self:UpdateCooldown()
-    return own
 end
-local function UnshadowCooldown(button, own)
-    if button.cooldown then button.cooldown.SetCooldown = own end
+local function UnshadowCooldown(button)
     button.UpdateCooldown = button.aeonOwnUpdateCooldown
     button.aeonOwnUpdateCooldown = nil
 end
@@ -485,13 +488,13 @@ function Dispatch(event, ...)
                 if button:IsShown() and button.OnEvent
                     and (event ~= "ACTION_RANGE_CHECK_UPDATE" or button.action == ...) then
                     local ok, err = true, nil
-                    local own = ShadowCooldown(button)
+                    ShadowCooldown(button)
                     if event == "ACTION_USABLE_CHANGED" then
                         if button.UpdateUsable then ok, err = pcall(button.UpdateUsable, button) end
                     else
                         ok, err = pcall(button.OnEvent, button, event, ...)
                     end
-                    UnshadowCooldown(button, own)
+                    UnshadowCooldown(button)
                     ReleaseFromKeyedDispatchers(button)
                     if not ok and not dispatchFailures[event] then
                         dispatchFailures[event] = true
@@ -617,9 +620,12 @@ local ON_DRAG_START = "if self:GetAttribute('aeon-locked') and not IsModifiedCli
 local ON_RECEIVE_DRAG = "if not kind then return false end " .. DRAG_SLOT
 
 --- Verrou des barres (réglage Blizzard) recopié sur les boutons : le code sécurisé ne lit pas les CVars.
-local function UpdateDragLock()
+local dragLocked
+local function UpdateDragLock(force)
     if NS.InCombat() then return end
     local locked = NS.CVars:Get("lockActionBars") == "1"
+    if locked == dragLocked and not force then return end   -- CVAR_UPDATE arrive pour toute CVar
+    dragLocked = locked
     for _, bar in pairs(ActionBars.bars) do
         for _, button in ipairs(bar.buttons) do button:SetAttribute("aeon-locked", locked) end
     end
@@ -726,8 +732,7 @@ local function SetupBar(index)
     local cfg = ActionBars.db.bars[index]
     local bar = ActionBars.bars[index] or NewBar(index)
     -- Show, page posée : le modèle se met à jour (recharge comprise) sous notre taint.
-    local owns = {}
-    for i, button in ipairs(bar.buttons) do owns[i] = ShadowCooldown(button) end
+    for _, button in ipairs(bar.buttons) do ShadowCooldown(button) end
     LayoutBar(bar, cfg)
     if index == 1 then
         for _, button in ipairs(bar.buttons) do RegisterAttributeDriver(button, "actionpage", PAGE_DRIVER) end
@@ -742,14 +747,14 @@ local function SetupBar(index)
     Movers:Load("bar" .. index)
     BindBar(bar)
     bar:Show()
-    for i, button in ipairs(bar.buttons) do
-        UnshadowCooldown(button, owns[i])
+    for _, button in ipairs(bar.buttons) do
+        UnshadowCooldown(button)
         ReleaseFromKeyedDispatchers(button)
     end
     if ActionBars.db.hideBlizzard then
         HideBlizzardBar(BAR_DEFS[index])
     elseif index == 1 and NS.IsBlizzardFrameHidden(BAR_DEFS[1].blizzard[1]) then
-        NS.Print(L.MSG_AB_SHOW_RELOAD)   -- les barres Blizzard ne revivent qu'au /reload
+        WarnReload()   -- les barres Blizzard ne revivent qu'au /reload
     end
 end
 
@@ -764,7 +769,7 @@ local function TeardownBar(index)
         bar:Hide()
     end
     Movers:Unregister("bar" .. index)
-    ShowBlizzardBar(BAR_DEFS[index])
+    return ShowBlizzardBar(BAR_DEFS[index])
 end
 
 --------------------------------------------------------------------------------
@@ -925,12 +930,14 @@ end
 function ActionBars:ToggleKeyBind() self:SetKeyBindMode(not self.binding) end
 
 function ActionBars:Reconcile()
+    local muted = false
     for index = 1, #BAR_DEFS do
-        if self.db.bars[index].enabled then SetupBar(index) else TeardownBar(index) end
+        if self.db.bars[index].enabled then SetupBar(index) elseif TeardownBar(index) then muted = true end
     end
+    if muted then WarnReload() end   -- barre Blizzard rendue, mais muette
     ApplySideFrames()
     RunFader()
-    UpdateDragLock()
+    UpdateDragLock(true)   -- barres créées à l'instant : attribut à poser
 end
 
 function ActionBars:GetBar(index) return self.bars[index] end
@@ -943,7 +950,10 @@ local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event, ...)
     if not active then return end
     if event == "PLAYER_REGEN_DISABLED" and ActionBars.binding then ActionBars:SetKeyBindMode(false) end
-    if event == "PLAYER_REGEN_DISABLED" or event == "CVAR_UPDATE" then UpdateDragLock() end
+    -- Sortie de combat : un verrou changé pendant le combat n'a pas pu être recopié.
+    if event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" or event == "CVAR_UPDATE" then
+        UpdateDragLock()
+    end
     if event == "CVAR_UPDATE" then return end
     if event == "UPDATE_BINDINGS" then
         NS:RunOutOfCombat(function()
@@ -960,9 +970,9 @@ events:SetScript("OnUpdate", function(_, elapsed)
     for _, bar in pairs(ActionBars.bars) do
         for _, button in ipairs(bar.buttons) do
             if button.needsUpdate and button.OnUpdate then
-                local own = ShadowCooldown(button)
+                ShadowCooldown(button)
                 pcall(button.OnUpdate, button, elapsed)
-                UnshadowCooldown(button, own)
+                UnshadowCooldown(button)
                 ReleaseFromKeyedDispatchers(button)
             end
         end

@@ -73,7 +73,7 @@ function CooldownBars:UpdateBar(index)
     local perRow = math.max(1, cfg.perRow)
     for _, spell in ipairs(on and self.Spells(cfg.spells) or {}) do
         local ready = NS.IsSpellReady(spell.id)
-        if not (cfg.hideReady and ready) or NS.unlocked then
+        if not (cfg.hideReady and ready) or NS:Previewing() then
             shown = shown + 1
             local icon = Icon(bar, shown)
             icon:SetSize(cfg.size, cfg.size)
@@ -97,7 +97,7 @@ function CooldownBars:UpdateBar(index)
     local columns = math.max(1, math.min(shown, perRow))
     local rows = math.max(1, math.ceil(shown / perRow))
     bar.holder:SetSize(columns * (cfg.size + cfg.spacing) - cfg.spacing, rows * (cfg.size + cfg.spacing) - cfg.spacing)
-    bar.holder:SetShown(on and (shown > 0 or NS.unlocked) or false)
+    bar.holder:SetShown(on and (shown > 0 or NS:Previewing()) or false)
     if on and not bar.registered then
         bar.registered = true
         NS.Movers:Register(MoverKey(index), bar.holder, string.format(L.CDBARS_MOVER, index), "CENTER", 0, cfg.y)
@@ -131,7 +131,7 @@ end
 
 function CooldownBars:OnRefresh() self:Update() end
 
-NS:On("UNLOCK", function() CooldownBars:Update() end)
+NS:On("PREVIEW", function() CooldownBars:Update() end)
 
 function CooldownBars:BuildOptions(o)
     for index = 1, BAR_COUNT do

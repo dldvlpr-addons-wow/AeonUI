@@ -39,6 +39,8 @@ test("installation : rôle tank allume le co-tank ; module cédé à un addon ti
     eq(NS.db.modules.groupframes.aggro, true)
     eq(NS.db.anchors.cotank.x, -560)
     eq(NS.db.anchors.uf_party.point, "TOPLEFT", "tank : groupe en colonne à gauche")
+    eq(NS.db.anchors.uf_tank.point, "TOP", "en-tête des tanks : grandit vers le bas")
+    eq(NS.db.anchors.uf_assist.point, "TOP")
     eq(NS.db.modules.unitframes.units.player.castbarDetached, true, "tank : barre d'incantation détachée")
     eq(NS.db.anchors.uf_castbar_player.y, -260)
     NS.Install:ApplyPreset("light")

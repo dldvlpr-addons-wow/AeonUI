@@ -138,7 +138,7 @@ end)
 test("unitframes : textes de vie, niveau, puissance", function()
     reset()
     Target({ health = 1500, healthMax = 3000, level = 30 })
-    local function Health(mode) return Elements.RenderText("target", "health", Elements.TextFormat(nil, mode)) end
+    local function Health(mode) return T.RenderText("target", "health", Elements.TextFormat(nil, mode)) end
     eq(Health("current"), "1.5k")
     eq(Health("none"), "")
     eq(Health("percent"), "50%", "sans UnitHealthPercent : calcul sur valeurs lisibles")
@@ -578,6 +578,11 @@ test("unitframes : barre de totems, emplacement vide transparent, secret affich�
     end
     Enable()
     local bar = UF:GetTotemBar()
+    truthy(not (bar and bar:IsShown()), "mage : aucune barre, ses boutons invisibles prendraient les clics")
+    Disable()
+    Mock.units.player.class = "SHAMAN"
+    Enable()
+    bar = UF:GetTotemBar()
     truthy(bar and bar:IsShown(), "barre posée avec le cadre du joueur")
     eq(bar.buttons[1]:GetAttribute("type2"), "destroytotem")
     eq(bar.buttons[1]:GetAlpha(), 0, "vide")
@@ -591,6 +596,7 @@ test("unitframes : barre de totems, emplacement vide transparent, secret affich�
     Disable()
     eq(bar:IsShown(), false, "module coupé : barre retirée")
     _G.GetTotemInfo = nil
+    Mock.units.player.class = "MAGE"
 end)
 
 test("unitframes : élite, écusson JcJ, bordure de menace, humeur du familier", function()
@@ -685,5 +691,29 @@ test("unitframes : castbar colorée pour un sort important, gris non interruptib
     eq(bar.barColor[1], NS.db.theme.accent.r, "option coupée")
     UF.db.importantCast = true
     target.casting, C_Spell.IsSpellImportant = nil, nil
+    Disable()
+end)
+
+test("unitframes : mode déplacement, faux cadres des unités absentes, cachés en combat", function()
+    reset()
+    Enable()
+    Mock.units.target = nil
+    Mock.RefreshUnitWatch()
+    NS:SetUnlocked(true)
+    truthy(NS:Previewing())
+    local boss = UF:GetPreview("boss1")
+    truthy(boss and boss:IsShown(), "boss absent : faux cadre")
+    eq(boss.name:GetText(), string.format(NS.L.MOVER_UF_BOSS, 1))
+    eq(UF:GetPreview("player") and UF:GetPreview("player"):IsShown() or false, false, "joueur présent : pas de faux cadre")
+    Target()
+    eq(UF:GetPreview("target"):IsShown(), false, "cible apparue : faux cadre retiré")
+    Mock.SetCombat(true)
+    eq(NS:Previewing(), false, "combat : aperçus suspendus")
+    eq(boss:IsShown(), false)
+    Mock.SetCombat(false)
+    truthy(boss:IsShown(), "repris après le combat")
+    NS:SetUnlocked(false)
+    eq(boss:IsShown(), false, "verrouillé")
+    Mock.units.target = nil
     Disable()
 end)

@@ -171,6 +171,9 @@ local function Create(unit)
             if active then Elements.UpdateAll(self) end
         end)
     end
+    -- Unité apparue ou disparue : le faux cadre du mode déplacement suit.
+    frame:HookScript("OnShow", function() if NS.unlocked then UnitFrames:UpdatePreview() end end)
+    frame:HookScript("OnHide", function() if NS.unlocked then UnitFrames:UpdatePreview() end end)
     UnitFrames.frames[unit] = frame
     return frame
 end
@@ -242,6 +245,7 @@ function UnitFrames:Reconcile()
     end
     self:ReconcileTotems()
     RunFader()
+    self:UpdatePreview()
 end
 
 function UnitFrames:Refresh(unit)
@@ -388,13 +392,58 @@ local function TeardownTotems()
     if totemBar then totemBar:Hide() end
 end
 
---- Barre posée tant que le cadre du joueur et son option totems sont actifs (hors combat).
+--- Barre posée tant que le cadre du joueur et son option totems sont actifs, chaman seulement :
+--- ses boutons sécurisés restent cliquables même transparents (hors combat).
 function UnitFrames:ReconcileTotems()
     local cfg = Settings("player")
-    if active and cfg.enabled and cfg.totems then SetupTotems() else TeardownTotems() end
+    local _, classFile = UnitClass("player")
+    if active and cfg.enabled and cfg.totems and classFile == "SHAMAN" then SetupTotems() else TeardownTotems() end
 end
 
 function UnitFrames:GetTotemBar() return totemBar end
+
+--------------------------------------------------------------------------------
+-- Aperçu du mode déplacement
+--------------------------------------------------------------------------------
+-- Faux cadre ordinaire (non sécurisé) posé sur le cadre d'une unité absente (boss, focus,
+-- familier…) : données du joueur, nom de l'unité, de quoi le placer et le régler. Caché en combat.
+
+local previews = {}
+
+local function PreviewUnit(unit)
+    local frame, preview = UnitFrames.frames[unit], previews[unit]
+    local wanted = active and frame and frame.watched and not frame:IsShown() and NS:Previewing() and not NS.InCombat()
+    if not wanted then
+        if preview then preview:Hide() end
+        return
+    end
+    if not preview then
+        preview = CreateFrame("Frame", nil, UIParent)
+        preview.unit = "player"
+        preview:SetFrameStrata("LOW")
+        NS.Media:CreateBackdrop(preview)
+        previews[unit] = preview
+    end
+    preview.cfg, preview.global = frame.cfg, UnitFrames.db
+    Elements.Build(preview)
+    Elements.Layout(preview)
+    preview:ClearAllPoints()
+    preview:SetAllPoints(frame)
+    -- Sans les auras : leur moteur suit une vraie unité.
+    for _, update in ipairs({ "UpdateHealth", "UpdatePower", "UpdateName", "UpdateLevel", "UpdatePortrait" }) do
+        Elements[update](preview)
+    end
+    preview.name:SetText(MoverLabel(unit))
+    preview:Show()
+end
+
+function UnitFrames:UpdatePreview()
+    for _, unit in ipairs(self.UNITS) do PreviewUnit(unit) end
+end
+
+function UnitFrames:GetPreview(unit) return previews[unit] end
+
+NS:On("PREVIEW", function() UnitFrames:UpdatePreview() end)
 
 --------------------------------------------------------------------------------
 -- Événements globaux
@@ -447,6 +496,7 @@ function UnitFrames:OnDisable()
         Teardown(unit)
     end
     self:ReconcileTotems()   -- active = false : barre retirée
+    self:UpdatePreview()
     if hadFrames then NS.Print(L.MSG_UF_DISABLED_RELOAD) end
 end
 
@@ -595,13 +645,15 @@ function UnitFrames:BuildOptions(o)
     end
 end
 
---- Aperçu des options : joueur, cible et cible de la cible, puis familier et focus, à leur taille,
--- avec portrait, ressource et barre d'incantation ; un clic ouvre l'onglet de l'unité (ou le
--- réglage de sa barre d'incantation).
+--- Aperçu des options : joueur, cible et cible de la cible, focus et sa cible, familier et boss, à
+-- leur taille, avec portrait, ressource et barre d'incantation ; un clic ouvre l'onglet de l'unité
+-- (ou le réglage de sa barre d'incantation).
 UnitFrames.previewHeight = 320
-local PREVIEW_ROWS = { { "player" }, { "target" }, { "targettarget", "focus" }, { "pet" } }
-local PREVIEW_FILL = { player = 0.86, target = 0.62, targettarget = 0.4, pet = 0.75, focus = 0.52 }
-local PREVIEW_REACTION = { target = "hostile", targettarget = "friendly", pet = "friendly", focus = "neutral" }
+local PREVIEW_ROWS = { { "player" }, { "target" }, { "targettarget", "focus", "focustarget" }, { "pet", "boss" } }
+local PREVIEW_FILL = { player = 0.86, target = 0.62, targettarget = 0.4, pet = 0.75, focus = 0.52, focustarget = 0.3,
+                       boss = 0.94 }
+local PREVIEW_REACTION = { target = "hostile", targettarget = "friendly", pet = "friendly", focus = "neutral",
+                           focustarget = "friendly", boss = "hostile" }
 
 function UnitFrames:BuildPreview(p)
     local function castbarSpace(cfg) return (cfg.castbar and not cfg.castbarDetached) and (cfg.castbarHeight + 3) or 0 end

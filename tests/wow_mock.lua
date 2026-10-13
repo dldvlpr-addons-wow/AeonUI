@@ -808,6 +808,9 @@ function Mock.UpdateGroupHeaders()
             units[1] = "player"
         end
         header.children = header.children or {}
+        -- Code sécurisé de l'en-tête : permis en combat, contrairement à l'addon.
+        local combat = Mock.combat
+        Mock.combat = false
         for i, unit in ipairs(units) do
             local child = header.children[i]
             if not child then
@@ -822,10 +825,11 @@ function Mock.UpdateGroupHeaders()
             header.children[i]:SetAttribute("unit", nil)
             header.children[i]:Hide()
         end
+        Mock.combat = combat
         SecureGroupHeader_Update(header)   -- le client l'appelle à chaque mise à jour ; l'addon s'y accroche
     end
 end
--- Sans snippet restreint (pas de loadstring sur ce moteur) : l'addon s'accroche à cette fonction.
+-- Sans initialConfigFunction : l'addon s'accroche à cette fonction.
 function _G.SecureGroupHeader_Update(header) end
 function Mock.SetGroup(size, isRaid)
     Mock.groupSize, Mock.inRaid = size, isRaid == true

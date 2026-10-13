@@ -54,8 +54,15 @@ local function BuildFlash()
     flash.bg = flash:CreateTexture(nil, "BACKGROUND")
     flash.bg:SetAllPoints()
     flash:SetScript("OnUpdate", function(self, elapsed)
-        if NS.unlocked then return end
         self.remaining = (self.remaining or 0) - elapsed
+        if NS:Previewing() then
+            -- Alerte jouée pendant le déverrouillage (sortie de combat) : l'exemple revient à son expiration.
+            if self.remaining <= 0 then
+                self.text:SetText(L.ALERTS_PREVIEW)
+                self.remaining = math.huge
+            end
+            return
+        end
         if self.remaining <= 0 then
             self:Hide()
         elseif self.remaining < FADE_DURATION then
@@ -92,7 +99,7 @@ local function BuildTimer()
     timerFrame:SetScript("OnUpdate", function(self)
         if combatStart then
             self.text:SetText(NS.FormatDuration(GetTime() - combatStart))
-        elseif not NS.unlocked and self.hideAt and GetTime() >= self.hideAt then
+        elseif not NS:Previewing() and self.hideAt and GetTime() >= self.hideAt then
             self:Hide()
         end
     end)
@@ -214,7 +221,7 @@ function Alerts:OnEnable()
                              "UNIT_HEALTH", "UNIT_FLAGS" }) do
         NS.RegisterEventSafe(events, event)
     end
-    ApplyUnlock(NS.unlocked)
+    ApplyUnlock(NS:Previewing())
 end
 
 function Alerts:OnDisable()
@@ -228,7 +235,7 @@ function Alerts:OnDisable()
 end
 
 function Alerts:OnRefresh()
-    if not self.db.combatTimer and not NS.unlocked then
+    if not self.db.combatTimer and not NS:Previewing() then
         combatStart = nil
         timerFrame:Hide()
     end
@@ -236,7 +243,7 @@ end
 
 Alerts.GroupUnits = GroupUnits
 
-NS:On("UNLOCK", ApplyUnlock)
+NS:On("PREVIEW", ApplyUnlock)
 
 function Alerts:BuildOptions(o)
     o:Check("combat", L.OPT_ALERTS_COMBAT)

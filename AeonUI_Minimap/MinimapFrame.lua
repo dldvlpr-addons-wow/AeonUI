@@ -13,6 +13,7 @@ local Media = NS.Media
 
 local MinimapFrame = NS.Modules:Register("minimap", {
     reloadOnDisable = true,   -- cadres Blizzard rendus au /reload seulement : les options le proposent
+    secure = true,            -- support parent de boutons d'addons parfois sécurisés : réglé hors combat
     titleKey = "MINIMAP_TITLE",
     descKey = "MINIMAP_DESC",
     yieldsTo = { "SexyMap" },
@@ -373,8 +374,10 @@ local function LayoutButtons()
     buttonToggle.text:SetText(tostring(#list))
 end
 
+-- Boutons d'autres addons, parfois sécurisés : déplacés hors combat seulement.
 local function Collect()
     if MinimapFrame.db.buttonBar == "off" then return end
+    if NS.InCombat() then events:RegisterEvent("PLAYER_REGEN_ENABLED") return end
     for _, child in ipairs({ Minimap:GetChildren() }) do
         if not collected[child] and MinimapFrame.IsAddonButton(child) then
             collected[child] = { parent = child:GetParent(), point = { child:GetPoint(1) },
@@ -386,6 +389,7 @@ local function Collect()
 end
 
 local function Release()
+    if NS.InCombat() then NS:RunOutOfCombat(Release) return end
     for button, saved in pairs(collected) do
         button:SetParent(saved.parent)
         button:SetSize(saved.width, saved.height)
@@ -442,6 +446,7 @@ events:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_REGEN_ENABLED" then
         events:UnregisterEvent("PLAYER_REGEN_ENABLED")
         ReparentMinimap()
+        Collect()
         return
     end
     if event == "PLAYER_ENTERING_WORLD" then
@@ -502,7 +507,9 @@ function MinimapFrame:OnRefresh()
     if active then self:Apply() end
 end
 
-NS:On("PIXEL_CHANGED", function() if active then MinimapFrame:Apply() end end)
+NS:On("PIXEL_CHANGED", function()
+    if active then NS:RunOutOfCombat(function() if active then MinimapFrame:Apply() end end) end
+end)
 
 --------------------------------------------------------------------------------
 -- Options

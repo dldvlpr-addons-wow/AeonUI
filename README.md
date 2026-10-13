@@ -21,7 +21,7 @@ Unofficial addon, not affiliated with Blizzard Entertainment. World of Warcraft 
 | **Reminders** | Out of combat: missing class buff (only if you know the spell), **expected stance/form** (warrior, druid), no pet out, not "Well Fed" in an instance, Shadowform / Righteous Fury (option), low durability, full bags, forgotten stealth (dungeons/raids or everywhere). Stealth and stance: customizable text and color, sound repeated at a chosen interval. | on |
 | **Alerts** | "+ Combat / - Combat" (entering, leaving, or both; adjustable text, colors, sound and size), group member death (once per death, own sound and size), combat timer. | on |
 | **Nameplates** | Two chevrons attached to the target's health bar (hostile targets only), the left one moves aside during a cast. Color out of combat, in combat, and when another tank has aggro. | on |
-| **AeonUI group and raid frames** | Party and raid grids: health, power, name, role, leader, marker, aggro border and border for debuffs dispellable by your class, out-of-range dimming; sort by group, class, role or name; truncated name; raid threshold 5/10/40; click to target. | off |
+| **AeonUI group and raid frames** | Party and raid grids: health, power, name, role, leader, marker, aggro border and border for debuffs dispellable by your class, out-of-range dimming; sort by group, class, role or name; truncated name; raid threshold 5 to 40; on-screen preview of 5 to 40 members; click to target. | off |
 | **AeonUI action bars** | Six movable bars of Blizzard buttons (icons, cooldowns, keybinds, drag and drop handled by Blizzard code): buttons, buttons per row, size, spacing, opacity, only visible on mouseover; keybind and macro text can be hidden; keybind mode `/aeon kb`; stance and stealth paging on bar 1. Micro menu and bags: hidden, Blizzard style (Edit Mode or mover) or AeonUI style (on their own mover or in the top bar). | off |
 | **AeonUI minimap** | Square or round minimap at any size, themed border, zone name (PvP color) and coordinates, scroll-wheel zoom, Blizzard decor hidden, addon buttons grouped under the map (always, on mouseover, never); movable. | off |
 | **AeonUI chat** | Themed windows (background, font, flat tabs, side buttons hidden, no fade, adjustable history), history kept across /reload, keywords highlighted with sound, lenient anti-spam, clickable URLs, copy button, short channel names, class color everywhere, timestamps, input box on top or bottom. | off |
@@ -140,6 +140,7 @@ is never made movable: you drag the overlay, then the frame joins it out of comb
 - Drag: on release, the overlay snaps to the screen's edges and center and to other overlays (8 px). Shift while dragging turns off snapping.
 - Arrow keys: 1 px on the selected (clicked) overlay, Shift + arrows: 10 px. Other keys pass through to the game.
 - Right-click an overlay: the module's options page. Shift + right-click: default position.
+- Previews: modules with nothing to show (alerts, reminders, cooldown bars, GCD bar, swing timer, resource bars, other tank…) show a sample, and absent units (boss 1 to 5, focus, pet, target…) get a stand-in frame with the player's data and the unit's name. Entering combat suspends move mode and hides every preview; leaving combat brings them back.
 - Toolbar at the top of the screen: grid, "Show" filter (every frame or just one module's), "Reset all" (with confirmation), "Lock". Opening move mode closes the options window.
 - **Anchoring to another element**: select an overlay, "Anchor to..." in the top panel, then click the target. The element stays in place and now follows its target (closest side). Dragging an anchored element changes its offset, not its anchor. "Detach" gives it back to the screen without moving it. An anchor that would create a loop is refused.
 - Anchored element: "Width" / "Height" take on the target's (and follow them); "Lock X" / "Lock Y" keep that axis on screen while the other follows the target (cross anchoring). Missing target (module off): fallback position, remembered when anchoring and on every move.
@@ -193,14 +194,18 @@ resurrection in progress. Incoming heals and absorbs at the end of the health ba
 In a raid, optional main tank and main assist frames (movers `uf_tank`, `uf_assist`): a
 unit can appear there in addition to the raid. Range: `UnitInRange` every 0.25s.
 Settings: name length (truncated in UTF-8, 0 = full), raid sort by group, class, role
-(`groupBy = "ASSIGNEDROLE"`) or name, and raid threshold (5, 10 or 40 members): up to the threshold a
+(`groupBy = "ASSIGNEDROLE"`) or name, and raid threshold (5, 10, 15, 20, 25 or 40 members, the instance sizes): up to the threshold a
 raid keeps the party layout (one column or one row per group of 5, the group header
 shows the raid members), beyond it the raid grid takes over (`[@raidN,exists]`).
+On-screen preview ("Preview (members)": 5, 10, 15, 20, 25 or 40): stand-in members with a
+coherent roster (tanks, one healer per group, dead, offline, dispellable) laid out by the real
+header settings: threshold, shown groups, columns, units per column, sort and growth. Hidden
+in combat and back after; dropped when the options close, kept while unlocked.
 
 ## Action bars
 `ActionBarButtonTemplate` buttons (Blizzard's own rendering, safe against secret values) on
-`SecureHandlerStateTemplate` bars. Bar 1 follows `[bar:n]` and `[bonusbar:n]` (stances, stealth) via a
-restricted handler that sets `actionpage` on each button. Blizzard keybinds
+`SecureFrameTemplate` bars. Bar 1 follows `[bar:n]` and `[bonusbar:n]` (stances, stealth) via one
+`RegisterAttributeDriver` per button that sets its `actionpage`. Blizzard keybinds
 (`ACTIONBUTTONn`, `MULTIACTIONBARnBUTTONn`) are redirected via `SetOverrideBindingClick`, out of combat.
 Replaced Blizzard bars are hidden without being reparented (Edit Mode). Stance and
 pet bars: Blizzard's own, movable. Keybind mode (`/aeon kb`): hover an AeonUI button
@@ -235,15 +240,15 @@ tells you what the client exposes.
 - Each module is isolated: an error stops only that module, with a message.
 - Nothing secure is changed in combat: changes wait until combat ends.
 - No combat log; no comparison on a secret value.
-- Everything is reversible: turning off a module restores the Blizzard state (styles, colors, CVars).
+- Everything is reversible: turning off a module restores the Blizzard state (styles, colors, CVars). Hidden Blizzard frames (unit, group, action bars, nameplates, minimap, quest tracker) come back on `/reload`, which the options offer.
 - WoW Forever 1.60 writes account SavedVariables but never reads them back: the settings table is stored in `g_addonCategoriesCollapsed` (Blizzard_AddOnList's own save, `WTF/SavedVariables/`, reloaded on startup) and copied into `AeonUIMirror1..8` CVars (survive `/reload`). If the save comes back empty, these copies replace it.
-- No restricted snippets (`_onstate-*`, `initialConfigFunction`, `SecureHandlerExecute`): this engine has no `loadstring`, nothing compiles in the restricted environment. Bar paging via `RegisterAttributeDriver`, group buttons skinned via a `SecureGroupHeader_Update` hook.
+- Restricted snippets kept to a minimum: only action-button drag and drop (`WrapScript`). Bar paging via `RegisterAttributeDriver` instead of `_onstate-*`, group buttons skinned via a `SecureGroupHeader_Update` hook instead of `initialConfigFunction`.
 
 ## Out-of-game verification
 ```
 tests/run.sh
 ```
-Syntax, the headless suite (303 tests against a client mock) and `.toc` ↔ files consistency.
+Syntax, the headless suite (against a client mock) and `.toc` ↔ files consistency.
 
 ## In-game checklist (the mock doesn't replace the client)
 1. `/reload` then `/aeon diag`: no Lua errors (`/console scriptErrors 1`), and note the missing APIs.
@@ -346,6 +351,8 @@ Syntax, the headless suite (303 tests against a client mock) and `.toc` ↔ file
 98. Radial menu: SHIFT-Q key, entries added from the cursor; out of combat releasing it casts the hovered entry; in combat the key does nothing.
 99. Look "Character sheet and friends window in the theme": flat background, quality borders; unchecking restores the Blizzard art.
 100. Client in German, Russian or Chinese: translated options window, readable characters.
+101. Group frames options, "Preview (members)" 40, raid threshold 5, shown groups 4, sort by role: 20 stand-ins on the raid position, tanks first; growth "Up": they stack upward from the raid anchor. Threshold 25 then preview 20: party position, one column per group of 5. Close the options: preview gone; preview 10 then `/aeon unlock`: it stays; lock: gone.
+102. `/aeon unlock` with no focus, pet nor boss: stand-in frames named "Focus frame", "Pet frame", "Boss 1"… with the player's data; target something: the target stand-in leaves for the real frame; enter combat: every preview (stand-ins, alerts, GCD bar…) disappears, back after combat.
 
 ## License
 © 2026 dldvlpr, all rights reserved (see `LICENSE`). Bundled libraries, under their own license: LibStub (public domain) and LibDeflate

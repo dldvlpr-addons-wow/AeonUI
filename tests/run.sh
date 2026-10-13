@@ -20,16 +20,17 @@ if [ -z "$LUA" ]; then
 fi
 
 status=0
+syntax_log="${TMPDIR:-/tmp}/aeonui-syntax.$$"
 
 echo "== syntaxe"
 while IFS= read -r file; do
-    if ! "$LUA" -e "assert(loadfile('$file'))" 2>/tmp/aeonui-syntax.$$; then
+    if ! "$LUA" -e "assert(loadfile('$file'))" 2>"$syntax_log"; then
         echo "  FAIL $file"
-        sed 's/^/        /' /tmp/aeonui-syntax.$$
+        sed 's/^/        /' "$syntax_log"
         status=1
     fi
 done < <(find . -name '*.lua' -not -path './.git/*' -not -path './AeonUI/*' | LC_ALL=C sort)
-rm -f /tmp/aeonui-syntax.$$
+rm -f "$syntax_log"
 [ "$status" -eq 0 ] && echo "  ok"
 
 echo

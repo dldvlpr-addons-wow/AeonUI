@@ -39,7 +39,7 @@ local BASE_ANCHORS = {
     uf_boss1 = { "RIGHT", -310, 260 }, uf_boss2 = { "RIGHT", -310, 190 }, uf_boss3 = { "RIGHT", -310, 120 },
     uf_boss4 = { "RIGHT", -310, 50 }, uf_boss5 = { "RIGHT", -310, -20 },
     uf_party = { "TOPLEFT", 20, -250 }, uf_raid = { "TOPLEFT", 20, -250 },
-    uf_tank = { "CENTER", -560, 120 }, uf_assist = { "CENTER", -560, 260 },
+    uf_tank = { "CENTER", -560, 145, "TOP" }, uf_assist = { "CENTER", -560, 285, "TOP" },   -- en-têtes : grandissent vers le bas
     cotank = { "CENTER", -560, -40 }, alerts = { "CENTER", 0, 220 }, combatTimer = { "CENTER", 0, 180 },
 }
 Install.BASE_ANCHORS = BASE_ANCHORS
@@ -203,7 +203,7 @@ local HUD_OVERRIDES = {
     anchors = {
         uf_player = { "CENTER", -300, -195 }, uf_target = { "CENTER", 300, -195 },
         uf_pet = { "CENTER", -355, -302 }, uf_targettarget = { "CENTER", 355, -302 },
-        pet = { "BOTTOM", -360, 176 },
+        pet = { "BOTTOM", -360, 218 },   -- au-dessus de la barre de posture (BOTTOM -320,176)
         uf_party = { "TOPLEFT", 20, -250 }, uf_raid = { "TOPLEFT", 20, -250 },
         uf_tank = { "CENTER", -800, 40, "TOP" }, uf_assist = { "CENTER", -800, -170, "TOP" },
     },

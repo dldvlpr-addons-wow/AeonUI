@@ -150,10 +150,10 @@ function ResourceBars:Update(event)
         local bar = bars[spec.key]
         local holder = bar.holder
         -- En mode déverrouillé, une barre activée reste visible pour être placée.
-        local wanted = db[spec.key] and (visible or (active and NS.unlocked))
+        local wanted = db[spec.key] and (visible or (active and NS:Previewing()))
         local shown = wanted and UPDATERS[spec.key](db) or false
         holder:SetShown(shown and true or false)
-        holder:SetAlpha((inCombat or NS.unlocked) and 1 or db.outOfCombatAlpha)
+        holder:SetAlpha((inCombat or NS:Previewing()) and 1 or db.outOfCombatAlpha)
     end
 end
 
@@ -212,7 +212,7 @@ function ResourceBars:OnRefresh()
     self:Update()
 end
 
-NS:On("UNLOCK", function() if bars.power then ResourceBars:Update() end end)
+NS:On("PREVIEW", function() if bars.power then ResourceBars:Update() end end)
 
 --- Paliers de couleur et repères d'une barre (`key` : "health" ou "power").
 local function BandOptions(o, key)

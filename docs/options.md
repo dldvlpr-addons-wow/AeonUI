@@ -193,6 +193,7 @@ Un profil contient tous les réglages de AeonUI. « Default » est partagé par 
 - **Profil utilisé par ce personnage** — liste, défaut **Default**
 - **Créer un profil pour ce personnage (copie de l'actuel)** — bouton
 - **Remettre le profil actuel par défaut** — bouton
+- **Restaurer la sauvegarde** — bouton
 - **Supprimer le profil actuel (retour à Default)** — bouton
 - **Nom (renommer ou dupliquer)** — zone de texte
 - **Renommer le profil actif** — bouton
@@ -205,7 +206,7 @@ Un profil contient tous les réglages de AeonUI. « Default » est partagé par 
 
 - **Chaîne de profil** — zone de texte
 
-> N'exporter que ce qui est coché. Importer une chaîne partielle ne change que ces parties.
+> N'exporter que ce qui est coché. Les mêmes cases filtrent l'import : les parties décochées restent intactes.
 
 - **Thème** — case, défaut **cochée**
 - **Listes d'auras** — case, défaut **cochée**
@@ -806,6 +807,8 @@ Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du
 - **Incantation du joueur : fin de la recharge globale** — case, défaut **décochée**
 - **Barre d'incantation colorée quand ton interruption est prête** — case, défaut **cochée**
 - **Couleur « interruption prête »** — couleur, défaut **#33D859**
+- **Barre d'incantation colorée quand le sort est marqué important** — case, défaut **cochée**
+- **Couleur « sort important »** — couleur, défaut **#E54CE5**
 
 > Format personnalisé par cadre : texte libre avec [cur], [max], [perc], [missing], [status], [name], [level]. Exemple : [cur] / [max] ([perc]). Un format vide reprend le préréglage ci-dessus.
 
@@ -1095,9 +1098,7 @@ Remplace les cadres Blizzard de groupe et de raid par des grilles AeonUI : vie, 
 
 > Les cadres Blizzard de groupe et de raid reviennent après un /reload une fois ce module coupé.
 
-- **Aperçu : groupe** — bouton
-- **Aperçu : raid** — bouton
-- **Masquer l'aperçu** — bouton
+- **Aperçu (membres)** — liste, défaut **Aucun**
 - **Déverrouiller (déplacer les cadres)** — bouton
 - **Espacement entre les cadres** — curseur, défaut **3**, 0 – 20, pas 1
 - **Masquer l'habillage Blizzard des plaques** — case, défaut **cochée**
@@ -1673,6 +1674,8 @@ Remplace l'habillage Blizzard des plaques de nom par des barres AeonUI : vie (co
 - **Barre d'incantation : cible du sort** — case, défaut **cochée**
 - **Barre d'incantation colorée quand ton interruption est prête** — case, défaut **cochée**
   - **Couleur « interruption prête »** — couleur, défaut **#33D859**
+- **Barre d'incantation colorée quand le sort est marqué important** — case, défaut **cochée**
+  - **Couleur « sort important »** — couleur, défaut **#E54CE5**
 - **Débuffs au-dessus de la plaque** — case, défaut **cochée**
 - **Buffs aussi (ligne au-dessus des débuffs)** — case, défaut **cochée**
 - **Taille des icônes d'auras** — curseur, défaut **18**, 12 – 32, pas 1

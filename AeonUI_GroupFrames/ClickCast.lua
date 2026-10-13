@@ -62,8 +62,9 @@ function ClickCast:Bindings()
     return list
 end
 
---- Pose les liaisons sur `button` (hors combat), en retirant celles posées avant.
+--- Pose les liaisons sur `button`, en retirant celles posées avant. En combat : à la sortie.
 function ClickCast:Apply(button)
+    if NS.InCombat() then NS:RunOutOfCombat(function() self:Apply(button) end) return end
     for _, name in ipairs(button.clickCastAttributes or {}) do button:SetAttribute(name, nil) end
     local applied = {}
     for _, binding in ipairs(self:Bindings()) do
