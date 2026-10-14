@@ -459,6 +459,7 @@ function NamePlateFrames:ApplyRange(frame)
 end
 
 function NamePlateFrames:UpdateHighlight(frame)
+    frame.isTarget = NS.IsTarget(frame.unit) ~= false   -- secret : peut-être la cible, refaite au changement
     local highlighted = self.db.targetHighlight and IsTarget(frame.unit)
     if highlighted then
         local r, g, b = NS.Media:Accent()
@@ -475,8 +476,8 @@ function NamePlateFrames:UpdateHighlight(frame)
 end
 
 function NamePlateFrames:UpdateAll(frame)
-    Elements.UpdateName(frame)
-    Elements.UpdateLevel(frame)
+    Elements.UpdateName(frame, true)
+    Elements.UpdateLevel(frame, true)   -- textes de vie : refaits par UpdateHealth, en dernier
     Elements.UpdateRaidIcon(frame)
     Elements.StartCast(frame)
     Elements.UpdateAuras(frame, true)
@@ -513,6 +514,7 @@ function NamePlateFrames:Mount(unit)
     end
     frame.unit = unit
     frame.plate = plate
+    frame.friendly = IsFriendly(unit)
     frame.cfg = Config(unit)
     frame.global = self.db
     frame:ClearAllPoints()
@@ -526,7 +528,7 @@ function NamePlateFrames:Mount(unit)
     frame:Show()
     -- Chevrons : leur barre d'ancrage devient la nôtre (l'événement a pu leur parvenir avant).
     local chevrons = NS.Modules:Get("nameplates")
-    if chevrons and chevrons.enabled then chevrons:Update() end
+    if chevrons and chevrons.enabled and NS.IsTarget(unit) ~= false then chevrons:Update() end
     return frame
 end
 
@@ -555,11 +557,40 @@ local UNIT_EVENTS = { "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_NAME_UPDATE", "UNIT
                       "UNIT_AURA", "UNIT_THREAT_LIST_UPDATE", "UNIT_THREAT_SITUATION_UPDATE", "UNIT_FLAGS",
                       "UNIT_CLASSIFICATION_CHANGED" }
 
--- Points de combo : puissance du joueur, à part des événements d'unité des plaques.
+-- Points de combo : puissance du joueur, à part des événements d'unité des plaques ; plaque de
+-- la cible seule, et seulement pour une classe qui en a.
+local COMBO_CLASSES = { ROGUE = true, DRUID = true }
 local comboEvents = CreateFrame("Frame")
 comboEvents:SetScript("OnEvent", function()
-    for _, frame in pairs(byUnit) do NamePlateFrames:UpdateCombo(frame) end
+    for _, frame in pairs(byUnit) do
+        if frame.isTarget then NamePlateFrames:UpdateCombo(frame) end
+    end
 end)
+
+local function RegisterCombo()
+    comboEvents:UnregisterAllEvents()
+    local _, class = UnitClass("player")
+    class = Known(class)
+    if active and NamePlateFrames.db.comboPoints and class and COMBO_CLASSES[class] then
+        NS.RegisterEventSafe(comboEvents, "UNIT_POWER_UPDATE", "player")
+    end
+end
+
+-- Cible changée : ancienne et nouvelle cible seulement ; toutes les plaques quand une cible
+-- apparaît ou disparaît avec la surbrillance (les autres plaques s'estompent).
+local hadTarget
+
+local function OnTargetChanged()
+    local exists = UnitExists("target") and true or false
+    local all = exists ~= hadTarget and NamePlateFrames.db.targetHighlight
+    hadTarget = exists
+    for _, frame in pairs(byUnit) do
+        if all or frame.isTarget or NS.IsTarget(frame.unit) ~= false then
+            NamePlateFrames:UpdateHealth(frame)
+            NamePlateFrames:UpdateCombo(frame)
+        end
+    end
+end
 
 local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event, unit)
@@ -568,11 +599,12 @@ events:SetScript("OnEvent", function(_, event, unit)
         NamePlateFrames:Mount(unit)
     elseif event == "NAME_PLATE_UNIT_REMOVED" then
         NamePlateFrames:Unmount(unit)
-    elseif event == "PLAYER_TARGET_CHANGED" or (event == "QUEST_LOG_UPDATE" and NamePlateFrames:HasQuestRule()) then
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        OnTargetChanged()
+    elseif event == "QUEST_LOG_UPDATE" and NamePlateFrames:HasQuestRule() then
         for _, frame in pairs(byUnit) do
             NamePlateFrames:UpdateHealth(frame)
-            if event == "QUEST_LOG_UPDATE" then NamePlateFrames:UpdateQuestIcon(frame)
-            else NamePlateFrames:UpdateCombo(frame) end
+            NamePlateFrames:UpdateQuestIcon(frame)
         end
     elseif event == "QUEST_LOG_UPDATE" then
         if NamePlateFrames.db.questIcon then
@@ -581,7 +613,14 @@ events:SetScript("OnEvent", function(_, event, unit)
     elseif event == "RAID_TARGET_UPDATE" then
         for _, frame in pairs(byUnit) do Elements.UpdateRaidIcon(frame) end
     elseif event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
-        for _, frame in pairs(byUnit) do NamePlateFrames:UpdateAll(frame) end
+        -- Entrée ou sortie de combat : couleur (assombrie hors combat) et règles ; à la sortie, les
+        -- auras lues sans le moteur (secrètes en combat) sont relues.
+        for _, frame in pairs(byUnit) do
+            if event == "PLAYER_REGEN_ENABLED" and frame.auras and not frame.auras.engine then
+                Elements.UpdateAuras(frame, true)
+            end
+            NamePlateFrames:UpdateHealth(frame)
+        end
     else
         local frame = unit and byUnit[unit]
         if not frame then return end
@@ -589,7 +628,9 @@ events:SetScript("OnEvent", function(_, event, unit)
         -- UnitFrameElements (l'icône de combat n'a pas sa place sur une plaque).
         if event == "UNIT_FACTION" then
             -- Allié devenu hostile (duel, JcJ) : réglages de la plaque (nom seul, auras) à refaire.
-            NamePlateFrames:Mount(unit)
+            -- Sinon neutre devenu hostile, ou mob marqué : couleur du nom et de la barre.
+            if IsFriendly(unit) ~= frame.friendly then NamePlateFrames:Mount(unit)
+            else Elements.UpdateName(frame, true) NamePlateFrames:UpdateHealth(frame) end
         elseif event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH"
             or event == "UNIT_THREAT_LIST_UPDATE" or event == "UNIT_THREAT_SITUATION_UPDATE"
             or event == "UNIT_FLAGS" or event == "UNIT_CLASSIFICATION_CHANGED" then
@@ -635,7 +676,8 @@ function NamePlateFrames:OnEnable()
         NS.RegisterEventSafe(events, event)
     end
     for _, event in ipairs(UNIT_EVENTS) do NS.RegisterEventSafe(events, event) end
-    NS.RegisterEventSafe(comboEvents, "UNIT_POWER_UPDATE", "player")
+    RegisterCombo()
+    hadTarget = nil
     for _, event in ipairs(Elements.CAST_EVENTS) do NS.RegisterEventSafe(events, event) end
     ApplyCVars()
     MountExisting()
@@ -656,6 +698,7 @@ function NamePlateFrames:OnRefresh()
     ApplyCVars()
     for unit in pairs(byUnit) do self:Mount(unit) end
     RunRangeTicker()
+    RegisterCombo()
 end
 
 NS:On("PIXEL_CHANGED", function() if active then NamePlateFrames:OnRefresh() end end)

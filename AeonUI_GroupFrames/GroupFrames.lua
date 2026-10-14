@@ -211,12 +211,19 @@ end
 
 local Threat = Elements.ThreatStatus
 
+--- Type dissipable affiché par la bordure, false sans. Avec le moteur, la couleur de dissipation
+-- est posée par son emplacement, par-dessus la bordure.
+local function DispelKind(button)
+    local db = GroupFrames.db
+    return db.dispel and not button.auraSlots and GroupFrames.DispellableType(button.unit, db.dispelMode == "all") or false
+end
+
 function GroupFrames:UpdateBorder(button)
     local unit = button.unit
     if not unit then return end
     local db = self.db
-    -- Avec le moteur, la couleur de dissipation est posée par son emplacement, par-dessus la bordure.
-    local kind = db.dispel and not button.auraSlots and GroupFrames.DispellableType(unit, db.dispelMode == "all")
+    local kind = DispelKind(button)
+    button.dispelKind, button.targeted = kind, false
     local dispelColor = kind and _G.DebuffTypeColor and DebuffTypeColor[kind]
     NS.Glow.Set(button, db.dispelGlow and dispelColor and true, "pixel", dispelColor)
     if button.dispelTint then
@@ -245,6 +252,7 @@ function GroupFrames:UpdateBorder(button)
     end
     if dispelColor then PaintBorder(button, dispelColor.r, dispelColor.g, dispelColor.b) return end
     if db.targetHighlight and NS.IsTarget(unit) then   -- nil si secret : bordure du thème
+        button.targeted = true
         PaintBorder(button, NS.Media:Accent())
         return
     end
@@ -587,9 +595,11 @@ end
 
 function GroupFrames:UpdateAll(button)
     if not button.unit then return end
+    button.guid = Known(UnitGUID(button.unit))   -- identité, comparée par RosterPass
     Elements.UpdateHealth(button)
+    Elements.UpdateHealPrediction(button)
     self:UpdatePowerRole(button)
-    Elements.UpdateName(button)
+    Elements.UpdateName(button, true)
     Elements.UpdateRaidIcon(button)
     Elements.UpdateAuras(button, true)
     self:UpdateIndicators(button)
@@ -602,7 +612,7 @@ function GroupFrames:UpdateAll(button)
 end
 
 local function OnUnitChanged(button, name, value)
-    if name ~= "unit" then return end
+    if name ~= "unit" or value == button.unit then return end   -- l'en-tête repose la même unité à chaque roster
     local old = button.unit
     if old and byUnit[old] then
         byUnit[old][button] = nil
@@ -1283,6 +1293,47 @@ local function OnReadyCheck(event)
     end
 end
 
+-- Rafales d'événements de groupe : une seule passe, à la frame suivante. Un bouton dont l'unité
+-- change est déjà refait par OnUnitChanged ; ici, refait en entier seulement si l'identité
+-- derrière son unité a changé ou est illisible, sinon rôle, chef et ressource seuls.
+local rosterPending, rosterFull = false, false
+
+local function RosterPass()
+    rosterPending = false
+    if not active then return end
+    local full = rosterFull
+    rosterFull = false
+    ForEach(nil, function(button)
+        local guid = Known(UnitGUID(button.unit))
+        if full or not guid or guid ~= button.guid then
+            GroupFrames:UpdateAll(button)
+        else
+            GroupFrames:UpdatePowerRole(button)
+            GroupFrames:UpdateRole(button)
+            GroupFrames:UpdateStatus(button)   -- offres de rez vidées par GROUP_ROSTER_UPDATE
+            GroupFrames:UpdateState(button)
+        end
+    end)
+    GroupFrames:UpdateHealerMana()
+end
+
+local function ScheduleRoster(full)
+    rosterFull = rosterFull or full
+    if rosterPending then return end
+    rosterPending = true
+    C_Timer.After(0, RosterPass)
+end
+
+--- Cible changée : bordures de l'ancienne et de la nouvelle cible seulement (toutes si illisible).
+local function UpdateTargetBorders()
+    if not GroupFrames.db.targetHighlight then return end
+    local exists = UnitExists("target")
+    local guid = exists and Known(UnitGUID("target")) or nil
+    ForEach(nil, function(button)
+        if button.targeted or (exists and (not guid or not button.guid or button.guid == guid)) then GroupFrames:UpdateBorder(button) end
+    end)
+end
+
 local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event, unit)
     if not active then return end
@@ -1293,8 +1344,7 @@ events:SetScript("OnEvent", function(_, event, unit)
     if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ROLES_ASSIGNED" or event == "PARTY_LEADER_CHANGED"
         or event == "PLAYER_ENTERING_WORLD" or event == "INSTANCE_ENCOUNTER_ENGAGE_UNIT" then
         if event == "GROUP_ROSTER_UPDATE" then wipe(rezCasting) wipe(rezOffered) end   -- jetons décalés
-        ForEach(nil, function(button) GroupFrames:UpdateAll(button) end)
-        GroupFrames:UpdateHealerMana()
+        ScheduleRoster(event == "PLAYER_ENTERING_WORLD" or event == "INSTANCE_ENCOUNTER_ENGAGE_UNIT")
     elseif event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
         inCombat = event == "PLAYER_REGEN_DISABLED"
         -- Aperçu caché en combat, repris à la sortie (SetPreview refuse le combat).
@@ -1305,18 +1355,19 @@ events:SetScript("OnEvent", function(_, event, unit)
     elseif event == "RAID_TARGET_UPDATE" then
         ForEach(nil, Elements.UpdateRaidIcon)
     elseif event == "PLAYER_TARGET_CHANGED" then
-        ForEach(nil, function(button) GroupFrames:UpdateBorder(button) end)
+        UpdateTargetBorders()
     elseif event == "READY_CHECK" or event == "READY_CHECK_FINISHED" then
         OnReadyCheck(event)
         ForEach(nil, function(button) GroupFrames:UpdateStatus(button) end)
     elseif unit and byUnit[unit] then
         ForEach(unit, function(button)
-            if event == "UNIT_AURA" or event == "UNIT_THREAT_SITUATION_UPDATE" then
+            if event == "UNIT_THREAT_SITUATION_UPDATE" then
                 GroupFrames:UpdateBorder(button)
-                if event == "UNIT_AURA" then
-                    Elements.UpdateAuras(button)
-                    GroupFrames:UpdateIndicators(button, true)
-                end
+            elseif event == "UNIT_AURA" then
+                -- Bordure refaite seulement si le type dissipable change ; la menace a son événement.
+                if DispelKind(button) ~= button.dispelKind then GroupFrames:UpdateBorder(button) end
+                Elements.UpdateAuras(button)
+                GroupFrames:UpdateIndicators(button, true)
             elseif event == "INCOMING_RESURRECT_CHANGED" or event == "INCOMING_SUMMON_CHANGED"
                     or event == "READY_CHECK_CONFIRM" then
                 GroupFrames:UpdateStatus(button)
@@ -1353,14 +1404,26 @@ function GroupFrames:OnEnable()
     for _, event in ipairs(UNIT_EVENTS) do NS.RegisterEventSafe(events, event) end
     self:RegisterCastEvents()
     self:UpdateHealerMana()
-    if not rangeTicker and C_Timer and C_Timer.NewTicker then rangeTicker = C_Timer.NewTicker(0.25, RangeTick) end
+    self:UpdateRangeTicker()
+end
+
+--- Ticker de portée seulement avec l'option ; coupée, UpdateAll remet l'alpha plein.
+function GroupFrames:UpdateRangeTicker()
+    local wanted = active and self.db.range
+    if wanted and not rangeTicker and C_Timer and C_Timer.NewTicker then
+        rangeTicker = C_Timer.NewTicker(0.25, RangeTick)
+    elseif not wanted and rangeTicker then
+        rangeTicker:Cancel()
+        rangeTicker = nil
+    end
 end
 
 function GroupFrames:OnDisable()
     active = false
     self:SetPreview(nil)
     events:UnregisterAllEvents()
-    if rangeTicker then rangeTicker:Cancel() rangeTicker = nil end
+    rosterPending, rosterFull = false, false   -- passe en attente : RosterPass sort, inactif
+    self:UpdateRangeTicker()
     for key, header in pairs(self.headers) do
         UnregisterStateDriver(header, "visibility")
         header:Hide()
@@ -1385,6 +1448,7 @@ function GroupFrames:OnRefresh()
     self:Reconcile()
     self:RegisterCastEvents()
     self:UpdateHealerMana()
+    self:UpdateRangeTicker()
 end
 
 NS:On("PIXEL_CHANGED", function()

@@ -90,20 +90,22 @@ end
 
 local inCombat = false   -- PLAYER_REGEN_DISABLED arrive avant que InCombatLockdown ne réponde vrai
 
+local sharedState = {}
+
 --- État courant. `event` : l'événement en cours de traitement chez l'appelant (l'ordre des
--- gestionnaires n'est pas garanti, PLAYER_REGEN_* fait foi).
+-- gestionnaires n'est pas garanti, PLAYER_REGEN_* fait foi). Table partagée, réécrite à chaque
+-- appel : à lire tout de suite, jamais à garder.
 function Visibility.State(event)
     local _, instanceType = IsInInstance()
     local combat = inCombat or NS.InCombat()
     if event == "PLAYER_REGEN_DISABLED" then combat = true elseif event == "PLAYER_REGEN_ENABLED" then combat = false end
-    return {
-        combat = combat,
-        group = (_G.IsInGroup and IsInGroup()) or (GetNumGroupMembers() > 0),
-        raid = IsInRaid() == true,
-        instance = instanceType ~= nil and instanceType ~= "none",
-        mounted = _G.IsMounted and IsMounted() or false,
-        target = UnitExists("target") and true or false,
-    }
+    sharedState.combat = combat
+    sharedState.group = (_G.IsInGroup and IsInGroup()) or (GetNumGroupMembers() > 0)
+    sharedState.raid = IsInRaid() == true
+    sharedState.instance = instanceType ~= nil and instanceType ~= "none"
+    sharedState.mounted = _G.IsMounted and IsMounted() or false
+    sharedState.target = UnitExists("target") and true or false
+    return sharedState
 end
 
 --------------------------------------------------------------------------------

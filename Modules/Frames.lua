@@ -229,9 +229,11 @@ function Frames:OnEnable()
     Hook()
     if not combatIcon then BuildCombatIcon() end
     for _, event in ipairs({ "PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED", "PLAYER_ENTERING_WORLD",
-                             "UNIT_FLAGS", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }) do
+                             "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }) do
         NS.RegisterEventSafe(events, event)
     end
+    events:UnregisterEvent("UNIT_FLAGS")
+    NS.RegisterEventSafe(events, "UNIT_FLAGS", "target")   -- seule la cible nous intéresse
     self:ApplyDark()
     self:ColorAll()
     self:UpdateTargetCombat()

@@ -82,6 +82,7 @@ local function Idle(bar)
     bar.expires = nil
     if not NS.SetBarTimer(bar, GetTime() - 1, 1, true) then bar:SetValue(0) end
     bar.time:SetText("")
+    bar.shownTenth = nil
 end
 
 -- Pendant un coup seulement : temps restant, fin du coup, remplissage si le moteur ne le fait pas.
@@ -94,7 +95,14 @@ local function Tick()
                 Idle(bar)
             else
                 if not bar.engine then bar:SetValue(remaining) end
-                if SwingTimer.db.showTime then bar.time:SetFormattedText("%.1f", remaining) end
+                if SwingTimer.db.showTime then
+                    -- SetText seulement quand le dixième affiché change.
+                    local tenth = math.floor(remaining * 10 + 0.5)
+                    if tenth ~= bar.shownTenth then
+                        bar.shownTenth = tenth
+                        bar.time:SetFormattedText("%.1f", remaining)
+                    end
+                end
             end
         end
     end

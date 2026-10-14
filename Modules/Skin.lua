@@ -228,8 +228,12 @@ local COOLDOWN_VIEWERS = { "EssentialCooldownViewer", "UtilityCooldownViewer", "
 -- Coordonnées d'origine de chaque icône (clés faibles : une icône recyclée disparaît seule).
 local originalCoords = setmetatable({}, { __mode = "k" })
 
-local function Crop(icon)
+local cropped = setmetatable({}, { __mode = "k" })   -- icônes déjà recadrées (réglage inchangé)
+
+local function Crop(icon, force)
     if not icon or not icon.SetTexCoord then return end
+    if cropped[icon] and not force then return end
+    cropped[icon] = true
     if not originalCoords[icon] then originalCoords[icon] = { icon:GetTexCoord() } end
     local db = Skin.db
     if active and db.iconZoom then
@@ -260,8 +264,9 @@ function Skin.CollectIcons()
     return icons
 end
 
-function Skin:ApplyIcons()
-    for _, icon in ipairs(self.CollectIcons()) do Crop(icon) end
+--- `force` : réglage changé, toutes les icônes sont recadrées ; sinon seulement les nouvelles.
+function Skin:ApplyIcons(force)
+    for _, icon in ipairs(self.CollectIcons()) do Crop(icon, force) end
 end
 
 -- Aucun hook sur BuffFrame ni les viewers (cadres Edit Mode : un hook sur leurs méthodes
@@ -455,6 +460,18 @@ events:SetScript("OnEvent", function(_, event)
     QueueIcons()
 end)
 
+-- Les événements d'aura et de recharge ne servent qu'au zoom d'icône.
+local function UpdateIconEvents()
+    if active and Skin.db.iconZoom then
+        events:UnregisterEvent("UNIT_AURA")   -- remplacement du filtre d'unité non prouvé sur Forever
+        NS.RegisterEventSafe(events, "UNIT_AURA", "player")
+        NS.RegisterEventSafe(events, "SPELL_UPDATE_COOLDOWN")   -- items des viewers de recharge
+    else
+        events:UnregisterEvent("UNIT_AURA")
+        events:UnregisterEvent("SPELL_UPDATE_COOLDOWN")
+    end
+end
+
 function Skin:OnEnable()
     active = true
     if not hooked then
@@ -465,13 +482,12 @@ function Skin:OnEnable()
         for _, tooltip in ipairs(Tooltips()) do StyleTooltip(tooltip) end
     end
     self:UpdateTooltipAnchor()
-    NS.RegisterEventSafe(events, "UNIT_AURA", "player")
-    NS.RegisterEventSafe(events, "SPELL_UPDATE_COOLDOWN")   -- items des viewers de recharge
+    UpdateIconEvents()
     NS.RegisterEventSafe(events, "PLAYER_ENTERING_WORLD")
     NS.RegisterEventSafe(events, "ADDON_LOADED")
     NS.RegisterEventSafe(events, "PLAYER_EQUIPMENT_CHANGED")
     NS.RegisterEventSafe(events, "INSPECT_READY")
-    self:ApplyIcons()
+    self:ApplyIcons(true)
     self:ApplyWindows()
 end
 
@@ -480,7 +496,7 @@ function Skin:OnDisable()
     events:UnregisterAllEvents()
     for _, tooltip in ipairs(Tooltips()) do RestoreTooltip(tooltip) end
     self:UpdateTooltipAnchor()
-    self:ApplyIcons()   -- active = false : rognage Blizzard d'origine
+    self:ApplyIcons(true)   -- active = false : rognage Blizzard d'origine
     self:ApplyWindows()
 end
 
@@ -489,7 +505,8 @@ function Skin:OnRefresh()
         if self.db.tooltips then StyleTooltip(tooltip) else RestoreTooltip(tooltip) end
     end
     self:UpdateTooltipAnchor()
-    self:ApplyIcons()
+    UpdateIconEvents()
+    self:ApplyIcons(true)
     self:ApplyWindows()
 end
 

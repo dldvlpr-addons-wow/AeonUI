@@ -139,6 +139,8 @@ events:SetScript("OnEvent", function(_, event, unit)
         targetCasting = false
     elseif event == "PLAYER_TARGET_CHANGED" then
         targetCasting = ReadTargetCasting()
+    elseif event == "NAME_PLATE_UNIT_ADDED" and NS.IsTarget(unit) == false then
+        return   -- plaque d'une autre unité : chevrons inchangés
     elseif event == "NAME_PLATE_UNIT_REMOVED" and NS.IsTarget(unit) ~= false then
         -- Cible, ou réponse secrète (combat) : dans le doute on cache. Pendant l'event,
         -- GetNamePlateForUnit peut encore rendre la plaque, qui sera recyclée : on réexamine
@@ -154,9 +156,10 @@ function Nameplates:OnEnable()
     if not arrows then Build() end
     active = true
     for _, event in ipairs({ "PLAYER_TARGET_CHANGED", "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED",
-                             "PLAYER_ENTERING_WORLD", "UNIT_FACTION", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }) do
+                             "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }) do
         NS.RegisterEventSafe(events, event)
     end
+    NS.RegisterEventSafe(events, "UNIT_FACTION", "target")
     for event in pairs(CAST_START) do NS.RegisterEventSafe(events, event, "target") end
     for event in pairs(CAST_STOP) do NS.RegisterEventSafe(events, event, "target") end
     -- Couleur : agro de la cible (autre tank).

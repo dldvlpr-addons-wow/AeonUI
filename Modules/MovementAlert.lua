@@ -33,6 +33,10 @@ local active = false
 local holder, readyText
 local icons = {}
 local wasReady = {}               -- [nom] = prêt au dernier passage
+local tracked                     -- sorts suivis en cache, vidé sur SPELLS_CHANGED et OnRefresh
+local placedSize                  -- taille pour laquelle les icônes sont positionnées
+local placed = {}                 -- [index] = icône déjà positionnée à cette taille
+local holderKey                   -- « nombre:taille » du dernier SetSize du holder
 
 --- Sorts suivis, connus du joueur : { { id, name } } (classe puis liste libre, sans doublon).
 function MovementAlert.TrackedSpells()
@@ -84,14 +88,19 @@ function MovementAlert:Update()
     if not holder then return end
     local size = self.db.iconSize
     local shown = 0
-    for _, spell in ipairs(active and self.TrackedSpells() or {}) do
+    if active and not tracked then tracked = self.TrackedSpells() end
+    if placedSize ~= size then placedSize, placed = size, {} end
+    for _, spell in ipairs(active and tracked or {}) do
         local ready = NS.IsSpellReady(spell.id)
         if not ready or NS:Previewing() then
             shown = shown + 1
             local icon = Icon(shown)
-            icon:SetSize(size, size)
-            icon:ClearAllPoints()
-            icon:SetPoint("LEFT", holder, "LEFT", (shown - 1) * (size + SPACING), 0)
+            if not placed[shown] then   -- position inchangée tant que la taille l'est
+                placed[shown] = true
+                icon:SetSize(size, size)
+                icon:ClearAllPoints()
+                icon:SetPoint("LEFT", holder, "LEFT", (shown - 1) * (size + SPACING), 0)
+            end
             icon.texture:SetTexture(NS.GetSpellTexture(spell.id))
             NS.SetSpellCooldown(icon.cooldown, spell.id)
             icon:Show()
@@ -100,12 +109,18 @@ function MovementAlert:Update()
         wasReady[spell.name] = ready
     end
     for index = shown + 1, #icons do icons[index]:Hide() end
-    holder:SetSize(math.max(size, shown * (size + SPACING) - SPACING), size)
+    if holderKey ~= shown .. ":" .. size then
+        holderKey = shown .. ":" .. size
+        holder:SetSize(math.max(size, shown * (size + SPACING) - SPACING), size)
+    end
     holder:SetShown(active)
 end
 
 local events = CreateFrame("Frame")
-events:SetScript("OnEvent", function() MovementAlert:Update() end)
+events:SetScript("OnEvent", function(_, event)
+    if event == "SPELLS_CHANGED" then tracked = nil end
+    MovementAlert:Update()
+end)
 
 function MovementAlert:OnEnable()
     if not holder then Build() end
@@ -115,6 +130,7 @@ function MovementAlert:OnEnable()
     NS.Movers:Register("movementAlert", holder, L.MOVEMENT_TITLE, "CENTER", 0, -210)
     NS.Movers:Load("movementAlert")
     wasReady = {}
+    tracked = nil
     self:Update()
 end
 
@@ -126,7 +142,10 @@ function MovementAlert:OnDisable()
     self:Update()
 end
 
-function MovementAlert:OnRefresh() self:Update() end
+function MovementAlert:OnRefresh()
+    tracked = nil
+    self:Update()
+end
 
 NS:On("PREVIEW", function() MovementAlert:Update() end)
 

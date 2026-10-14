@@ -1041,11 +1041,18 @@ function Database:ReadMirror()
     return saved
 end
 
+-- Défauts de profil du miroir, refaits seulement si un module s'est enregistré depuis (Prune ne
+-- les modifie pas).
+local mirrorDefaults, mirrorModuleCount
+
 --- Table globale réduite à ce qui diffère des défauts ; chaque profil reste présent, même vide.
 function Database:MirrorTable()
-    local profileDefaults = ProfileDefaults(true)
-    local defaults = self.DeepCopy(self.GLOBAL_DEFAULTS)
-    for name in pairs(self.global.profiles) do defaults.profiles[name] = profileDefaults end
+    local moduleCount = #NS.Modules:List()
+    if moduleCount ~= mirrorModuleCount then
+        mirrorDefaults, mirrorModuleCount = ProfileDefaults(true), moduleCount
+    end
+    local defaults = setmetatable({ profiles = {} }, { __index = self.GLOBAL_DEFAULTS })
+    for name in pairs(self.global.profiles) do defaults.profiles[name] = mirrorDefaults end
     -- Historique du chat : volumineux et changeant, il ferait vite déborder les tranches ;
     -- la table hôte le garde, le miroir n'est qu'un repli. Écarté avant Prune (pas de copie).
     -- Sauvegarde des profils et état d'avant une migration en échec : même raison, et jamais

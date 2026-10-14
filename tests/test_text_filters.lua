@@ -134,7 +134,7 @@ test("auras : GetDebuff rend l'identifiant et l'origine ; cadre d'unité filtré
     Elements.UpdateAuras(frame)
     eq(frame.auras.native, false, "filtre « miens » : repli maison sans conteneur moteur dans le mock")
     eq(frame.auras.buttons[1].icon.texture, "b")
-    truthy(not frame.auras.buttons[2]:IsShown())
+    truthy(not (frame.auras.buttons[2] and frame.auras.buttons[2]:IsShown()))
     db.units.target.auraFilter = "all"
     NS.Modules:SetEnabled("unitframes", false)
     Mock.debuffs.target = nil

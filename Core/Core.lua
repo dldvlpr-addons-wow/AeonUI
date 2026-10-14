@@ -123,13 +123,22 @@ loader:SetScript("OnEvent", function(self, event, name)
         NS:Fire("PROFILE_READY")
         NS:Fire("LOGIN")
         if NS.Database.migrationRolledBack then NS.Print(L.MSG_MIGRATION_ROLLBACK) end
-        -- Miroir : recopie toutes les 5 s par OnUpdate (pas C_Timer : règle de persistance Forever),
-        -- n'écrit que si la table a changé, plus à la déconnexion.
-        local mirror, elapsedTotal = CreateFrame("Frame"), 0
+        -- Miroir : tick de 5 s par OnUpdate (pas C_Timer : règle de persistance Forever). La table
+        -- hôte est rebranchée à chaque tick ; le miroir n'est reconstruit que hors combat, après
+        -- un changement signalé (options fermées, profil, verrouillage, module) ou toutes les 60 s,
+        -- plus à la déconnexion.
+        local mirror, sinceTick, sinceWrite, dirty = CreateFrame("Frame"), 0, 0, false
+        local function MarkDirty() dirty = true end
+        for _, event in ipairs({ "OPTIONS_HIDDEN", "PROFILE_CHANGED", "UNLOCK", "MODULE_TOGGLED" }) do
+            NS:On(event, MarkDirty)
+        end
         mirror:SetScript("OnUpdate", function(_, elapsed)
-            elapsedTotal = elapsedTotal + elapsed
-            if elapsedTotal < 5 then return end
-            elapsedTotal = 0
+            sinceTick = sinceTick + elapsed
+            if sinceTick < 5 then return end
+            sinceWrite, sinceTick = sinceWrite + sinceTick, 0
+            NS.Database:HostGlobal()
+            if NS.InCombat() or not (dirty or sinceWrite >= 60) then return end
+            dirty, sinceWrite = false, 0
             NS.Database:WriteMirror()
         end)
     end

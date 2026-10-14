@@ -70,6 +70,20 @@ local events = CreateFrame("Frame")
 
 local function S(n) return NS.Pixel:Scale(n) end
 
+-- Relevé des cases pendant une passe de Bags:Update : une lecture par case (nil hors passe).
+local passItems
+local function BagItem(bag, slot)
+    if not passItems then return NS.GetBagItem(bag, slot) end
+    local row = passItems[bag]
+    if not row then row = {} passItems[bag] = row end
+    local entry = row[slot]
+    if entry == nil then
+        entry = NS.GetBagItem(bag, slot) or false
+        row[slot] = entry
+    end
+    return entry or nil
+end
+
 --------------------------------------------------------------------------------
 -- Fenêtres Blizzard
 --------------------------------------------------------------------------------
@@ -328,7 +342,7 @@ function Bags.Sections(list)
     local byKey = {}
     for _, button in ipairs(list) do
         local bag, slot = button:GetBagID(), button:GetID()
-        local key = Bags.Category(NS.GetBagItem(bag, slot), bag, slot, pinned, custom)
+        local key = Bags.Category(BagItem(bag, slot), bag, slot, pinned, custom)
         byKey[key] = byKey[key] or {}
         table.insert(byKey[key], button)
     end
@@ -366,7 +380,7 @@ end
 --- Icône, quantité et recharge : peintes par Blizzard. Ici niveau, camelote, bordure, recherche.
 function Bags.UpdateButton(button, bag, slot)
     local db = Bags.db
-    local item = NS.GetBagItem(bag, slot)
+    local item = BagItem(bag, slot)
     button.aeonItem = item
     local r, g, b
     if not item then
@@ -472,6 +486,13 @@ end
 
 function Bags:Update()
     if not window then return end
+    passItems = {}
+    local ok, err = pcall(self.UpdatePass, self)
+    passItems = nil
+    if not ok then geterrorhandler()(err) end
+end
+
+function Bags:UpdatePass()
     local db = self.db
     local size = S(db.buttonSize)
     local columns = math.max(4, math.min(24, tonumber(db.columns) or 12))
@@ -483,7 +504,7 @@ function Bags:Update()
         local rank, order = {}, {}
         for index, button in ipairs(list) do
             local bag, slot = button:GetBagID(), button:GetID()
-            local item = NS.GetBagItem(bag, slot)
+            local item = BagItem(bag, slot)
             order[button] = index
             rank[button] = (item and pinned[item.itemID]) and 1 or (db.newFirst and NS.IsNewBagItem(bag, slot)) and 2 or 3
         end
@@ -510,7 +531,17 @@ function Bags:Update()
     end
     local free = 0
     -- Sections posées l'une sous l'autre, chacune sur des rangées neuves ; titre au besoin.
+    -- Mêmes boutons, mêmes sections, même taille : rien n'est replacé, sauf un bouton que Blizzard
+    -- a réancré sur son cadre (réouverture, mise en page de ses sacs).
     local function Place(sections, parent)
+        local keyParts = { size, columns }
+        for _, section in ipairs(sections) do
+            keyParts[#keyParts + 1] = section.label or ""
+            for _, button in ipairs(section.buttons) do keyParts[#keyParts + 1] = tostring(button) end
+        end
+        local key = table.concat(keyParts, "|")
+        local moved = parent.layoutKey ~= key
+        parent.layoutKey = key
         local top = S(30)
         parent.headers = parent.headers or {}
         local headerCount = 0
@@ -522,10 +553,12 @@ function Bags:Update()
                     header = Media:CreateText(parent, "OVERLAY")
                     parent.headers[headerCount] = header
                 end
-                header:ClearAllPoints()
-                header:SetPoint("TOPLEFT", parent, "TOPLEFT", S(8), -top)
-                header:SetText(section.label)
-                header:Show()
+                if moved then
+                    header:ClearAllPoints()
+                    header:SetPoint("TOPLEFT", parent, "TOPLEFT", S(8), -top)
+                    header:SetText(section.label)
+                    header:Show()
+                end
                 top = top + S(HEADER_HEIGHT)
             end
             for index, button in ipairs(section.buttons) do
@@ -535,16 +568,20 @@ function Bags:Update()
                 Decorate(button)
                 -- Enfant du cadre Blizzard invisible (strate DIALOG, au-dessus de notre fenêtre) : visible quand même.
                 if button.SetIgnoreParentAlpha then button:SetIgnoreParentAlpha(true) end
-                button:SetSize(size, size)
-                button:ClearAllPoints()
-                local row, column = math.floor((index - 1) / columns), (index - 1) % columns
-                button:SetPoint("TOPLEFT", parent, "TOPLEFT", S(8) + column * (size + S(SPACING)),
-                    -top - row * (size + S(SPACING)))
+                local _, anchor = button:GetPoint(1)
+                if moved or anchor ~= parent then
+                    button:SetSize(size, size)
+                    button:ClearAllPoints()
+                    local row, column = math.floor((index - 1) / columns), (index - 1) % columns
+                    button:SetPoint("TOPLEFT", parent, "TOPLEFT", S(8) + column * (size + S(SPACING)),
+                        -top - row * (size + S(SPACING)))
+                end
                 Bags.UpdateButton(button, bag, slot)
                 if not button.aeonItem then free = free + 1 end
             end
             top = top + math.max(1, math.ceil(#section.buttons / columns)) * (size + S(SPACING))
         end
+        if not moved then return end
         for index = headerCount + 1, #parent.headers do parent.headers[index]:Hide() end
         if #sections == 0 then top = top + size + S(SPACING) end
         parent:SetSize(S(16) + columns * (size + S(SPACING)) - S(SPACING), top + S(22))
@@ -590,7 +627,26 @@ function Bags:StartMerge()
     self.merging = self:MergeStep()
 end
 
-events:SetScript("OnEvent", function(_, event)
+events:SetScript("OnEvent", function(_, event, bag, slot)
+    local shown = active and window and window:IsShown()
+    if event == "PLAYER_MONEY" then
+        if shown then window.money:SetText(NS.FormatMoney(GetMoney())) end
+        return
+    end
+    -- Infos d'objet arrivées : le tri et les sections n'en dépendent pas, seules les cases sont repeintes.
+    if event == "GET_ITEM_INFO_RECEIVED" then
+        if not shown then return end
+        for bagID, bagButtons in pairs(buttons) do
+            for slotID, button in pairs(bagButtons) do Bags.UpdateButton(button, bagID, slotID) end
+        end
+        return
+    end
+    -- Verrou : seule la case concernée (sens d'un slot nil inconnu : mise à jour large).
+    if event == "ITEM_LOCK_CHANGED" and type(bag) == "number" and type(slot) == "number" then
+        local button = buttons[bag] and buttons[bag][slot]
+        if button and shown then Bags.UpdateButton(button, bag, slot) end
+        return
+    end
     if event == "BAG_UPDATE_DELAYED" and Bags.merging then Bags.merging = Bags:MergeStep() end
     QueueUpdate()
 end)
@@ -613,7 +669,7 @@ function Bags:OnEnable()
     TakeBlizzard()
     -- Pas de hook sur les méthodes des cadres Blizzard (mise en page contaminée) : leurs
     -- remises en grille suivent les ouvertures (Sync) et les changements de sacs.
-    for _, event in ipairs({ "BAG_UPDATE_DELAYED", "BAG_CONTAINER_UPDATE", "ITEM_LOCK_CHANGED", "BAG_UPDATE_COOLDOWN",
+    for _, event in ipairs({ "BAG_UPDATE_DELAYED", "BAG_CONTAINER_UPDATE", "ITEM_LOCK_CHANGED",
                              "PLAYER_MONEY", "GET_ITEM_INFO_RECEIVED" }) do
         NS.RegisterEventSafe(events, event)
     end

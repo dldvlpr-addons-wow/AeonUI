@@ -238,6 +238,20 @@ local function SameColor(color, r, g, b)
         and math.abs(color[1] - r) < 1e-3 and math.abs(color[2] - g) < 1e-3 and math.abs(color[3] - b) < 1e-3
 end
 
+-- Une icône rechargée par image : 59 WeakAuras.Add dans la même image gelaient le jeu 300 ms.
+-- Une icône remplacée entre-temps (réimport) est sautée, son propre Add relance un repeint.
+-- Une icône déjà en file n'y entre pas deux fois : le glisser de la roue d'accent relance un repeint toutes les 0,2 s.
+local paintQueue, queuedData = {}, {}
+local paintFrame = CreateFrame("Frame")
+paintFrame:Hide()
+paintFrame:SetScript("OnUpdate", function(self)
+    if InCombatLockdown() then return end
+    local entry = table.remove(paintQueue, 1)
+    if entry then queuedData[entry.data] = nil end
+    if entry and entry.displays[entry.id] == entry.data and _G.WeakAuras then _G.WeakAuras.Add(entry.data) end
+    if #paintQueue == 0 then self:Hide() end
+end)
+
 --- Bordure des icônes du HUD Musca à la couleur d'accent AeonUI. Seules les bordures noires du
 -- pack et celles à l'accent du repeint précédent changent : une couleur choisie à la main dans
 -- WeakAuras est gardée. Seules les icônes dont la couleur change sont rechargées : le repeint qui
@@ -250,9 +264,9 @@ function Install.PaintHud()
     -- Un accent par HUD : chaque classe est repeinte à la connexion de son personnage.
     local store = type(NS.global.hudBorder) == "table" and NS.global.hudBorder or {}
     local painted = store[rootId]
-    local function Paint(data)
+    local function Paint(data, id)
         for _, child in ipairs(type(data.controlledChildren) == "table" and data.controlledChildren or {}) do
-            if type(displays[child]) == "table" then Paint(displays[child]) end
+            if type(displays[child]) == "table" then Paint(displays[child], child) end
         end
         local changed = false
         for _, sub in ipairs(type(data.subRegions) == "table" and data.subRegions or {}) do
@@ -263,9 +277,13 @@ function Install.PaintHud()
                 changed = true
             end
         end
-        if changed then add(data) end
+        if changed and not queuedData[data] then
+            queuedData[data] = true
+            paintQueue[#paintQueue + 1] = { id = id, data = data, displays = displays }
+            paintFrame:Show()
+        end
     end
-    Paint(root)
+    Paint(root, rootId)
     store[rootId] = { r, g, b }
     NS.global.hudBorder = store
 end

@@ -242,25 +242,28 @@ local function UpdateZone()
     holder.zone:SetTextColor(MinimapFrame.ZoneColor(NS.GetZonePVPInfo()))
 end
 
+-- Lecture protégée de la position : fonction fixe (pas de fermeture par tick).
+local function ReadPlayerPosition()
+    local mapID = C_Map.GetBestMapForUnit("player")
+    if not mapID then return nil end
+    local position = C_Map.GetPlayerMapPosition(mapID, "player")
+    if not position then return nil end
+    return position:GetXY()
+end
+
 function MinimapFrame.PlayerCoords()
     if not C_Map or not C_Map.GetBestMapForUnit then return nil end
-    local ok, x, y = pcall(function()
-        local mapID = C_Map.GetBestMapForUnit("player")
-        if not mapID then return nil end
-        local position = C_Map.GetPlayerMapPosition(mapID, "player")
-        if not position then return nil end
-        return position:GetXY()
-    end)
+    local ok, x, y = pcall(ReadPlayerPosition)
     if not ok or NS.IsSecret(x) or NS.IsSecret(y) then return nil end
     if x and y and x > 0 and y > 0 then return x * 100, y * 100 end
     return nil
 end
 
 --- Texte des coordonnées à `precision` décimales (0 à 2).
+local COORD_FORMATS = { [0] = "%.0f, %.0f", "%.1f, %.1f", "%.2f, %.2f" }
 function MinimapFrame.FormatCoords(x, y, precision)
     local p = math.max(0, math.min(2, math.floor(tonumber(precision) or 1)))
-    local pattern = "%." .. p .. "f"
-    return string.format(pattern .. ", " .. pattern, x, y)
+    return string.format(COORD_FORMATS[p], x, y)
 end
 
 --- Latence -> couleur : vert sous 100 ms, jaune sous 250 ms, rouge au-delà.

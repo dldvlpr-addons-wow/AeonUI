@@ -116,9 +116,11 @@ test("plaques : menace par rôle (tank, co-tank), points de combo, emplacement d
     local threatOf = UnitThreatSituation
     Mock.groupSize, Mock.units.party1, Mock.roles.party1 = 2, { name = "Tank2" }, "TANK"
     UnitThreatSituation = function(a, b) if a == "party1" then return 3 end return threatOf(a, b) end
+    Mock.FireEvent("GROUP_ROSTER_UPDATE")
     Mock.FireEvent("UNIT_THREAT_SITUATION_UPDATE", "nameplate1")
     eq(frame.health.barColor[3], colors.offTank.b, "tenue par un autre tank")
     UnitThreatSituation, Mock.groupSize, Mock.units.party1, Mock.roles.party1 = threatOf, 0, nil, nil
+    Mock.FireEvent("GROUP_ROSTER_UPDATE")
     enemy.threat = 3
     Mock.FireEvent("UNIT_THREAT_SITUATION_UPDATE", "nameplate1")
     eq(frame.health.barColor[2], colors.tankSecure.g, "agro tenue")
@@ -137,6 +139,11 @@ test("plaques : menace par rôle (tank, co-tank), points de combo, emplacement d
     end
     eq(#frame.plateComboPips, 5, "une pastille par point")
     eq(lit, 2, "deux points allumés")
+    Mock.units.player.class = "ROGUE"
+    NS.Modules:Refresh("nameplateframes")
+    Mock.units.player.combo = 3
+    Mock.FireEvent("UNIT_POWER_UPDATE", "player")
+    eq(frame.plateComboPips[3].color[4], 1, "point gagné : allumé")
     Mock.units.target = nil
     Mock.FireEvent("PLAYER_TARGET_CHANGED")
     eq(frame.plateComboPips[1]:IsShown(), false, "sans cible : aucune pastille")
@@ -148,7 +155,7 @@ test("plaques : menace par rôle (tank, co-tank), points de combo, emplacement d
     eq(frame.ccSlot.buttons[1].icon.texture, "stun", "contrôle dans l'emplacement")
     truthy(frame.ccSlot.buttons[1]:IsShown())
     eq(frame.auras.buttons[1].icon.texture, "poison")
-    eq(frame.auras.buttons[2]:IsShown(), false, "contrôle retiré de la grille")
+    eq(frame.auras.buttons[2] and frame.auras.buttons[2]:IsShown() or false, false, "contrôle retiré de la grille")
     Mock.debuffs.nameplate1 = {}
     Mock.FireEvent("UNIT_AURA", "nameplate1")
     eq(frame.ccSlot.buttons[1]:IsShown(), false)

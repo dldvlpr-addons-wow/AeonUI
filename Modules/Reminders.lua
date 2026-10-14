@@ -225,18 +225,28 @@ local function MissingMembers(names)
     return missing, first
 end
 
+-- Parcourir tout le groupe coûte cher : le résultat est gardé, recalculé seulement quand le
+-- groupe change (coverageDirty) ou après COVERAGE_REFRESH secondes, pas à chaque UNIT_AURA.
+local COVERAGE_REFRESH = 10
+local coverageDirty = true
+local coverageEntries, coverageAt = {}, 0
+
 local function CoverageReminders(db, classFile, result)
     if not (db.groupCoverage and IsInGroupNow()) then return end
-    for _, rule in ipairs(COVERAGE_RULES) do
-        local known = rule.class == classFile and KnownSpellName(rule)
-        if known then
-            local missing, first = MissingMembers(RuleNames(rule))
-            if missing > 0 then
-                result[#result + 1] = { key = "coverage:" .. rule.key, spell = known, unit = first,
-                                        text = string.format(L.REM_COVERAGE, known, missing) }
+    if coverageDirty or GetTime() - coverageAt >= COVERAGE_REFRESH then
+        coverageDirty, coverageAt, coverageEntries = false, GetTime(), {}
+        for _, rule in ipairs(COVERAGE_RULES) do
+            local known = rule.class == classFile and KnownSpellName(rule)
+            if known then
+                local missing, first = MissingMembers(RuleNames(rule))
+                if missing > 0 then
+                    coverageEntries[#coverageEntries + 1] = { key = "coverage:" .. rule.key, spell = known,
+                        unit = first, text = string.format(L.REM_COVERAGE, known, missing) }
+                end
             end
         end
     end
+    for _, entry in ipairs(coverageEntries) do result[#result + 1] = entry end
 end
 
 --- Buffs choisis par identifiant : rappel si le sort est connu et le buff absent.
@@ -370,6 +380,16 @@ end
 
 function Reminders:Evaluate()
     if not active then return end
+    if NS.InCombat() or (_G.UnitAffectingCombat and UnitAffectingCombat("player")) then
+        -- En combat rien n'est évalué : lignes cachées, sortie immédiate.
+        for i = 1, MAX_LINES do
+            lines[i]:SetText(nil)
+            lines[i]:Hide()
+        end
+        shown = {}
+        self:UpdateRepeat()
+        return {}
+    end
     local list = self:Collect()
     local now, fresh = {}, false
     for i = 1, MAX_LINES do
@@ -420,6 +440,18 @@ end
 --------------------------------------------------------------------------------
 
 local events = CreateFrame("Frame")
+local evaluatePending = false
+
+--- Rafale d'events (UNIT_AURA, sacs…) : une seule évaluation 0,3 s plus tard.
+local function ScheduleEvaluate()
+    if evaluatePending then return end
+    evaluatePending = true
+    C_Timer.After(0.3, function()
+        evaluatePending = false
+        Reminders:Evaluate()
+    end)
+end
+
 events:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_REGEN_ENABLED" then
         stealthSince = GetTime()
@@ -427,6 +459,12 @@ events:SetScript("OnEvent", function(_, event)
         C_Timer.After(3.1, function() Reminders:Evaluate() end)
     elseif event == "PLAYER_REGEN_DISABLED" then
         stealthSince = nil
+    else
+        if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" or event == "SPELLS_CHANGED"
+            or event == "UNIT_AURA" then   -- joueur buffé : compté dans la couverture
+            coverageDirty = true
+        end
+        return ScheduleEvaluate()
     end
     Reminders:Evaluate()
 end)
@@ -450,6 +488,7 @@ function Reminders:OnEnable()
     NS.Movers:Load("reminders")
     ApplyUnlock(NS:Previewing())
     shown = {}
+    coverageDirty = true
     self:Evaluate()
 end
 
@@ -466,6 +505,7 @@ function Reminders:OnDisable()
 end
 
 function Reminders:OnRefresh()
+    coverageDirty = true
     self:Evaluate()
 end
 
@@ -473,6 +513,7 @@ function Reminders:GetFrame() return frame, lines end
 
 NS:On("PREVIEW", function(unlocked)
     ApplyUnlock(unlocked)
+    coverageDirty = true
     if active then Reminders:Evaluate() end
 end)
 

@@ -172,12 +172,12 @@ test("barres : boutons retirés des diffuseurs Blizzard, recharge peinte sans va
     local blizzardSetCooldown = rawget(button.cooldown, "SetCooldown")
     -- Sans objet durée : SetCooldown seulement sur des valeurs connues.
     Mock.actionCooldown = { start = 10, duration = 5 }
-    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    Mock.Advance(0.1) Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
     eq(button.lastEvent, "ACTIONBAR_UPDATE_COOLDOWN", "événement dispatché par AeonUI")
     eq(button.action, 1)
     eq(button.cooldown.painted[1], 10)
     Mock.actionCooldown = { start = Mock.SetSecret(20), duration = 5 }
-    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    Mock.Advance(0.1) Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
     eq(button.cooldown.painted, nil, "valeur secrète : recharge effacée, aucune erreur")
     eq(Mock.FindPrinted("Blizzard"), nil, "aucun échec signalé")
     eq(rawget(button.cooldown, "SetCooldown"), blizzardSetCooldown, "SetCooldown ombré à demeure, rendu tel quel après le dispatch")
@@ -194,13 +194,13 @@ test("barres : boutons retirés des diffuseurs Blizzard, recharge peinte sans va
         GetActionCooldown = function() return { isActive = true } end,
         GetActionCooldownDuration = function() return object end,
     }
-    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    Mock.Advance(0.1) Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
     eq(button.cooldown.painted, object)
     button.cooldown:Clear()
     button.cooldown:SetCooldown(Mock.SetSecret(32), 5)
     eq(button.cooldown.painted, object, "secret hors dispatch : repeint par l'objet durée")
     _G.C_ActionBar.GetActionCooldown = function() return { isActive = false } end
-    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    Mock.Advance(0.1) Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
     eq(button.cooldown.painted, nil)
     _G.C_ActionBar = nil
     Disable()
@@ -226,6 +226,38 @@ test("barres : réinscription par le modèle Blizzard retirée à chaque dispatc
     Disable()
 end)
 
+test("barres : clignotement demandé hors dispatch, rafale regroupée à la frame suivante", function()
+    reset()
+    Enable()
+    local button = AB:GetBar(1).buttons[1]
+    local ticks = 0
+    button.OnUpdate = function(self) ticks = ticks + 1 if ticks >= 2 then self.needsUpdate = nil end end
+    Mock.Advance(0.1)
+    button.needsUpdate = true
+    ActionBarButtonUpdateFrame:RegisterFrame(button)   -- StartFlash Blizzard, hors de notre dispatch
+    eq(ActionBarButtonUpdateFrame.frames[button], nil, "retiré du diffuseur Blizzard")
+    Mock.Advance(0.2)
+    eq(ticks, 2, "OnUpdate armé aussitôt, mené jusqu'à la fin du clignotement")
+    local count = 0
+    local original = button.OnEvent
+    button.OnEvent = function(self, event, ...)
+        if event == "ACTIONBAR_UPDATE_COOLDOWN" then count = count + 1 end
+        return original(self, event, ...)
+    end
+    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    eq(count, 1, "première traitée aussitôt")
+    Mock.Advance(0.05)
+    eq(count, 2, "suivantes regroupées en un passage")
+    for _, event in ipairs({ "PLAYER_ENTER_COMBAT", "START_AUTOREPEAT_SPELL" }) do
+        Mock.FireEvent(event)
+        eq(button.lastEvent, event, "clignotement de l'attaque auto : " .. event)
+    end
+    button.OnEvent, button.OnUpdate, button.needsUpdate = original, nil, nil
+    Disable()
+end)
+
 test("barres : ACTIONBAR_SLOT_CHANGED différé en combat, rejoué à la sortie", function()
     reset()
     Enable()
@@ -234,7 +266,7 @@ test("barres : ACTIONBAR_SLOT_CHANGED différé en combat, rejoué à la sortie"
     button.lastEvent = nil
     Mock.FireEvent("ACTIONBAR_SLOT_CHANGED")
     eq(button.lastEvent, nil, "pas dispatché en combat")
-    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    Mock.Advance(0.1) Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
     eq(button.lastEvent, "ACTIONBAR_UPDATE_COOLDOWN", "les autres passent")
     Mock.SetCombat(false)
     eq(button.lastEvent, "PLAYER_ENTERING_WORLD", "mise à jour complète à la sortie")
@@ -355,20 +387,20 @@ test("barres : style AeonUI, recharge grisée hors GCD, lueur de proc, barre 7 s
     eq(button.aeonBorder.top.color[1], RAID_CLASS_COLORS.MAGE.r, "couleur de classe")
     eq(button.icon:IsDesaturated(), true, "recharge : icône grisée")
     cooldown = { isActive = true, isOnGCD = true, duration = 1.5 }
-    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    Mock.Advance(0.1) Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
     eq(button.icon:IsDesaturated(), false, "recharge globale : pas grisée")
     cooldown = { isActive = true, duration = 1.5 }
-    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    Mock.Advance(0.1) Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
     eq(button.icon:IsDesaturated(), false, "recharge globale sans isOnGCD : pas grisée")
     cooldown = { isActive = true, duration = Mock.SetSecret(8) }
-    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    Mock.Advance(0.1) Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
     eq(button.icon:IsDesaturated(), false, "durée secrète, isOnGCD inconnu : pas grisée")
     cooldown = { isActive = true, isOnGCD = false, duration = Mock.SetSecret(8) }
-    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    Mock.Advance(0.1) Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
     eq(button.icon:IsDesaturated(), true, "durée secrète, vraie recharge : grisée")
     Mock.secret[8] = nil
     cooldown = { isActive = Mock.SetSecret(true), isOnGCD = false }
-    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
+    Mock.Advance(0.1) Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
     eq(button.icon:IsDesaturated(), false, "secret : icône intacte")
     Mock.secret[true] = nil   -- le mock marque la valeur elle-même
     overlayed = true
@@ -403,9 +435,6 @@ test("barres : inscription Blizzard hors dispatch retirée aussitôt, jumeaux ca
     for _, frame in pairs(ActionBarButtonEventsFrame.frames) do truthy(frame ~= twin, "diffuseur principal : jumeau retiré") end
     ActionBarButtonEventsFrame:RegisterFrame(twin)
     for _, frame in pairs(ActionBarButtonEventsFrame.frames) do truthy(frame ~= twin, "réinscription retirée") end
-    ActionBarActionEventsFrame.frames[twin] = twin                -- inscription directe, sans RegisterFrame
-    Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
-    eq(ActionBarActionEventsFrame.frames[twin], nil, "balayé au dispatch suivant")
     Disable()
     MultiBarBottomLeft.actionButtons = nil
     for i = #ActionBarButtonEventsFrame.frames, 1, -1 do

@@ -308,7 +308,7 @@ test("unitframes : points de combo = une barre graduée, cachée sans ressource"
     local combo = Frame("player").combo
     eq(combo:IsShown(), false, "mage : pas de combo")
     Mock.units.player.comboMax, Mock.units.player.combo = 5, 3
-    Mock.FireEvent("UNIT_POWER_UPDATE", "player")
+    Mock.FireEvent("UNIT_POWER_FREQUENT", "player")
     truthy(combo:IsShown())
     eq(combo:GetValue(), 3)
     local _, max = combo:GetMinMaxValues()
@@ -317,7 +317,7 @@ test("unitframes : points de combo = une barre graduée, cachée sans ressource"
     for _, tick in ipairs(combo.ticks) do if tick:IsShown() then ticks = ticks + 1 end end
     eq(ticks, 4, "quatre graduations pour cinq points")
     Mock.units.player.combo = Mock.SetSecret(2)
-    Mock.FireEvent("UNIT_POWER_UPDATE", "player")
+    Mock.FireEvent("UNIT_POWER_FREQUENT", "player")
     eq(combo:GetValue(), 2, "valeur secrète acceptée")
     Disable()
 end)
@@ -327,7 +327,7 @@ test("unitframes : points de combo en pastilles, bornées de i-1 à i, valeur se
     UF.db.units.player.comboPips = true
     Enable()
     Mock.units.player.comboMax, Mock.units.player.combo = 5, Mock.SetSecret(3)
-    Mock.FireEvent("UNIT_POWER_UPDATE", "player")
+    Mock.FireEvent("UNIT_POWER_FREQUENT", "player")
     local frame = Frame("player")
     eq(frame.combo:IsShown(), false, "barre graduée remplacée")
     truthy(frame.comboPips:IsShown())
@@ -336,7 +336,7 @@ test("unitframes : points de combo en pastilles, bornées de i-1 à i, valeur se
     eq(low, 3) eq(high, 4)
     eq(frame.comboPips.pips[4]:GetValue(), 3, "pastille 4 vide, sans comparaison en Lua")
     Mock.units.player.comboMax = 0
-    Mock.FireEvent("UNIT_POWER_UPDATE", "player")
+    Mock.FireEvent("UNIT_POWER_FREQUENT", "player")
     eq(frame.comboPips:IsShown(), false, "sans ressource : cachées")
     Disable()
 end)
@@ -440,7 +440,7 @@ test("unitframes : auras en repli maison (débuffs, secret sans spirale)", funct
     truthy(auras, "conteneur créé (cible : auras cochées)")
     eq(auras.native, false)
     truthy(auras.buttons[1]:IsShown()); truthy(auras.buttons[3]:IsShown())
-    eq(auras.buttons[4]:IsShown(), false)
+    eq(auras.buttons[4] and auras.buttons[4]:IsShown() or false, false)
     eq(auras.buttons[1].cooldown.cooldownDuration, 10)
     eq(auras.buttons[1].count:GetText(), "3")
     eq(auras.buttons[1].border.top.color[3], 1, "bordure Magie bleue")

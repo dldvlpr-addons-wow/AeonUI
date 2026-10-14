@@ -192,6 +192,7 @@ test("rappels : membres sans buff de groupe, buffs choisis, icône cliquable hor
     eq(entry.text, "Arcane Intellect: 1 member(s) without")
     eq(entry.unit, "party2", "cible : le membre sans")
     Mock.units.party2.dead = true
+    Mock.Advance(11)   -- la couverture du groupe est mise en cache 10 s
     eq(Keys(Reminders:Collect())["coverage:arcaneIntellect"], nil, "mort : ne compte pas")
     Mock.units.party2.dead = nil
     -- Buff choisi par identifiant.
@@ -202,6 +203,7 @@ test("rappels : membres sans buff de groupe, buffs choisis, icône cliquable hor
     eq(Keys(Reminders:Collect())["custom:99999"], nil, "sort inconnu : rien")
     -- Icône : sort et cible posés, lueur.
     NS.Modules:SetEnabled("reminders", true)
+    Mock.Advance(11)   -- cache de couverture expiré (le membre est revenu à la vie)
     Reminders:Evaluate()
     local _, lines = Reminders:GetFrame()
     local button
@@ -215,6 +217,12 @@ test("rappels : membres sans buff de groupe, buffs choisis, icône cliquable hor
     Mock.SetCombat(true)
     Reminders:Evaluate()
     Mock.SetCombat(false)
+    -- Buff de groupe lancé par le joueur : son UNIT_AURA rafraîchit la couverture, sans attendre 10 s.
+    Mock.units.party2.buffs = { "Arcane Brilliance" }
+    Mock.FireEvent("UNIT_AURA", "player")
+    Mock.Advance(0.4)
+    eq(Keys(Reminders:Collect())["coverage:arcaneIntellect"], nil, "joueur buffé : couverture relue")
+    Mock.units.party2.buffs = nil
     Reminders.db.customBuffs = ""
     Mock.SetGroup(1, false)
     NS.Modules:SetEnabled("reminders", false)

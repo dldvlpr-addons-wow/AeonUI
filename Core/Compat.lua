@@ -80,11 +80,20 @@ end
 -- recharge, qui ne cherchent que par identifiant. `id` lui-même si le grimoire ne répond pas.
 -- Par le nom d'abord : le grimoire rend le rang le plus haut (portée, recharge), alors que les
 -- rangs inférieurs restent connus (IsPlayerSpell vrai sur le rang 1).
+-- Réponses lisibles du grimoire, vidées à SPELLS_CHANGED (sort ou rang appris).
+local knownSpellIDs = {}
+local spellsWatcher = CreateFrame("Frame")
+spellsWatcher:RegisterEvent("SPELLS_CHANGED")
+spellsWatcher:SetScript("OnEvent", function() wipe(knownSpellIDs) end)
+
 function NS.KnownSpellID(id)
+    local cached = knownSpellIDs[id]
+    if cached then return cached end
     local name = NS.GetSpellName(id)
     local info = name and C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(name)
     local known = type(info) == "table" and info.spellID
     if not known or isSecret(known) then return id end
+    knownSpellIDs[id] = known
     return known
 end
 
@@ -312,33 +321,55 @@ function NS.SetSpellCooldown(cooldown, spellID)
     if start and duration and duration > 0 then cooldown:SetCooldown(start, duration) else cooldown:Clear() end
 end
 
---- L'unité est-elle tank : rôle choisi, ou tank principal du raid ? Valeur secrète : non.
-function NS.IsTankUnit(unit)
+-- Tank : rôle choisi, ou tank principal du raid. nil si la réponse est secrète.
+local function TankRole(unit)
+    local secret = false
     if _G.UnitGroupRolesAssigned then
         local role = UnitGroupRolesAssigned(unit)
-        if not isSecret(role) and role == "TANK" then return true end
+        if isSecret(role) then secret = true elseif role == "TANK" then return true end
     end
     if _G.GetPartyAssignment then
         local assigned = GetPartyAssignment("MAINTANK", unit)
-        if not isSecret(assigned) and assigned then return true end
+        if isSecret(assigned) then secret = true elseif assigned then return true end
     end
+    if secret then return nil end
     return false
+end
+
+--- L'unité est-elle tank : rôle choisi, ou tank principal du raid ? Valeur secrète : non.
+function NS.IsTankUnit(unit) return TankRole(unit) == true end
+
+-- Tanks du groupe (joueur compris en raid), vidés à chaque changement de groupe ou de rôle ; gardés
+-- seulement si tous les rôles étaient lisibles.
+local groupTanks
+local rosterWatcher = CreateFrame("Frame")
+rosterWatcher:RegisterEvent("GROUP_ROSTER_UPDATE")
+rosterWatcher:RegisterEvent("PLAYER_ROLES_ASSIGNED")
+rosterWatcher:SetScript("OnEvent", function() groupTanks = nil end)
+
+local function GroupTanks()
+    if groupTanks then return groupTanks end
+    local tanks, readable = {}, true
+    local inRaid = _G.IsInRaid and IsInRaid()
+    local prefix, count = "raid", GetNumGroupMembers()
+    if not inRaid then prefix, count = "party", count - 1 end
+    for i = 1, count do
+        local unit = prefix .. i
+        local tank = TankRole(unit)
+        if tank == nil then readable = false elseif tank then tanks[#tanks + 1] = unit end
+    end
+    if readable then groupTanks = tanks end
+    return tanks
 end
 
 --- Un autre tank du groupe tient-il l'agro de `mob` ? Sans jeton composé (`nameplate1target` est
 -- secret) : menace de chaque tank du groupe sur `mob`. Valeur secrète : non.
 function NS.OtherTankHasAggro(mob)
     if not (_G.UnitThreatSituation and _G.GetNumGroupMembers) then return false end
-    local inRaid = _G.IsInRaid and IsInRaid()
-    local prefix, count = "raid", GetNumGroupMembers()
-    if not inRaid then prefix, count = "party", count - 1 end
-    for i = 1, count do
-        -- Le joueur lui-même n'y passe pas : l'appelant a déjà écarté sa propre agro (statut 2 ou 3).
-        local unit = prefix .. i
-        if NS.IsTankUnit(unit) then
-            local ok, status = pcall(UnitThreatSituation, unit, mob)
-            if ok and not isSecret(status) and status and status >= 2 then return true end
-        end
+    -- Le joueur lui-même n'y passe pas : l'appelant a déjà écarté sa propre agro (statut 2 ou 3).
+    for _, unit in ipairs(GroupTanks()) do
+        local ok, status = pcall(UnitThreatSituation, unit, mob)
+        if ok and not isSecret(status) and status and status >= 2 then return true end
     end
     return false
 end
@@ -1736,11 +1767,19 @@ end
 --- Couleur par paliers de `kind` ("health" ou "power") : applied, r, g, b. `steps` = liste croissante
 -- de { fraction, r, g, b } : sous `fraction`, cette couleur ; au-dessus du dernier palier, r, g, b.
 -- Comme NS.HealthGradient : composantes peut-être secrètes, l'appelant ne teste que `applied`.
+-- Courbe déjà résolue pour une table de paliers (Elements.Bands en refait une à chaque réglage).
+local curveBySteps = setmetatable({}, { __mode = "k" })
+
 function NS.StepColor(unit, kind, steps, r, g, b)
     if #steps == 0 or isSecret(r) or isSecret(g) or isSecret(b) then return false end
-    local parts = { kind, r, g, b }
-    for _, step in ipairs(steps) do parts[#parts + 1] = table.concat(step, ",") end
-    local curve = StepCurve(table.concat(parts, ";"), steps, r, g, b)
+    local resolved = curveBySteps[steps]
+    if not (resolved and resolved.kind == kind and resolved.r == r and resolved.g == g and resolved.b == b) then
+        local parts = { kind, r, g, b }
+        for _, step in ipairs(steps) do parts[#parts + 1] = table.concat(step, ",") end
+        resolved = { kind = kind, r = r, g = g, b = b, curve = StepCurve(table.concat(parts, ";"), steps, r, g, b) }
+        curveBySteps[steps] = resolved
+    end
+    local curve = resolved.curve
     local percent = kind == "health" and _G.UnitHealthPercent or _G.UnitPowerPercent
     if curve and percent then
         local ok, color
@@ -1838,6 +1877,8 @@ function NS.ColorFromBoolean(value, r1, g1, b1, r2, g2, b2)
     return pick(value, r1, r2), pick(value, g1, g2), pick(value, b1, b2)
 end
 
+local function HealAmount(value) if isSecret(value) then return value end return value or 0 end
+
 --- Soins entrants, absorptions et soins absorbés calculés par le moteur (plafonnés à la vie
 -- manquante, peut-être secrets) ; nil sans l'API. Un calculateur par cadre, gardé dans holder.
 function NS.GetHealPrediction(holder, unit)
@@ -1859,8 +1900,7 @@ function NS.GetHealPrediction(holder, unit)
         end
     end
     if not pcall(fill, unit, nil, calc) then return nil end
-    local function amount(value) if isSecret(value) then return value end return value or 0 end
-    return amount((calc:GetIncomingHeals())), amount((calc:GetDamageAbsorbs())), amount((calc:GetHealAbsorbs()))
+    return HealAmount((calc:GetIncomingHeals())), HealAmount((calc:GetDamageAbsorbs())), HealAmount((calc:GetHealAbsorbs()))
 end
 
 --- Sort marqué important par le client (booléen peut-être secret) ; nil sans l'API ou sans sort.

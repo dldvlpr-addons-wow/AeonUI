@@ -24,6 +24,7 @@ local CooldownBars = NS.Modules:Register("cooldownbars", {
 
 local active = false
 local frames = {}      -- [index] = { holder, icons }
+local spellLists = {}  -- [index] = { text, list } : sorts connus, vidé sur SPELLS_CHANGED et OnRefresh
 
 --- Sorts de la liste connus du joueur : { { id, name } }, dans l'ordre écrit.
 function CooldownBars.Spells(text)
@@ -71,15 +72,25 @@ function CooldownBars:UpdateBar(index)
     local on = active and cfg.enabled
     local shown = 0
     local perRow = math.max(1, cfg.perRow)
-    for _, spell in ipairs(on and self.Spells(cfg.spells) or {}) do
+    local cached = spellLists[index]
+    if on and (not cached or cached.text ~= cfg.spells) then
+        cached = { text = cfg.spells, list = self.Spells(cfg.spells) }
+        spellLists[index] = cached
+    end
+    local layout = cfg.size .. ":" .. cfg.spacing .. ":" .. perRow
+    if bar.layout ~= layout then bar.layout, bar.placed, bar.holderKey = layout, {}, nil end
+    for _, spell in ipairs(on and cached.list or {}) do
         local ready = NS.IsSpellReady(spell.id)
         if not (cfg.hideReady and ready) or NS:Previewing() then
             shown = shown + 1
             local icon = Icon(bar, shown)
-            icon:SetSize(cfg.size, cfg.size)
-            icon:ClearAllPoints()
-            local row, column = math.floor((shown - 1) / perRow), (shown - 1) % perRow
-            icon:SetPoint("TOPLEFT", bar.holder, "TOPLEFT", column * (cfg.size + cfg.spacing), -row * (cfg.size + cfg.spacing))
+            if not bar.placed[shown] then   -- position inchangée tant que la mise en page l'est
+                bar.placed[shown] = true
+                icon:SetSize(cfg.size, cfg.size)
+                icon:ClearAllPoints()
+                local row, column = math.floor((shown - 1) / perRow), (shown - 1) % perRow
+                icon:SetPoint("TOPLEFT", bar.holder, "TOPLEFT", column * (cfg.size + cfg.spacing), -row * (cfg.size + cfg.spacing))
+            end
             icon.texture:SetTexture(NS.GetSpellTexture(spell.id))
             if icon.texture.SetDesaturated then icon.texture:SetDesaturated(cfg.desaturate and not ready) end
             NS.SetSpellCooldown(icon.cooldown, spell.id)
@@ -94,9 +105,12 @@ function CooldownBars:UpdateBar(index)
         end
     end
     for i = shown + 1, #bar.icons do bar.icons[i]:Hide() end
-    local columns = math.max(1, math.min(shown, perRow))
-    local rows = math.max(1, math.ceil(shown / perRow))
-    bar.holder:SetSize(columns * (cfg.size + cfg.spacing) - cfg.spacing, rows * (cfg.size + cfg.spacing) - cfg.spacing)
+    if bar.holderKey ~= shown then
+        bar.holderKey = shown
+        local columns = math.max(1, math.min(shown, perRow))
+        local rows = math.max(1, math.ceil(shown / perRow))
+        bar.holder:SetSize(columns * (cfg.size + cfg.spacing) - cfg.spacing, rows * (cfg.size + cfg.spacing) - cfg.spacing)
+    end
     bar.holder:SetShown(on and (shown > 0 or NS:Previewing()) or false)
     if on and not bar.registered then
         bar.registered = true
@@ -113,10 +127,14 @@ function CooldownBars:Update()
 end
 
 local events = CreateFrame("Frame")
-events:SetScript("OnEvent", function() CooldownBars:Update() end)
+events:SetScript("OnEvent", function(_, event)
+    if event == "SPELLS_CHANGED" then wipe(spellLists) end
+    CooldownBars:Update()
+end)
 
 function CooldownBars:OnEnable()
     active = true
+    wipe(spellLists)   -- SPELLS_CHANGED non écouté pendant la désactivation
     for _, event in ipairs({ "SPELL_UPDATE_COOLDOWN", "SPELL_UPDATE_CHARGES", "SPELLS_CHANGED", "PLAYER_ENTERING_WORLD" }) do
         NS.RegisterEventSafe(events, event)
     end
@@ -129,7 +147,10 @@ function CooldownBars:OnDisable()
     self:Update()
 end
 
-function CooldownBars:OnRefresh() self:Update() end
+function CooldownBars:OnRefresh()
+    wipe(spellLists)
+    self:Update()
+end
 
 NS:On("PREVIEW", function() CooldownBars:Update() end)
 

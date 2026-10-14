@@ -205,6 +205,23 @@ local function Paint(unit)
     if db.showName then button.name:SetText(UnitName(unit)) else button.name:SetText("") end
 end
 
+local events = CreateFrame("Frame")
+local eventsUnit   -- unité pour laquelle les events de santé / auras sont enregistrés
+
+--- Santé et auras ne sont écoutées que pour l'unité suivie (RegisterUnitEvent) ; on désenregistre
+-- d'abord : sur Forever, un nouvel appel ne remplace pas forcément le filtre.
+local function SyncUnitEvents(unit)
+    if unit == eventsUnit then return end
+    eventsUnit = unit
+    events:UnregisterEvent("UNIT_HEALTH")
+    events:UnregisterEvent("UNIT_MAXHEALTH")
+    events:UnregisterEvent("UNIT_AURA")
+    if not unit then return end
+    for _, event in ipairs({ "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_AURA" }) do
+        NS.RegisterEventSafe(events, event, unit)
+    end
+end
+
 --- Choisit l'unité et affiche/masque. Hors combat uniquement (bouton sécurisé).
 function CoTank:Refresh()
     if not button then return end
@@ -213,6 +230,7 @@ function CoTank:Refresh()
     button:SetSize(db.width, db.height)
     EnsureDebuffIcons()
     watched = unit
+    SyncUnitEvents(unit)
     if unit then
         button:SetAttribute("unit", unit)
         Paint(unit)
@@ -233,7 +251,6 @@ function CoTank:GetButton() return button, watched, debuffIcons end
 -- Events
 --------------------------------------------------------------------------------
 
-local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event, unit)
     if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
         if unit == watched then CoTank:UpdateHealth() end
@@ -253,7 +270,7 @@ function CoTank:OnEnable()
     NS.Movers:Register("cotank", button, L.MOVER_COTANK, "CENTER", 200, 0)
     NS.Movers:Load("cotank")
     for _, event in ipairs({ "GROUP_ROSTER_UPDATE", "PLAYER_ROLES_ASSIGNED", "ROLE_CHANGED_INFORM",
-                             "PLAYER_ENTERING_WORLD", "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_AURA" }) do
+                             "PLAYER_ENTERING_WORLD" }) do
         NS.RegisterEventSafe(events, event)
     end
     self:Refresh()
@@ -262,6 +279,7 @@ end
 function CoTank:OnDisable()
     active = false
     events:UnregisterAllEvents()
+    eventsUnit = nil
     NS.Movers:Unregister("cotank")
     if button then
         watched = nil

@@ -101,7 +101,8 @@ function TEXT.clock()
     if db.serverTime and _G.GetGameTime then
         hour, minute = GetGameTime()
     else
-        hour, minute = tonumber(date("%H")), tonumber(date("%M"))
+        local now = date("*t")   -- un seul appel par tick
+        hour, minute = now.hour, now.min
     end
     local text = TopBar.FormatClock(hour, minute, db.use24h)
     if db.showResting and _G.IsResting and IsResting() then
@@ -629,7 +630,7 @@ function TopBar:Update(keys)
     for _, key in ipairs(keys or TEXT_KEYS) do
         if SetElementText(key, TEXT[key]()) then resized = true end
     end
-    hearth.label:SetText(HearthText())
+    if TopBar.db.show.hearth then hearth.label:SetText(HearthText()) end
     if resized and not layoutQueued then
         -- Un seul Layout en file : le ticker 1 Hz en empilerait un par seconde de combat.
         layoutQueued = true

@@ -95,13 +95,25 @@ function Glow.PerimeterPoint(p, width, height)
     return 0, -(height - p), false
 end
 
+-- Tailles arrondies au pixel physique, refaites seulement quand le multiplicateur change.
+local scaled = {}
+local function Scaled()
+    if scaled.mult ~= NS.Pixel.mult then
+        scaled.mult = NS.Pixel.mult
+        scaled.pixel, scaled.autocast = S(PIXEL.offset), S(AUTOCAST.offset)
+        scaled.length, scaled.thickness = S(PIXEL.length), S(PIXEL.thickness)
+    end
+    return scaled
+end
+
 local function Animate(frame, style, now)
     local width, height = frame:GetWidth(), frame:GetHeight()
     if not (width and height) or width <= 0 or height <= 0 then return end
-    local offset = S(style == "pixel" and PIXEL.offset or AUTOCAST.offset)
+    local sizes = Scaled()
+    local offset = sizes[style]
     width, height = width + 2 * offset, height + 2 * offset
     local perimeter = 2 * (width + height)
-    local length, thickness = S(PIXEL.length), S(PIXEL.thickness)
+    local length, thickness = sizes.length, sizes.thickness
     for _, part in ipairs(frame.aeonGlowParts[style]) do
         local p = ((now / part.period + part.phase) % 1) * perimeter
         local x, y, horizontal = Glow.PerimeterPoint(p, width, height)
@@ -113,8 +125,12 @@ local function Animate(frame, style, now)
     end
 end
 
-local driver = CreateFrame("Frame")
-local function Tick()
+local TICK = 1 / 30   -- 30 images par seconde suffisent au défilement
+local driver, sinceTick = CreateFrame("Frame"), 0
+local function Tick(_, elapsed)
+    sinceTick = sinceTick + elapsed
+    if sinceTick < TICK then return end
+    sinceTick = 0
     local now = GetTime()
     for frame, style in pairs(Glow.animated) do
         if frame:IsVisible() then Animate(frame, style, now) end

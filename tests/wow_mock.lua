@@ -593,6 +593,8 @@ local function NewDispatcher(name)
 end
 NewDispatcher("ActionBarButtonEventsFrame")
 NewDispatcher("ActionBarActionEventsFrame")
+-- Clignotement et état différé : diffuseur à clés (cadre -> cadre), inscrit par StartFlash et OnShow.
+NewDispatcher("ActionBarButtonUpdateFrame").RegisterFrame = function(self, button) self.frames[button] = button end
 Mock.actionCooldown = { start = 0, duration = 0 }
 function _G.GetActionCooldown() return Mock.actionCooldown.start, Mock.actionCooldown.duration, 1, 1 end
 

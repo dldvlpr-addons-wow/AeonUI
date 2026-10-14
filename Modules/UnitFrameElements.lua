@@ -57,12 +57,16 @@ local function SurelyPlayer(unit)
     return unit == "player" or unit:find("^party%d") ~= nil or unit:find("^raid%d") ~= nil
 end
 
+--- Classe d'un joueur lisible, sinon nil.
+local function PlayerClass(unit)
+    if NS.IsSecretUnit(unit) or not (SurelyPlayer(unit) or Known(UnitIsPlayer(unit))) then return nil end
+    local _, classFile = UnitClass(unit)
+    return Known(classFile)
+end
+
 function Elements.HealthColor(unit, classColor)
-    if classColor and not NS.IsSecretUnit(unit) and (SurelyPlayer(unit) or Known(UnitIsPlayer(unit))) then
-        local _, classFile = UnitClass(unit)
-        classFile = Known(classFile)
-        if classFile then return NS.ClassColor(classFile) end
-    end
+    local classFile = classColor and PlayerClass(unit)
+    if classFile then return NS.ClassColor(classFile) end
     local unitFrames = NS.db.modules.unitframes
     local colors = unitFrames and unitFrames.reactionColors or Elements.REACTION_COLORS
     if _G.UnitIsTapDenied and Known(UnitIsTapDenied(unit)) then
@@ -235,12 +239,14 @@ function Elements.TextFormat(custom, mode)
 end
 
 --- Écrit un format sur un FontString pour l'unité (kind : "health" ou "power").
+local textValues = {}   -- réutilisée : lue aussitôt par SetFormattedText
+
 function Elements.SetUnitText(fontString, unit, kind, format)
     if not format or format == "" then fontString:SetText("") return end
     local entry = Elements.CompileFormat(format)
     local count = #entry.tokens
     if count == 0 then fontString:SetText(format) return end
-    local values = {}
+    local values = textValues
     for i, name in ipairs(entry.tokens) do
         local value = Elements.TOKENS[name](unit, kind)   -- chaîne peut-être secrète : jamais testée
         if not isSecret(value) and value == nil then value = "" end
@@ -594,7 +600,35 @@ function Elements.UpdateHealthTexts(frame)
     if bar.centerText then Elements.SetUnitText(bar.centerText, frame.unit, "health", frame.cfg and frame.cfg.centerFormat) end
 end
 
-function Elements.UpdateHealth(frame)
+--- Classe en cache par cadre, clé = GUID lisible (la classe d'un GUID ne change pas) ; la couleur
+-- est relue (CUSTOM_CLASS_COLORS peut changer). GUID secret ou absent : rien en cache.
+local function FrameHealthColor(frame, unit, classColor)
+    local guid = classColor and Known(UnitGUID(unit)) or nil
+    if not guid then return Elements.HealthColor(unit, classColor) end
+    if frame.classGUID ~= guid then
+        local classFile = PlayerClass(unit)
+        if not classFile then return Elements.HealthColor(unit, false) end
+        frame.classGUID, frame.classFile = guid, classFile
+    end
+    return NS.ClassColor(frame.classFile)
+end
+
+-- Paliers de vie basse par table de réglages, refaits si le seuil ou la couleur change.
+local lowHealthSteps = setmetatable({}, { __mode = "k" })
+local function LowHealthSteps(global)
+    local percent, c = global.lowHealth, global.lowHealthColor
+    local r, g, b = c and c.r, c and c.g, c and c.b
+    local cache = lowHealthSteps[global]
+    if not cache or cache.percent ~= percent or cache.r ~= r or cache.g ~= g or cache.b ~= b then
+        cache = { percent = percent, r = r, g = g, b = b, steps = Elements.Bands(percent, c) }
+        lowHealthSteps[global] = cache
+    end
+    return cache.steps
+end
+
+--- Vie, couleur et textes, sans la prédiction de soins (UpdateHealthAndPrediction).
+-- `skipTexts` : l'appelant rafraîchit les textes lui-même (UpdateAll).
+function Elements.UpdateHealth(frame, skipTexts)
     local unit = frame.unit
     local bar = frame.health
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
@@ -604,13 +638,18 @@ function Elements.UpdateHealth(frame)
     if global and global.healthGradient then applied, r, g, b = NS.HealthGradient(unit) end
     if applied then Media:SetHealthColor(bar, r, g, b)   -- r, g, b peut-être secrets : jamais testés
     else
-        r, g, b = Elements.HealthColor(unit, global and global.classColor)
+        r, g, b = FrameHealthColor(frame, unit, global and global.classColor)
         if global and (global.lowHealth or 0) > 0 then
-            r, g, b = Elements.BandColor(unit, "health", Elements.Bands(global.lowHealth, global.lowHealthColor), r, g, b)
+            r, g, b = Elements.BandColor(unit, "health", LowHealthSteps(global), r, g, b)
         end
         Media:SetHealthColor(bar, r, g, b)
     end
-    Elements.UpdateHealthTexts(frame)
+    if not skipTexts then Elements.UpdateHealthTexts(frame) end
+end
+
+--- Vie et prédiction : les montants du calculateur sont plafonnés par la vie courante et manquante.
+function Elements.UpdateHealthAndPrediction(frame)
+    Elements.UpdateHealth(frame)
     Elements.UpdateHealPrediction(frame)
 end
 
@@ -689,9 +728,9 @@ function Elements.TruncateName(name, count)
     return table.concat(out)
 end
 
-function Elements.UpdateName(frame)
+function Elements.UpdateName(frame, skipTexts)
     local unit = frame.unit
-    Elements.UpdateHealthTexts(frame)
+    if not skipTexts then Elements.UpdateHealthTexts(frame) end
     if frame.cfg.name == false then frame.name:Hide() return end
     -- Nom secret (identité masquée) : aucun test booléen dessus, il part tel quel au widget.
     local name = UnitName(unit)
@@ -706,10 +745,10 @@ function Elements.UpdateName(frame)
     frame.name:Show()
 end
 
-function Elements.UpdateLevel(frame)
+function Elements.UpdateLevel(frame, skipTexts)
     local unit = frame.unit
     local text = frame.level
-    Elements.UpdateHealthTexts(frame)
+    if not skipTexts then Elements.UpdateHealthTexts(frame) end
     if frame.cfg.level == false then text:Hide() return end
     local value = Elements.LevelText(unit)
     if unit == "player" and _G.GetMaxPlayerLevel then
@@ -1154,6 +1193,7 @@ local function ManualButton(container, index)
     NS.RegisterCooldown(button.cooldown)
     button.count = Media:CreateText(button, "OVERLAY", -2, "OUTLINE")
     button.count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
+    if container.size then button:SetSize(container.size, container.size) end
     container.buttons[index] = button
     return button
 end
@@ -1199,9 +1239,10 @@ function Elements.LayoutAuras(frame)
     local spacing = S(2)
     local perRow = math.max(1, math.floor((width + spacing) / (size + spacing)))
     container.step, container.perRow, container.above = size + spacing, perRow, cfg.aurasAbove
-    container.inside = cfg.aurasInside
+    container.inside, container.size = cfg.aurasInside, size
     container:SetSize(width, (size + spacing) * math.ceil(MAX_AURAS / perRow))
-    for i = 1, MAX_AURAS do ManualButton(container, i):SetSize(size, size) end
+    -- Boutons maison créés à la demande (aperçu, client sans moteur) : seuls les existants sont retaillés.
+    for _, button in ipairs(container.buttons) do button:SetSize(size, size) end
     -- Sans auras (plaque alliée), rien à configurer : la signature reste celle des plaques hostiles.
     if container.engine and cfg.auras then Elements.ConfigureAuraEngine(frame, size, spacing, perRow) end
 end
@@ -1357,7 +1398,9 @@ function Elements.UpdateAuras(frame, refresh)
     if not frame.cfg.auras then container:Hide() return end
     container:Show()
     if container.engine then
-        for _, button in ipairs(container.buttons) do button:Hide() end   -- boutons de l'aperçu
+        if refresh then   -- boutons de l'aperçu
+            for _, button in ipairs(container.buttons) do button:Hide() end
+        end
         container.engine:Show()
         NS.SetAuraContainerUnit(container.engine, frame.unit, refresh)
         return
@@ -1405,15 +1448,16 @@ function Elements.PreviewAuras(frame, entries)
     if container.engine then container.engine:Hide() end
     local perRow = container.perRow or MAX_AURAS
     local max = math.min(MAX_AURAS, frame.cfg.auraMax or MAX_AURAS)
-    for i, button in ipairs(container.buttons) do
-        local entry = i <= max and entries[i]
-        if entry then
-            PlaceManualButton(container, button, (i - 1) % perRow, math.floor((i - 1) / perRow))
-            ShowAura(button, entry, true, "none")
-        else
-            button:Hide()
-        end
+    local shown = 0
+    for i = 1, max do
+        local entry = entries[i]
+        if not entry then break end
+        local button = ManualButton(container, i)
+        PlaceManualButton(container, button, (i - 1) % perRow, math.floor((i - 1) / perRow))
+        ShowAura(button, entry, true, "none")
+        shown = i
     end
+    for i = shown + 1, #container.buttons do container.buttons[i]:Hide() end
 end
 
 --------------------------------------------------------------------------------
@@ -1423,9 +1467,10 @@ end
 --- Rafraîchit chaque élément (changement d'unité, entrée en jeu, réglage).
 function Elements.UpdateAll(frame)
     Elements.UpdateHealth(frame)
+    Elements.UpdateHealPrediction(frame)
     Elements.UpdatePower(frame)
-    Elements.UpdateName(frame)
-    Elements.UpdateLevel(frame)
+    Elements.UpdateName(frame, true)
+    Elements.UpdateLevel(frame, true)
     Elements.UpdateIndicators(frame)
     Elements.UpdateRaidIcon(frame)
     Elements.UpdateCombo(frame)
@@ -1444,10 +1489,11 @@ end
 
 -- Événement d'unité -> mise à jour ciblée.
 Elements.UNIT_EVENTS = {
-    UNIT_HEALTH = "UpdateHealth", UNIT_MAXHEALTH = "UpdateHealth", UNIT_FACTION = "UpdateFaction",
+    UNIT_HEALTH = "UpdateHealthAndPrediction", UNIT_MAXHEALTH = "UpdateHealthAndPrediction",
+    UNIT_FACTION = "UpdateFaction",
     UNIT_THREAT_SITUATION_UPDATE = "UpdateThreatBorder", UNIT_HAPPINESS = "UpdateHappiness",
     UNIT_CLASSIFICATION_CHANGED = "UpdateClassification",
-    UNIT_CONNECTION = "UpdateHealth",
+    UNIT_CONNECTION = "UpdateHealthAndPrediction",
     UNIT_POWER_UPDATE = "UpdatePower", UNIT_MAXPOWER = "UpdatePower", UNIT_DISPLAYPOWER = "UpdatePower",
     UNIT_POWER_FREQUENT = "UpdatePower",
     UNIT_NAME_UPDATE = "UpdateName", UNIT_LEVEL = "UpdateLevel", UNIT_FLAGS = "UpdateIndicators",
@@ -1462,7 +1508,9 @@ function Elements.OnEvent(frame, event)
     local method = Elements.UNIT_EVENTS[event]
     if method then
         Elements[method](frame)
-        if event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER" then Elements.UpdateCombo(frame) end
+        if event == "UNIT_POWER_FREQUENT" or event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER" then
+            Elements.UpdateCombo(frame)
+        end
         return true
     end
     return Elements.HandleCast(frame, event)

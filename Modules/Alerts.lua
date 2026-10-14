@@ -98,7 +98,12 @@ local function BuildTimer()
     timerFrame.bg:SetAllPoints()
     timerFrame:SetScript("OnUpdate", function(self)
         if combatStart then
-            self.text:SetText(NS.FormatDuration(GetTime() - combatStart))
+            -- SetText seulement quand la seconde affichée change (même arrondi que FormatDuration).
+            local second = math.floor(GetTime() - combatStart + 0.5)
+            if second ~= self.shownSecond then
+                self.shownSecond = second
+                self.text:SetText(NS.FormatDuration(second))
+            end
         elseif not NS:Previewing() and self.hideAt and GetTime() >= self.hideAt then
             self:Hide()
         end
@@ -150,6 +155,16 @@ end
 --------------------------------------------------------------------------------
 
 local events = CreateFrame("Frame")
+local groupUnitCache = {}   -- [unité] = true/false, évite un motif à chaque UNIT_HEALTH
+
+local function IsGroupUnit(unit)
+    local known = groupUnitCache[unit]
+    if known == nil then
+        known = (unit:match("^party%d") or unit:match("^raid%d")) and true or false
+        groupUnitCache[unit] = known
+    end
+    return known
+end
 events:SetScript("OnEvent", function(_, event, unit)
     local db = Alerts.db
     if event == "PLAYER_REGEN_DISABLED" then
@@ -160,6 +175,7 @@ events:SetScript("OnEvent", function(_, event, unit)
         end
         if db.combatTimer then
             combatStart = GetTime()
+            timerFrame.shownSecond = nil
             timerFrame.text:SetTextColor(1, 1, 1)
             timerFrame:Show()
         end
@@ -184,7 +200,7 @@ events:SetScript("OnEvent", function(_, event, unit)
             if guid and dead[guid] then still[guid] = true end
         end
         if not secret then dead = still end
-    elseif unit and (unit:match("^party%d") or unit:match("^raid%d")) then
+    elseif unit and IsGroupUnit(unit) then
         Alerts:CheckDeath(unit)
     end
 end)
@@ -206,6 +222,17 @@ local function ApplyUnlock(unlocked)
     end
 end
 
+--- UNIT_HEALTH / UNIT_FLAGS (très fréquents) ne sont écoutés que si les alertes de mort sont actives.
+local function SyncDeathEvents()
+    if active and Alerts.db.deaths then
+        NS.RegisterEventSafe(events, "UNIT_HEALTH")
+        NS.RegisterEventSafe(events, "UNIT_FLAGS")
+    else
+        events:UnregisterEvent("UNIT_HEALTH")
+        events:UnregisterEvent("UNIT_FLAGS")
+    end
+end
+
 function Alerts:OnEnable()
     if not flash then
         BuildFlash()
@@ -217,10 +244,10 @@ function Alerts:OnEnable()
     NS.Movers:Register("combatTimer", timerFrame, L.MOVER_COMBAT_TIMER, "CENTER", 0, 180)
     NS.Movers:Load("alerts")
     NS.Movers:Load("combatTimer")
-    for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "GROUP_ROSTER_UPDATE",
-                             "UNIT_HEALTH", "UNIT_FLAGS" }) do
+    for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "GROUP_ROSTER_UPDATE" }) do
         NS.RegisterEventSafe(events, event)
     end
+    SyncDeathEvents()
     ApplyUnlock(NS:Previewing())
 end
 
@@ -235,6 +262,7 @@ function Alerts:OnDisable()
 end
 
 function Alerts:OnRefresh()
+    SyncDeathEvents()
     if not self.db.combatTimer and not NS:Previewing() then
         combatStart = nil
         timerFrame:Hide()

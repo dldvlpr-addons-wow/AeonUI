@@ -151,6 +151,7 @@ function ResourceBars:Update(event)
         local holder = bar.holder
         -- En mode déverrouillé, une barre activée reste visible pour être placée.
         local wanted = db[spec.key] and (visible or (active and NS:Previewing()))
+        bar.wanted = wanted
         local shown = wanted and UPDATERS[spec.key](db) or false
         holder:SetShown(shown and true or false)
         holder:SetAlpha((inCombat or NS:Previewing()) and 1 or db.outOfCombatAlpha)
@@ -179,18 +180,42 @@ function ResourceBars:GetBars() return bars end
 -- Cycle de vie
 --------------------------------------------------------------------------------
 
-local UNIT_EVENTS = { "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_POWER_FREQUENT", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER" }
+-- Événement d'unité -> barres qu'il touche ; la visibilité n'en dépend pas.
+local POWER_BARS = { "power", "combo", "druidMana" }
+local UNIT_EVENT_BARS = {
+    UNIT_HEALTH = { "health" }, UNIT_MAXHEALTH = { "health" },
+    UNIT_POWER_FREQUENT = POWER_BARS, UNIT_MAXPOWER = POWER_BARS, UNIT_DISPLAYPOWER = POWER_BARS,
+}
 local EVENTS = { "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_TARGET_CHANGED",
                  "UPDATE_SHAPESHIFT_FORM", "PLAYER_ENTERING_WORLD", "GROUP_ROSTER_UPDATE",
                  "ZONE_CHANGED_NEW_AREA", "PLAYER_MOUNT_DISPLAY_CHANGED" }
 
 local events = CreateFrame("Frame")
-events:SetScript("OnEvent", function(_, event) ResourceBars:Update(event) end)
+events:SetScript("OnEvent", function(_, event)
+    local keys = UNIT_EVENT_BARS[event]
+    if not keys then ResourceBars:Update(event) return end
+    if not (active and bars.power) then return end
+    local db = ResourceBars.db
+    for _, key in ipairs(keys) do
+        local bar = bars[key]
+        if bar.wanted then bar.holder:SetShown(UPDATERS[key](db) and true or false) end
+    end
+end)
+
+--- Événements d'unité des seules barres activées.
+local function RegisterUnitEvents(db)
+    for event, keys in pairs(UNIT_EVENT_BARS) do
+        local wanted = false
+        for _, key in ipairs(keys) do wanted = wanted or db[key] end
+        events:UnregisterEvent(event)
+        if wanted then NS.RegisterEventSafe(events, event, "player") end
+    end
+end
 
 function ResourceBars:OnEnable()
     if not bars.power then Build() end
     active = true
-    for _, event in ipairs(UNIT_EVENTS) do NS.RegisterEventSafe(events, event, "player") end
+    RegisterUnitEvents(self.db)
     for _, event in ipairs(EVENTS) do NS.RegisterEventSafe(events, event) end
     self:Layout()
     for _, spec in ipairs(BARS) do
@@ -208,6 +233,7 @@ function ResourceBars:OnDisable()
 end
 
 function ResourceBars:OnRefresh()
+    if active then RegisterUnitEvents(self.db) end
     self:Layout()
     self:Update()
 end

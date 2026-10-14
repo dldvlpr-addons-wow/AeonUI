@@ -22,7 +22,7 @@ test("chat : historique mémorisé, borné, rejoué une fois, effacé", function
     local key = NS.Database.CharacterKey()
     local lines = NS.global.chatHistory[key].ChatFrame1
     eq(#lines, 2, "borné à historyLines, secret ignoré")
-    eq(lines[1].text, "deux")
+    eq(select(2, Chat.HistoryLines(lines)()).text, "deux")
     ChatFrame1.messages = {}
     Chat.replayed = nil
     Chat:ReplayHistory({ ChatFrame1 })

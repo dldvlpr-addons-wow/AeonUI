@@ -106,6 +106,8 @@ local BUTTON_EVENTS = {
     "PLAYER_EQUIPMENT_CHANGED", "LOSS_OF_CONTROL_ADDED", "LOSS_OF_CONTROL_UPDATE", "ACTIONBAR_PAGE_CHANGED",
     "UPDATE_BONUS_ACTIONBAR", "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "BAG_UPDATE_COOLDOWN",
     "ACTION_RANGE_CHECK_UPDATE", "ACTION_USABLE_CHANGED",
+    -- Clignotement de l'attaque auto et du tir automatique (StartFlash / StopFlash du modèle).
+    "PLAYER_ENTER_COMBAT", "PLAYER_LEAVE_COMBAT", "START_AUTOREPEAT_SPELL", "STOP_AUTOREPEAT_SPELL",
 }
 -- Événements après lesquels recharge et proc sont relus (ActionBars.UpdateButtonExtras).
 local EXTRAS_EVENTS = {
@@ -154,7 +156,7 @@ local function RemoveInPlace(frames, frame)
 end
 
 local function DetachFromBlizzardDispatch(button)
-    for _, name in ipairs({ "ActionBarButtonEventsFrame", "ActionBarActionEventsFrame" }) do
+    for _, name in ipairs({ "ActionBarButtonEventsFrame", "ActionBarActionEventsFrame", "ActionBarButtonUpdateFrame" }) do
         local dispatcher = _G[name]
         if dispatcher and type(dispatcher.frames) == "table" then RemoveInPlace(dispatcher.frames, button) end
     end
@@ -434,6 +436,7 @@ ActionBars.GetStyled = function(key) return styled[key] end
 -- bouton à chaque changement d'action ou de clignotement. Retiré après chaque passage de notre
 -- dispatch : une clé écrite par nous rendrait taintée la boucle Blizzard (barre de véhicule).
 local KEYED_DISPATCHERS = { "ActionBarActionEventsFrame", "ActionBarButtonUpdateFrame" }
+local keyedDispatchers = {}   -- diffuseurs trouvés, gardés : la liste n'est plus recréée à chaque passage
 
 -- L'Update Blizzard réinscrit aussi nos boutons hors de notre dispatch (page changée par un pilote
 -- d'état, en combat) : jusqu'au dispatch suivant, la boucle Blizzard lit l'entrée taintée et rend
@@ -442,6 +445,7 @@ local KEYED_DISPATCHERS = { "ActionBarActionEventsFrame", "ActionBarButtonUpdate
 -- diffuseurs : restés dans le principal, ils tournaient taintés en combat (taint.log : SetAttribute
 -- et SetShown bloqués sur ActionButton10, SetCooldown refusé). Leurs raccourcis sont les nôtres.
 local guardedDispatchers = {}
+local ArmUpdater   -- défini plus bas, avec l'OnUpdate
 local function GuardDispatchers()
     for _, name in ipairs({ "ActionBarButtonEventsFrame", "ActionBarActionEventsFrame", "ActionBarButtonUpdateFrame" }) do
         local dispatcher = _G[name]
@@ -450,14 +454,21 @@ local function GuardDispatchers()
             hooksecurefunc(dispatcher, "RegisterFrame", function(self, frame)
                 if type(self.frames) ~= "table" then return end
                 if ownButtons[frame] or hiddenTwins[frame] then RemoveInPlace(self.frames, frame) end
+                -- needsUpdate posé hors de notre dispatch (OnShow, page changée, StartFlash) : OnUpdate armé
+                if self == _G.ActionBarButtonUpdateFrame and ownButtons[frame] then ArmUpdater() end
             end)
         end
     end
 end
 local function ReleaseFromKeyedDispatchers(button)
-    for _, name in ipairs(KEYED_DISPATCHERS) do
-        local dispatcher = _G[name]
-        local frames = dispatcher and dispatcher.frames
+    if #keyedDispatchers < #KEYED_DISPATCHERS then   -- un diffuseur peut naître après nous : relu tant qu'il manque
+        wipe(keyedDispatchers)
+        for _, name in ipairs(KEYED_DISPATCHERS) do
+            if _G[name] then keyedDispatchers[#keyedDispatchers + 1] = _G[name] end
+        end
+    end
+    for _, dispatcher in ipairs(keyedDispatchers) do
+        local frames = dispatcher.frames
         if type(frames) == "table" and frames[button] then frames[button] = nil end
     end
 end
@@ -474,6 +485,23 @@ local function UnwatchAction() end
 
 local dispatchFailures = {}   -- [event] = true : un seul message par événement et par session
 local pendingFullUpdate = false
+local events                  -- cadre d'événements (créé plus bas) ; son OnUpdate n'est posé qu'au besoin
+local frameSeen, trailing = {}, {}   -- événements groupables : déjà traités dans cette frame / reçus de nouveau depuis
+
+-- Événements sans argument qui arrivent en rafale : le premier est traité aussitôt, les suivants de
+-- la même frame ne font qu'un seul passage à la frame suivante (drapeau vidé par l'OnUpdate).
+local COALESCED = {
+    ACTIONBAR_UPDATE_COOLDOWN = true, ACTIONBAR_UPDATE_STATE = true, ACTIONBAR_UPDATE_USABLE = true,
+    SPELL_UPDATE_USABLE = true, SPELL_UPDATE_CHARGES = true, BAG_UPDATE_COOLDOWN = true,
+}
+local updaterArmed = false
+local OnUpdateTick
+function ArmUpdater()
+    if not updaterArmed and events then
+        updaterArmed = true
+        events:SetScript("OnUpdate", OnUpdateTick)
+    end
+end
 
 -- Ces deux événements mènent le code Blizzard à SetAttribute (pressAndHoldAction) : bloqué en
 -- combat sous notre taint. Différés à la sortie du combat.
@@ -482,10 +510,17 @@ local COMBAT_DEFERRED = { ACTIONBAR_SLOT_CHANGED = true, PLAYER_ENTERING_WORLD =
 local Dispatch
 function Dispatch(event, ...)
     if COMBAT_DEFERRED[event] and NS.InCombat() then pendingFullUpdate = true return end
+    if COALESCED[event] then
+        if frameSeen[event] then trailing[event] = true ArmUpdater() return end
+        frameSeen[event] = true
+        ArmUpdater()
+    end
+    local withExtras = EXTRAS_EVENTS[event]
     for _, bar in pairs(ActionBars.bars) do
         if bar:IsShown() then
             for _, button in ipairs(bar.buttons) do
-                if button:IsShown() and button.OnEvent
+                if button:IsShown() then
+                  if button.OnEvent
                     and (event ~= "ACTION_RANGE_CHECK_UPDATE" or button.action == ...) then
                     local ok, err = true, nil
                     ShadowCooldown(button)
@@ -500,16 +535,9 @@ function Dispatch(event, ...)
                         dispatchFailures[event] = true
                         NS.Print(string.format(L.MSG_AB_EVENT_FAILED, event, tostring(err)))
                     end
-                end
-            end
-        end
-    end
-    for twin in pairs(hiddenTwins) do ReleaseFromKeyedDispatchers(twin) end   -- inscription sans RegisterFrame
-    if EXTRAS_EVENTS[event] then
-        for _, bar in pairs(ActionBars.bars) do
-            if bar:IsShown() then
-                for _, button in ipairs(bar.buttons) do
-                    if button:IsShown() then ActionBars.UpdateButtonExtras(button) end
+                    if button.needsUpdate then ArmUpdater() end   -- clignotement demandé : l'OnUpdate s'en charge
+                  end
+                  if withExtras then ActionBars.UpdateButtonExtras(button) end
                 end
             end
         end
@@ -946,7 +974,7 @@ function ActionBars:GetBar(index) return self.bars[index] end
 -- Cycle de vie
 --------------------------------------------------------------------------------
 
-local events = CreateFrame("Frame")
+events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event, ...)
     if not active then return end
     if event == "PLAYER_REGEN_DISABLED" and ActionBars.binding then ActionBars:SetKeyBindMode(false) end
@@ -965,19 +993,34 @@ events:SetScript("OnEvent", function(_, event, ...)
 end)
 -- Clignotement et état différé : Blizzard les mène par ActionBarButtonUpdateFrame, dont nos
 -- boutons sont retirés. Même travail ici, pour les seuls boutons qui le demandent.
-events:SetScript("OnUpdate", function(_, elapsed)
-    if not active then return end
-    for _, bar in pairs(ActionBars.bars) do
-        for _, button in ipairs(bar.buttons) do
-            if button.needsUpdate and button.OnUpdate then
-                ShadowCooldown(button)
-                pcall(button.OnUpdate, button, elapsed)
-                UnshadowCooldown(button)
-                ReleaseFromKeyedDispatchers(button)
+-- Posé seulement tant qu'un bouton clignote ou qu'un événement groupé attend (ArmUpdater), retiré après.
+function OnUpdateTick(_, elapsed)
+    wipe(frameSeen)
+    if active and next(trailing) then
+        local pending = {}
+        for event in pairs(trailing) do pending[#pending + 1] = event end
+        wipe(trailing)
+        for _, event in ipairs(pending) do Dispatch(event) end
+    end
+    local needed = false
+    if active then
+        for _, bar in pairs(ActionBars.bars) do
+            for _, button in ipairs(bar.buttons) do
+                if button.needsUpdate and button.OnUpdate then
+                    ShadowCooldown(button)
+                    pcall(button.OnUpdate, button, elapsed)
+                    UnshadowCooldown(button)
+                    ReleaseFromKeyedDispatchers(button)
+                    if button.needsUpdate then needed = true end
+                end
             end
         end
     end
-end)
+    if not (needed or next(frameSeen) or next(trailing)) then
+        updaterArmed = false
+        events:SetScript("OnUpdate", nil)
+    end
+end
 
 function ActionBars:OnEnable()
     active = true
@@ -1000,6 +1043,7 @@ function ActionBars:OnDisable()
     active = false
     RunFader()
     events:UnregisterAllEvents()
+    wipe(frameSeen) wipe(trailing)
     local had = next(self.bars) ~= nil
     for index = 1, #BAR_DEFS do TeardownBar(index) end
     ReleaseSideFrames()

@@ -155,7 +155,10 @@ local function Create(unit)
     frame.cfg, frame.global = Settings(unit), UnitFrames.db
     Elements.Build(frame)
 
-    for event in pairs(Elements.UNIT_EVENTS) do NS.RegisterEventSafe(frame, event, unit) end
+    -- UNIT_POWER_FREQUENT couvre déjà UNIT_POWER_UPDATE : une seule mise à jour par variation.
+    for event in pairs(Elements.UNIT_EVENTS) do
+        if event ~= "UNIT_POWER_UPDATE" then NS.RegisterEventSafe(frame, event, unit) end
+    end
     for _, event in ipairs(Elements.CAST_EVENTS) do NS.RegisterEventSafe(frame, event, unit) end
     NS.RegisterEventSafe(frame, "RAID_TARGET_UPDATE")
     if unit == "player" then

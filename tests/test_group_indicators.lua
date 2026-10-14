@@ -280,6 +280,7 @@ test("indicateurs : dispel de tout type avec lueur, soins absorbés", function()
     Enable()
     Mock.SetGroup(2, false)
     local ami = GF:GetButton("party1")
+    GF.db.dispelMode = "mine"
     Mock.debuffs.party1 = { { icon = "p", dispelName = "Poison" } }
     Mock.FireEvent("UNIT_AURA", "party1")
     eq(ami.border.top.color[1], NS.db.theme.border.r, "mage : poison ignoré")
@@ -306,6 +307,7 @@ test("indicateurs : mana des soigneurs en texte", function()
     Mock.SetGroup(3, false)
     Mock.roles.party2 = "HEALER"
     Mock.FireEvent("PLAYER_ROLES_ASSIGNED")
+    Mock.Advance(0.05)
     local row = GF.manaUnits.party2
     truthy(row and row.name:IsShown(), "ligne du soigneur")
     eq(GF.manaUnits.party1, nil)

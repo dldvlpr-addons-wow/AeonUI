@@ -111,8 +111,16 @@ end
 local function StyleFont(fontString, size, color)
     if not (fontString and fontString.SetFont) then return end
     if not originalFonts[fontString] then originalFonts[fontString] = { fontString:GetFont() } end
-    fontString:SetFont(Media:Font(), size, Media:Outline())
-    fontString:SetTextColor(color.r, color.g, color.b)
+    -- Relu sur le widget (Blizzard repose la couleur à sa mise à jour) : écrit seulement si différent.
+    local path, outline = Media:Font(), Media:Outline()
+    local currentPath, currentSize, currentOutline = fontString:GetFont()
+    if currentPath ~= path or currentSize ~= size or (currentOutline or "") ~= (outline or "") then
+        fontString:SetFont(path, size, outline)
+    end
+    local r, g, b = fontString:GetTextColor()
+    if not (r and math.abs(r - color.r) < 0.001 and math.abs(g - color.g) < 0.001 and math.abs(b - color.b) < 0.001) then
+        fontString:SetTextColor(color.r, color.g, color.b)
+    end
 end
 
 local function EachBlock(callback)

@@ -146,9 +146,35 @@ function Chat.Remember(frame, text, r, g, b)
     local lines = history[name] or {}
     history[name] = lines
     if NS.IsSecret(r) or NS.IsSecret(g) or NS.IsSecret(b) then r, g, b = nil, nil, nil end
-    lines[#lines + 1] = { text = text, r = r, g = g, b = b }
-    local limit = math.max(0, tonumber(db.historyLines) or 100)
-    while #lines > limit do table.remove(lines, 1) end   -- ponytail: décalage O(n), n ≤ 500
+    local limit = math.max(0, math.floor(tonumber(db.historyLines) or 100))
+    -- Tampon circulaire : lines.head = indice de la plus ancienne ligne (1 : tableau ordonné).
+    if (lines.head or 1) > 1 and #lines ~= limit or #lines > limit then
+        local ordered = {}
+        for _, line in Chat.HistoryLines(lines) do ordered[#ordered + 1] = line end
+        lines = {}
+        for index = math.max(1, #ordered - limit + 1), #ordered do lines[#lines + 1] = ordered[index] end
+        history[name] = lines
+    end
+    if limit == 0 then return end
+    local entry = { text = text, r = r, g = g, b = b }
+    if #lines < limit then
+        lines[#lines + 1] = entry
+    else
+        local head = lines.head or 1
+        lines[head] = entry
+        lines.head = head % limit + 1
+    end
+end
+
+--- Lignes d'un historique, de la plus ancienne à la plus récente : for _, line in Chat.HistoryLines(lines).
+function Chat.HistoryLines(lines)
+    local count, head = #lines, lines.head or 1
+    local index = 0
+    return function()
+        if index >= count then return nil end
+        index = index + 1
+        return index, lines[(head + index - 2) % count + 1]
+    end
 end
 
 --- Rejoue l'historique de chaque fenêtre, une fois par session, sous un séparateur.
@@ -161,7 +187,7 @@ function Chat:ReplayHistory(frameList)
         local lines = history[frame:GetName()]
         if lines and #lines > 0 then
             frame:AddMessage("|cff9d9d9d" .. L.CHAT_HISTORY_SEPARATOR .. "|r")
-            for _, line in ipairs(lines) do frame:AddMessage(line.text, line.r, line.g, line.b) end
+            for _, line in Chat.HistoryLines(lines) do frame:AddMessage(line.text, line.r, line.g, line.b) end
             frame:AddMessage("|cff9d9d9d" .. L.CHAT_HISTORY_END .. "|r")
         end
     end
@@ -180,26 +206,34 @@ end
 -- répétées réduites (« Heeeelp !! » et « help » donnent la même clé).
 function Chat.Normalize(text)
     text = Chat.CleanLine(text):lower()
-    text = text:gsub("[%p%s%c]", "")
     local out, last = {}, nil
     for char in text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do   -- caractère UTF-8
-        if char ~= last then out[#out + 1] = char end
-        last = char
+        -- Ponctuation, espaces et contrôles écartés dans le même passage (sans effet sur « last »).
+        if char ~= last and not char:find("^[%p%s%c]") then out[#out + 1] = char end
+        if not char:find("^[%p%s%c]") then last = char end
     end
     return table.concat(out)
 end
 
---- Mots-clés actifs (minuscules), nom du personnage compris sur option.
+--- Mots-clés actifs (minuscules), nom du personnage compris sur option. Liste gardée tant que
+-- les options (texte, nom) ne changent pas : appelée à chaque ligne de chat.
+local keywordCache = {}
 function Chat.Keywords()
+    local raw, withName = Chat.db.keywords or "", Chat.db.keywordName and true or false
+    if keywordCache.list and keywordCache.raw == raw and keywordCache.withName == withName then
+        return keywordCache.list
+    end
     local list = {}
-    for raw in (Chat.db.keywords or ""):gmatch("[^,]+") do
-        local word = raw:match("^%s*(.-)%s*$"):lower()
+    for item in raw:gmatch("[^,]+") do
+        local word = item:match("^%s*(.-)%s*$"):lower()
         if word ~= "" then list[#list + 1] = word end
     end
-    if Chat.db.keywordName then
+    if withName then
         local name = UnitName("player")
-        if not NS.IsSecret(name) and name then list[#list + 1] = name:lower() end
+        if NS.IsSecret(name) or not name then return list end   -- nom illisible : pas de cache, relu au message suivant
+        list[#list + 1] = name:lower()
     end
+    keywordCache.raw, keywordCache.withName, keywordCache.list = raw, withName, list
     return list
 end
 

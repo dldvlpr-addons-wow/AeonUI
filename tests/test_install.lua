@@ -333,9 +333,11 @@ test("HUD Musca : bordure à l'accent, repeinte après un réimport, une passe p
     _G.WeakAuras = { Add = function(data) added[#added + 1] = data end }
     local r, g, b = NS.Media:Accent()
     Install.PaintHud()
+    Mock.Advance(0.05)
     eq(Border()[1], r) eq(Border()[2], g) eq(Border()[3], b)
     eq(#added, 1, "icône rechargée")
     Install.PaintHud()
+    Mock.Advance(0.05)
     eq(#added, 1, "couleur déjà juste : rien rechargé")
 
     NS:Fire("LOGIN")   -- pose le crochet sur WeakAuras.Add
@@ -359,18 +361,38 @@ test("HUD Musca : bordure à l'accent, repeinte après un réimport, une passe p
     Mock.SetCombat(false)
     Mock.Advance(1)
 
+    icon.subRegions[1].border_color = { 0, 0, 0, 1 }
+    before = #added
+    Install.PaintHud()
+    Mock.SetCombat(true)
+    Mock.Advance(0.2)
+    eq(#added, before, "vidange suspendue en combat")
+    Mock.SetCombat(false)
+    Mock.Advance(0.05)
+    eq(#added, before + 1, "vidange reprise après le combat")
+
+    icon.subRegions[1].border_color = { 0, 0, 0, 1 }
+    before = #added
+    Install.PaintHud()
+    icon.subRegions[1].border_color = { 0, 0, 0, 1 }
+    Install.PaintHud()
+    Mock.Advance(1)
+    eq(#added, before + 1, "icône déjà en file : un seul rechargement")
+
     -- Changement d'accent : la bordure à l'ancien accent suit, la couleur choisie à la main reste.
     local manual = { type = "subborder", border_color = { 0.3, 0.6, 0.9, 1 } }
     icon.subRegions[2] = manual
     local Accent = NS.Media.Accent
     NS.Media.Accent = function() return 0.1, 0.2, 0.3 end
     Install.PaintHud()
+    Mock.Advance(0.05)
     eq(Border()[1], 0.1, "ancien accent repeint")
     eq(manual.border_color[1], 0.3, "couleur manuelle gardée")
     -- Couleur relue des SavedVariables avec un écart d'arrondi : rien rechargé.
     icon.subRegions[1].border_color = { 0.1000001, 0.2, 0.3, 1 }
     before = #added
     Install.PaintHud()
+    Mock.Advance(0.05)
     eq(#added, before, "écart d'arrondi ignoré")
 
     -- Deux HUD sur le compte : l'accent changé sur le mage n'empêche pas le chaman de suivre.
@@ -385,8 +407,39 @@ test("HUD Musca : bordure à l'accent, repeinte après un réimport, une passe p
     Mock.units.player.class = "SHAMAN"
     Install.PaintHud()
     eq(shamanIcon.subRegions[1].border_color[1], 0.4, "HUD de l'autre classe repeint à sa connexion")
+    Mock.Advance(1)
     NS.global.hudBorder = nil
     NS.Media.Accent = Accent
+    Mock.loadedAddons.WeakAuras = nil
+    _G.WeakAurasSaved, _G.WeakAuras = nil, nil
+end)
+
+test("HUD Musca : une icône rechargée par image, icône remplacée entre-temps sautée", function()
+    reset()
+    local Install = NS.Install
+    local added = {}
+    local function Icon() return { subRegions = { { type = "subborder", border_color = { 0, 0, 0, 1 } } } } end
+    local first, third = Icon(), Icon()
+    Mock.loadedAddons.WeakAuras = true
+    Mock.units.player.class = "MAGE"
+    _G.WeakAurasSaved = { displays = {
+        ["Mage (Musca)"] = { load = { class = { single = "MAGE" } }, controlledChildren = { "A", "B", "C" } },
+        A = first, B = Icon(), C = third,
+    } }
+    _G.WeakAuras = { Add = function(data) added[#added + 1] = data end }
+    Install.PaintHud()
+    eq(#added, 0, "aucun rechargement dans l'image du repeint")
+    Mock.Advance(0.05)
+    eq(added[1], first, "première icône à l'image suivante")
+    eq(#added, 1)
+    WeakAurasSaved.displays.B = Icon()
+    Mock.Advance(0.05)
+    eq(#added, 1, "icône remplacée par un réimport : sautée")
+    Mock.Advance(0.05)
+    eq(added[2], third)
+    Mock.Advance(1)
+    eq(#added, 2, "file vide")
+    NS.global.hudBorder = nil
     Mock.loadedAddons.WeakAuras = nil
     _G.WeakAurasSaved, _G.WeakAuras = nil, nil
 end)

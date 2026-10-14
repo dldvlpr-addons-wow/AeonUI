@@ -108,6 +108,10 @@ test("sacs : boutons Blizzard dans la grille (case écrite par Blizzard), niveau
     Mock.FireEvent("BAG_UPDATE_DELAYED")
     Mock.Advance(0.1)
     eq(select(2, junk:GetPoint(1)), window, "remis dans la grille au changement de sac")
+    local points = junk.points
+    Mock.FireEvent("BAG_UPDATE_DELAYED")
+    Mock.Advance(0.1)
+    eq(junk.points, points, "mise en page inchangée : case pas replacée")
     local slots = (NS.NUM_BAGS + 1) * Mock.bagSize
     eq(window.footer.text, string.format(L.BAGS_FREE, slots - 3, slots))
     window.search:SetText("item2")

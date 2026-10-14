@@ -107,10 +107,12 @@ test("groupe : portée, rôle, chef", function()
     Mock.units.party1.leader = true
     GF.db.leaderIcon = true
     Mock.FireEvent("PLAYER_ROLES_ASSIGNED")
+    Mock.Advance(0.05)   -- passe de groupe regroupée à la frame suivante
     truthy(ami.role:IsShown(), "icône de rôle")
     truthy(ami.leader:IsShown(), "icône de chef")
     Mock.roles.party1 = "NONE"
     Mock.FireEvent("PLAYER_ROLES_ASSIGNED")
+    Mock.Advance(0.05)
     eq(ami.role:IsShown(), false)
     GF.db.leaderIcon = false
     Disable()
@@ -343,12 +345,13 @@ test("groupe : mort et hors ligne, ressource selon le rôle, auras dans le cadre
     eq(ami.health:GetStatusBarTexture().alpha, 1)
     Mock.roles.party1, Mock.roles.party2 = "DAMAGER", "HEALER"
     Mock.FireEvent("PLAYER_ROLES_ASSIGNED")
+    Mock.Advance(0.05)
     eq(ami.power:IsShown(), false, "dégâts : pas de ressource")
     truthy(autre.power:IsShown(), "soigneur : ressource")
     Mock.debuffs.party1 = { { icon = "a" }, { icon = "b" }, { icon = "c" }, { icon = "d" } }
     Mock.FireEvent("UNIT_AURA", "party1")
     truthy(ami.auras.buttons[3]:IsShown())
-    eq(ami.auras.buttons[4]:IsShown(), false, "3 auras au plus")
+    eq(ami.auras.buttons[4] and ami.auras.buttons[4]:IsShown() or false, false, "3 auras au plus")
     eq(ami.auras.inside, true, "dans le cadre")
     Mock.roles.party1, Mock.roles.party2 = nil, nil
     Disable()
