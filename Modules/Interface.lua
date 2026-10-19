@@ -8,7 +8,7 @@
 --   * barres d'action toujours visibles, même vides ;
 --   * erreurs Lua masquées (pour qui ne développe pas) ;
 --   * chiffres de recharge : le décompte natif du moteur, sur tous les boutons et icônes ;
---   * recharges AeonUI colorées par palier : formateur natif, la durée secrète reste au moteur.
+--   * recharges MuscaUI colorées par palier : formateur natif, la durée secrète reste au moteur.
 local _, NS = ...
 local L = NS.L
 
@@ -27,7 +27,7 @@ local Interface = NS.Modules:Register("interface", {
         alwaysShowBars = false,
         hideLuaErrors = false,
         cooldownNumbers = false,   -- secondes restantes écrites sur toutes les recharges (natif)
-        cooldownColors = false,    -- recharges AeonUI : texte coloré par palier (formateur natif)
+        cooldownColors = false,    -- recharges MuscaUI : texte coloré par palier (formateur natif)
         cooldownExpiring = 3,      -- sous ce seuil (s) : rouge, avec une décimale ; 0 = jamais
         cooldownColorExpiring = { r = 1, g = 0.2, b = 0.2 },
         cooldownColorSeconds = { r = 1, g = 0.9, b = 0.3 },

@@ -136,7 +136,7 @@ test("options : profil remis par défaut seulement après confirmation", functio
     local button = Find(layout, L.OPT_PROFILE_RESET)
     NS.db.modules.automation.sellJunk = false
     button:Click()
-    truthy(Mock.popups.AEONUI_PROFILE_RESET, "confirmation demandée")
+    truthy(Mock.popups.MUSCAUI_PROFILE_RESET, "confirmation demandée")
     eq(NS.db.modules.automation.sellJunk, false, "rien avant confirmation")
     Mock.acceptPopups = true
     button:Click()
@@ -173,11 +173,11 @@ test("options : couper un module aux cadres Blizzard propose /reload", function(
     enable:SetChecked(false)
     enable:Click()
     eq(NS.db.modules.minimap.enabled, false)
-    truthy(Mock.popups.AEONUI_RELOAD, "rechargement proposé")
-    local overlay = Mock.popups.AEONUI_RELOAD.AeonUIReload
+    truthy(Mock.popups.MUSCAUI_RELOAD, "rechargement proposé")
+    local overlay = Mock.popups.MUSCAUI_RELOAD.MuscaUIReload
     truthy(overlay and overlay:IsShown(), "bouton d'action posé sur « Recharger »")
     eq(overlay:GetAttribute("macrotext"), "/reload", "ReloadUI() bloqué sur Forever : macro")
-    eq(StaticPopupDialogs.AEONUI_RELOAD.OnAccept, nil, "aucun appel direct à ReloadUI")
+    eq(StaticPopupDialogs.MUSCAUI_RELOAD.OnAccept, nil, "aucun appel direct à ReloadUI")
 end)
 
 test("options : un résultat de recherche ouvre la page sur l'onglet du réglage", function()
@@ -254,7 +254,7 @@ test("widgets : la première case d'un onglet ne rejoint pas la ligne de l'ongle
     eq(first.layoutY, 0, "en haut de l'onglet")
 end)
 
-test("menu Échap : bouton AeonUI sous Options, sections suivantes décalées, clic ouvre la fenêtre", function()
+test("menu Échap : bouton MuscaUI sous Options, sections suivantes décalées, clic ouvre la fenêtre", function()
     reset()
     local saved = _G.GameMenuFrame
     local menu = CreateFrame("Frame", nil, UIParent)
@@ -272,7 +272,7 @@ test("menu Échap : bouton AeonUI sous Options, sections suivantes décalées, c
     _G.GameMenuFrame = menu
     Options.SetupGameMenu()
     Options.SetupGameMenu()   -- une seule fois
-    local button = menu.AeonUI
+    local button = menu.MuscaUI
     truthy(button, "bouton créé")
     menu:Layout()
     local _, relTo, _, _, y = button:GetPoint()
@@ -302,10 +302,10 @@ test("options : en combat, /reload proposé par message seul, sans calque d'acti
     reset()
     Mock.SetCombat(true)
     Options.AskReload("x")
-    truthy(Mock.popups.AEONUI_RELOAD_COMBAT, "message")
-    eq(Mock.popups.AEONUI_RELOAD, nil, "pas de popup à calque")
+    truthy(Mock.popups.MUSCAUI_RELOAD_COMBAT, "message")
+    eq(Mock.popups.MUSCAUI_RELOAD, nil, "pas de popup à calque")
     Mock.SetCombat(false)
-    Mock.popups.AEONUI_RELOAD_COMBAT = nil
+    Mock.popups.MUSCAUI_RELOAD_COMBAT = nil
 end)
 
 test("options : fenêtre fermée à l'entrée en combat", function()
@@ -324,14 +324,14 @@ test("options : export du compte collé, import après confirmation seulement", 
     Find(layout, L.OPT_PROFILE_EXPORT_ACCOUNT):Click()
     NS.db.theme.fontSize = 12
     Find(layout, L.OPT_PROFILE_IMPORT):Click()
-    truthy(Mock.popups.AEONUI_IMPORT_ACCOUNT, "confirmation demandée")
+    truthy(Mock.popups.MUSCAUI_IMPORT_ACCOUNT, "confirmation demandée")
     eq(NS.db.theme.fontSize, 12, "rien avant confirmation")
     Mock.acceptPopups = true
     Find(layout, L.OPT_PROFILE_IMPORT):Click()
     Mock.acceptPopups = false
     eq(NS.db.theme.fontSize, 15, "profil actif remplacé")
     NS.db.theme.fontSize = 12
-    Mock.popups.AEONUI_IMPORT_ACCOUNT = nil
+    Mock.popups.MUSCAUI_IMPORT_ACCOUNT = nil
 end)
 
 test("options : page construite à sa première ouverture, recherche qui construit le reste", function()

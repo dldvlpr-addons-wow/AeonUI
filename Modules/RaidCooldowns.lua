@@ -92,8 +92,8 @@ function RaidCooldowns:Update()
 end
 
 local function Build()
-    icons.battleRes = NewIcon("AeonUIBattleRes", BATTLE_RES_SPELL)
-    icons.bloodlust = NewIcon("AeonUIBloodlust", 2825)
+    icons.battleRes = NewIcon("MuscaUIBattleRes", BATTLE_RES_SPELL)
+    icons.bloodlust = NewIcon("MuscaUIBloodlust", 2825)
     -- Décompte : rafraîchi 5 fois par seconde tant qu'une icône est visible.
     for _, icon in pairs(icons) do
         icon.elapsed = 0

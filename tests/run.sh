@@ -2,7 +2,7 @@
 # Vérification hors du jeu :
 #   1. syntaxe de tous les fichiers Lua
 #   2. suite headless
-#   3. AeonUI.toc liste exactement les .lua du dépôt (hors tests/, tools/ et AeonUI/, dossier de publication)
+#   3. MuscaUI.toc liste exactement les .lua du dépôt (hors tests/, tools/ et MuscaUI/, dossier de publication)
 #
 # Prérequis : lua5.1 (ou lua) dans le PATH. Surcharge : LUA=... tests/run.sh
 set -uo pipefail
@@ -20,7 +20,7 @@ if [ -z "$LUA" ]; then
 fi
 
 status=0
-syntax_log="${TMPDIR:-/tmp}/aeonui-syntax.$$"
+syntax_log="${TMPDIR:-/tmp}/muscaui-syntax.$$"
 
 echo "== syntaxe"
 while IFS= read -r file; do
@@ -29,7 +29,7 @@ while IFS= read -r file; do
         sed 's/^/        /' "$syntax_log"
         status=1
     fi
-done < <(find . -name '*.lua' -not -path './.git/*' -not -path './AeonUI/*' | LC_ALL=C sort)
+done < <(find . -name '*.lua' -not -path './.git/*' -not -path './MuscaUI/*' | LC_ALL=C sort)
 rm -f "$syntax_log"
 [ "$status" -eq 0 ] && echo "  ok"
 
@@ -45,28 +45,28 @@ fi
 
 echo
 echo "== .toc"
-# Cœur + addons AeonUI_* : chaque ligne d'un toc enfant est préfixée de son dossier.
+# Cœur + addons MuscaUI_* : chaque ligne d'un toc enfant est préfixée de son dossier.
 listed=$( {
-    grep '\.lua[[:space:]]*$' AeonUI.toc
-    for toc in AeonUI_*/AeonUI_*.toc; do
+    grep '\.lua[[:space:]]*$' MuscaUI.toc
+    for toc in MuscaUI_*/MuscaUI_*.toc; do
         grep '\.lua[[:space:]]*$' "$toc" | sed "s#^#$(dirname "$toc")/#"
     done
 } | tr -d '\r' | tr '\\' '/' | sed 's/[[:space:]]*$//' | sort)
-for toc in AeonUI_*/AeonUI_*.toc; do
-    if ! grep -q '^## Dependencies: AeonUI[[:space:]]*$' "$toc"; then
-        echo "  FAIL — $toc sans « ## Dependencies: AeonUI »"
+for toc in MuscaUI_*/MuscaUI_*.toc; do
+    if ! grep -q '^## Dependencies: MuscaUI[[:space:]]*$' "$toc"; then
+        echo "  FAIL — $toc sans « ## Dependencies: MuscaUI »"
         status=1
     fi
     if grep -q '^local .*= \.\.\.[[:space:]]*$' "$(dirname "$toc")"/*.lua; then
-        echo "  FAIL — $(dirname "$toc") : un fichier lit le vararg (NS privé en jeu), utiliser « local NS = AeonUI »"
+        echo "  FAIL — $(dirname "$toc") : un fichier lit le vararg (NS privé en jeu), utiliser « local NS = MuscaUI »"
         status=1
     fi
 done
-shipped=$(find . -name '*.lua' -not -path './.git/*' -not -path './AeonUI/*' | sed 's#^\./##' | grep -v '^tests/' | grep -v '^tools/' | sort)
+shipped=$(find . -name '*.lua' -not -path './.git/*' -not -path './MuscaUI/*' | sed 's#^\./##' | grep -v '^tests/' | grep -v '^tools/' | sort)
 if [ "$listed" = "$shipped" ]; then
     echo "  ok"
 else
-    echo "  FAIL — AeonUI.toc et les fichiers du dépôt divergent :"
+    echo "  FAIL — MuscaUI.toc et les fichiers du dépôt divergent :"
     diff <(printf '%s\n' "$listed") <(printf '%s\n' "$shipped") \
         | grep '^[<>]' | sed 's/^</        seulement dans le .toc :/;s/^>/        non listé dans le .toc :/'
     status=1

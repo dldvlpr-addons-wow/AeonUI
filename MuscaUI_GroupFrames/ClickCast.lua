@@ -1,9 +1,9 @@
--- AeonUI_GroupFrames/ClickCast.lua
+-- MuscaUI_GroupFrames/ClickCast.lua
 -- Clic-sort sur les cadres de groupe et de raid : un clic (bouton de souris + modificateur) lance
 -- un sort sur le membre cliqué. Liaisons posées en attributs sécurisés (« shift-type1 » = "spell",
 -- « shift-spell1 » = nom du sort), donc hors combat seulement ; les clics sans liaison gardent
 -- cible (gauche) et menu (droit). Préréglages par classe : dissipations, résurrection, soins.
-local NS = AeonUI
+local NS = MuscaUI
 local L = NS.L
 
 local NUM_BINDINGS = 8

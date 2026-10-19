@@ -1,5 +1,5 @@
 -- Modules/Loot.lua
--- Butin AeonUI : fenêtre de butin au thème (au curseur ou sur son mover) et barres de jets de
+-- Butin MuscaUI : fenêtre de butin au thème (au curseur ou sur son mover) et barres de jets de
 -- groupe (besoin, cupidité, désenchantement, passer) avec le temps restant.
 --
 -- Blizzard : la fenêtre LootFrame et l'ouverture des GroupLootFrame (UIParent, START_LOOT_ROLL)
@@ -16,7 +16,7 @@ local Loot = NS.Modules:Register("loot", {
     descKey = "LOOT_DESC",
     defaults = {
         enabled = false,
-        window = true,          -- fenêtre de butin AeonUI
+        window = true,          -- fenêtre de butin MuscaUI
         atCursor = true,        -- s'ouvre sous le curseur (sinon sur le mover « loot »)
         rolls = true,           -- barres de jets de groupe
         rollWidth = 300,
@@ -116,7 +116,7 @@ local function SlotButton(index)
 end
 
 local function BuildWindow()
-    window = CreateFrame("Frame", "AeonUILootFrame", UIParent)
+    window = CreateFrame("Frame", "MuscaUILootFrame", UIParent)
     window:SetFrameStrata("HIGH")
     window:SetClampedToScreen(true)
     Media:CreateBackdrop(window)
@@ -129,7 +129,7 @@ local function BuildWindow()
         if not closing and _G.CloseLoot then CloseLoot() end   -- Échap ou croix : fermer le butin
     end)
     window:Hide()
-    tinsert(UISpecialFrames, "AeonUILootFrame")
+    tinsert(UISpecialFrames, "MuscaUILootFrame")
 end
 
 local function RegisterWindowMover()
@@ -421,7 +421,7 @@ function Loot:Reconcile()
         window:Hide()   -- OnHide : CloseLoot, pas de butin ouvert sans fenêtre
     end
     if not rollAnchor then
-        rollAnchor = CreateFrame("Frame", "AeonUILootRolls", UIParent)
+        rollAnchor = CreateFrame("Frame", "MuscaUILootRolls", UIParent)
         rollAnchor:SetFrameStrata("HIGH")
     end
     rollAnchor:SetSize(S(self.db.rollWidth), S(ROLL_HEIGHT))

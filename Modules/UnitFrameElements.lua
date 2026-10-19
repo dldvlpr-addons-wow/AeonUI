@@ -1,5 +1,5 @@
 -- Modules/UnitFrameElements.lua
--- Éléments d'un cadre d'unité AeonUI : santé, puissance, nom, niveau, barre d'incantation,
+-- Éléments d'un cadre d'unité MuscaUI : santé, puissance, nom, niveau, barre d'incantation,
 -- indicateurs, marqueur de raid, points de combo, auras. Partagés par les cadres d'unité
 -- (étape 2) et les plaques de nom (étape 3).
 --
@@ -21,7 +21,7 @@ local L = NS.L
 local Elements = {}
 NS.UnitFrameElements = Elements
 
--- Couleurs de vie par réaction : défauts des cadres d'unité, repli quand AeonUI_UnitFrames est désactivé.
+-- Couleurs de vie par réaction : défauts des cadres d'unité, repli quand MuscaUI_UnitFrames est désactivé.
 Elements.REACTION_COLORS = {
     hostile  = { r = 0.85, g = 0.2, b = 0.2 },
     neutral  = { r = 0.9, g = 0.8, b = 0.2 },

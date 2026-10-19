@@ -56,7 +56,7 @@ test("menu radial : touche liée, appui ouvre, relâcher arme le sort survolé, 
     NS.db.modules.radialmenu.entries = "spell:133\nitem:6948\nmacro:Test\nspell:2"
     NS.Modules:SetEnabled("radialmenu", true)
     local button, palette = Q:GetButton()
-    eq(Mock.overrideBindings[button]["SHIFT-Q"], "AeonUIRadialMenuButton", "touche liée")
+    eq(Mock.overrideBindings[button]["SHIFT-Q"], "MuscaUIRadialMenuButton", "touche liée")
     local pre, post = button:GetScript("PreClick"), button:GetScript("PostClick")
     pre(button, "LeftButton", true)
     truthy(palette:IsShown(), "appui : palette ouverte")
@@ -95,7 +95,7 @@ test("menu radial : deuxième palette sur sa touche, sous-menu ouvert au survol"
     eq(Q.ParseEntries("menu:9\nmenu:2")[1].value, 2, "palette hors limites ignorée")
     NS.Modules:SetEnabled("radialmenu", true)
     local button, palette = Q:GetButton()
-    eq(Mock.overrideBindings[button]["SHIFT-E"], "AeonUIRadialMenuButton", "touche de la palette 2")
+    eq(Mock.overrideBindings[button]["SHIFT-E"], "MuscaUIRadialMenuButton", "touche de la palette 2")
     local pre, post = button:GetScript("PreClick"), button:GetScript("PostClick")
     pre(button, "Palette2", true)
     palette.cx, palette.cy = 500, 300          -- curseur (500, 400) : vise le haut

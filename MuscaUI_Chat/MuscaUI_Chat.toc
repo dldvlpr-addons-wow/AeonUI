@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: |cff3fa9f5Musca|rUI Chat
+## Title-frFR: |cff3fa9f5Musca|rUI Chat
+## Notes: MuscaUI chat and chat bubbles. Disable to use another chat addon.
+## Notes-frFR: Chat et bulles de dialogue MuscaUI. À désactiver pour utiliser un autre addon de chat.
+## Version: @project-version@
+## Dependencies: MuscaUI
+## Group: MuscaUI
+## IconTexture: Interface\AddOns\MuscaUI\Media\Logo
+## Category: User Interface
+## Category-frFR: Interface utilisateur
+## X-License: All Rights Reserved
+
+Chat.lua
+ChatBubbles.lua

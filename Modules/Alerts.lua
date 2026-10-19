@@ -45,10 +45,10 @@ local dead = {}        -- [guid] = true pour les membres déjà annoncés morts
 --------------------------------------------------------------------------------
 
 local function BuildFlash()
-    flash = CreateFrame("Frame", "AeonUIAlerts", UIParent)
+    flash = CreateFrame("Frame", "MuscaUIAlerts", UIParent)
     flash:SetSize(400, 40)
     flash:SetFrameStrata("HIGH")
-    flash.text = Media:CreateText(flash, "OVERLAY")   -- police posée dès la création : l'aperçu /aeon unlock est lisible
+    flash.text = Media:CreateText(flash, "OVERLAY")   -- police posée dès la création : l'aperçu /musca unlock est lisible
     flash.text:SetPoint("CENTER")
     flash.text:SetShadowOffset(1, -1)
     flash.bg = flash:CreateTexture(nil, "BACKGROUND")
@@ -90,7 +90,7 @@ function Alerts:GetFlash() return flash end
 --------------------------------------------------------------------------------
 
 local function BuildTimer()
-    timerFrame = CreateFrame("Frame", "AeonUICombatTimer", UIParent)
+    timerFrame = CreateFrame("Frame", "MuscaUICombatTimer", UIParent)
     timerFrame:SetSize(90, 24)
     timerFrame.text = Media:CreateText(timerFrame, "OVERLAY", 4, "OUTLINE")
     timerFrame.text:SetPoint("CENTER")

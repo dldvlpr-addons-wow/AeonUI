@@ -1,4 +1,4 @@
--- tests/test_groupframes.lua : cadres de groupe et de raid AeonUI (étape 4).
+-- tests/test_groupframes.lua : cadres de groupe et de raid MuscaUI (étape 4).
 local T = ...
 local NS, test, eq, truthy, reset = T.NS, T.test, T.eq, T.truthy, T.reset
 local GF = NS.Modules:Get("groupframes")

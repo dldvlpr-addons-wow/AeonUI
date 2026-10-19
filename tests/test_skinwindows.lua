@@ -34,7 +34,7 @@ test("habillage : panneaux sombres, titre lisible ; infobulle interdite jamais s
     eq(art.vertex[1], 0.25, "art de la barre de titre assombri")
     eq(title.vertex, nil, "texte du titre intact")
 
-    local forbidden = CreateFrame("GameTooltip", "AeonForbiddenTooltip", UIParent)
+    local forbidden = CreateFrame("GameTooltip", "MuscaForbiddenTooltip", UIParent)
     forbidden.IsForbidden = function() return true end
     forbidden.NineSlice = { SetCenterColor = function() error("infobulle interdite touchée") end }
     SharedTooltip_SetBackdropStyle(forbidden)   -- le hook du module passe par StyleTooltip

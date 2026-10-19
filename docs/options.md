@@ -1,6 +1,6 @@
-# AeonUI — Référence des réglages
+# MuscaUI — Référence des réglages
 
-Généré par `tools/generate_options_doc.lua` depuis la fenêtre d'options (`/aeon`). Valeurs par défaut d'un profil neuf.
+Généré par `tools/generate_options_doc.lua` depuis la fenêtre d'options (`/musca`). Valeurs par défaut d'un profil neuf.
 
 ## Pages
 
@@ -15,9 +15,9 @@ Généré par `tools/generate_options_doc.lua` depuis la fenêtre d'options (`/a
 - [Banque](#banque)
 - [Barre de recharge globale](#barre-de-recharge-globale)
 - [Barre du haut](#barre-du-haut)
-- [Barres d'action AeonUI](#barres-daction-aeonui)
+- [Barres d'action MuscaUI](#barres-daction-muscaui)
 - [Barres d'auras](#barres-dauras)
-- [Barres de données AeonUI](#barres-de-données-aeonui)
+- [Barres de données MuscaUI](#barres-de-données-muscaui)
 - [Barres de nom](#barres-de-nom)
 - [Barres de recharges personnalisées](#barres-de-recharges-personnalisées)
 - [Barres de ressources](#barres-de-ressources)
@@ -25,9 +25,9 @@ Généré par `tools/generate_options_doc.lua` depuis la fenêtre d'options (`/a
 - [Butin](#butin)
 - [Cadres Blizzard déplaçables](#cadres-blizzard-déplaçables)
 - [Cadres d'unité](#cadres-dunité)
-- [Cadres d'unité AeonUI](#cadres-dunité-aeonui)
-- [Cadres de groupe et de raid AeonUI](#cadres-de-groupe-et-de-raid-aeonui)
-- [Chat AeonUI](#chat-aeonui)
+- [Cadres d'unité MuscaUI](#cadres-dunité-muscaui)
+- [Cadres de groupe et de raid MuscaUI](#cadres-de-groupe-et-de-raid-muscaui)
+- [Chat MuscaUI](#chat-muscaui)
 - [Clic-sort](#clic-sort)
 - [Confort automatique](#confort-automatique)
 - [Curseur et réticule](#curseur-et-réticule)
@@ -38,15 +38,15 @@ Généré par `tools/generate_options_doc.lua` depuis la fenêtre d'options (`/a
 - [Habillage](#habillage)
 - [Interface épurée](#interface-épurée)
 - [Menu radial](#menu-radial)
-- [Minimap AeonUI](#minimap-aeonui)
+- [Minimap MuscaUI](#minimap-muscaui)
 - [Minuteur d'attaque](#minuteur-dattaque)
 - [Panneaux de données](#panneaux-de-données)
-- [Plaques de nom AeonUI](#plaques-de-nom-aeonui)
+- [Plaques de nom MuscaUI](#plaques-de-nom-muscaui)
 - [Rappels](#rappels)
 - [Recharges de raid](#recharges-de-raid)
 - [Recherche de groupe](#recherche-de-groupe)
 - [Sacs](#sacs)
-- [Suivi de quêtes AeonUI](#suivi-de-quêtes-aeonui)
+- [Suivi de quêtes MuscaUI](#suivi-de-quêtes-muscaui)
 - [Suivi par ID](#suivi-par-id)
 - [Utilitaire de raid](#utilitaire-de-raid)
 
@@ -77,9 +77,9 @@ Chaque module s'active ou se désactive séparément. Les changements s'applique
 
 ## Polices et textures
 
-Police et texture de barre pour tout AeonUI, puis par module quand l'un doit se distinguer.
+Police et texture de barre pour tout MuscaUI, puis par module quand l'un doit se distinguer.
 
-- **Police de AeonUI** — liste, défaut **Arial Narrow**
+- **Police de MuscaUI** — liste, défaut **Arial Narrow**
 - **Taille du texte** — curseur, défaut **12**, 9 – 18, pas 1
 - **Contour du texte** — liste, défaut **Aucun**
 - **Texture des barres** — liste, défaut **Plate**
@@ -88,18 +88,18 @@ Police et texture de barre pour tout AeonUI, puis par module quand l'un doit se 
 
 ### Par module
 
-- **Cadres d'unité AeonUI : Police de AeonUI** — liste, défaut **Comme le thème**
-- **Cadres d'unité AeonUI : Texture des barres** — liste, défaut **Comme le thème**
-- **Cadres de groupe et de raid AeonUI : Police de AeonUI** — liste, défaut **Comme le thème**
-- **Cadres de groupe et de raid AeonUI : Texture des barres** — liste, défaut **Comme le thème**
-- **Plaques de nom AeonUI : Police de AeonUI** — liste, défaut **Comme le thème**
-- **Plaques de nom AeonUI : Texture des barres** — liste, défaut **Comme le thème**
-- **Barres de ressources : Police de AeonUI** — liste, défaut **Comme le thème**
+- **Cadres d'unité MuscaUI : Police de MuscaUI** — liste, défaut **Comme le thème**
+- **Cadres d'unité MuscaUI : Texture des barres** — liste, défaut **Comme le thème**
+- **Cadres de groupe et de raid MuscaUI : Police de MuscaUI** — liste, défaut **Comme le thème**
+- **Cadres de groupe et de raid MuscaUI : Texture des barres** — liste, défaut **Comme le thème**
+- **Plaques de nom MuscaUI : Police de MuscaUI** — liste, défaut **Comme le thème**
+- **Plaques de nom MuscaUI : Texture des barres** — liste, défaut **Comme le thème**
+- **Barres de ressources : Police de MuscaUI** — liste, défaut **Comme le thème**
 - **Barres de ressources : Texture des barres** — liste, défaut **Comme le thème**
-- **Minuteur d'attaque : Police de AeonUI** — liste, défaut **Comme le thème**
+- **Minuteur d'attaque : Police de MuscaUI** — liste, défaut **Comme le thème**
 - **Minuteur d'attaque : Texture des barres** — liste, défaut **Comme le thème**
-- **Barres de données AeonUI : Police de AeonUI** — liste, défaut **Comme le thème**
-- **Barres de données AeonUI : Texture des barres** — liste, défaut **Comme le thème**
+- **Barres de données MuscaUI : Police de MuscaUI** — liste, défaut **Comme le thème**
+- **Barres de données MuscaUI : Texture des barres** — liste, défaut **Comme le thème**
 
 ## Modules
 
@@ -117,11 +117,11 @@ Active ou coupe chaque module ici. Chacun a sa propre page dans la liste de gauc
   _Une barre fine qui se remplit pendant votre recharge globale, cachée le reste du temps._
 - **Barre du haut** — case, défaut **cochée**  
   _Une fine barre en haut de l'écran : amis et guilde en ligne, heure, or, durabilité, places libres dans les sacs, FPS et latence, et un bouton pierre de foyer._
-- **Barres d'action AeonUI** — case, défaut **décochée**  
+- **Barres d'action MuscaUI** — case, défaut **décochée**  
   _Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges, compteurs, raccourcis, glisser-déposer gérés par le code Blizzard) : boutons par barre, par ligne, taille, espacement, opacité. La barre 1 change de page avec les postures et la furtivité. Remplace les barres Blizzard._
 - **Barres d'auras** — case, défaut **décochée**  
   _Tes buffs et débuffs en barres horizontales avec le temps restant, les plus courts d'abord._
-- **Barres de données AeonUI** — case, défaut **décochée**  
+- **Barres de données MuscaUI** — case, défaut **décochée**  
   _Barre d'expérience (avec le bonus de repos, cachée au niveau maximum) et barre de la réputation suivie, déplaçables, avec texte et infobulle. Remplacent les barres Blizzard._
 - **Barres de nom** — case, défaut **cochée**  
   _Deux chevrons autour de la barre de nom de ta cible, pour ne jamais la perdre dans un pack. Celui de gauche s'écarte quand la cible incante._
@@ -134,14 +134,14 @@ Active ou coupe chaque module ici. Chacun a sa propre page dans la liste de gauc
 - **Butin** — case, défaut **décochée**  
   _Fenêtre de butin au thème (au curseur ou sur son mover) et barres de jets de groupe : besoin, cupidité, désenchantement, passer, temps restant._
 - **Cadres Blizzard déplaçables** — case, défaut **décochée**  
-  _Gestionnaire de recharges (essentiel, utilitaire, icônes de buff, barres de buff), buffs et débuffs du joueur sur des movers AeonUI, jamais reparentés. Chacun peut rester à Edit Mode._
+  _Gestionnaire de recharges (essentiel, utilitaire, icônes de buff, barres de buff), buffs et débuffs du joueur sur des movers MuscaUI, jamais reparentés. Chacun peut rester à Edit Mode._
 - **Cadres d'unité** — case, défaut **décochée**  
   _Retouches des cadres Blizzard du joueur, de la cible, du focus et du raid : mode sombre, vie et noms à la couleur de classe, et repère de combat sur la cible._
-- **Cadres d'unité AeonUI** — case, défaut **décochée**  
-  _Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du focus et du familier par des cadres AeonUI : vie, puissance, barre d'incantation, auras, nom, niveau, repères de combat, repos et chef, marqueur de raid, points de combo. Déplaçables avec /aeon unlock._
-- **Cadres de groupe et de raid AeonUI** — case, défaut **décochée**  
-  _Remplace les cadres Blizzard de groupe et de raid par des grilles AeonUI : vie, puissance, nom, icônes de rôle et de chef, marqueur de raid, bordures d'agro et de débuff dissipable, atténuation hors de portée. Clic pour cibler, clic droit pour le menu._
-- **Chat AeonUI** — case, défaut **décochée**  
+- **Cadres d'unité MuscaUI** — case, défaut **décochée**  
+  _Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du focus et du familier par des cadres MuscaUI : vie, puissance, barre d'incantation, auras, nom, niveau, repères de combat, repos et chef, marqueur de raid, points de combo. Déplaçables avec /musca unlock._
+- **Cadres de groupe et de raid MuscaUI** — case, défaut **décochée**  
+  _Remplace les cadres Blizzard de groupe et de raid par des grilles MuscaUI : vie, puissance, nom, icônes de rôle et de chef, marqueur de raid, bordures d'agro et de débuff dissipable, atténuation hors de portée. Clic pour cibler, clic droit pour le menu._
+- **Chat MuscaUI** — case, défaut **décochée**  
   _Fenêtres de chat au thème (fond, police, onglets plats, boutons latéraux cachés, sans fondu), URL cliquables, bouton de copie du chat, noms de canaux courts, couleur de classe partout, horodatage, zone de saisie en haut ou en bas._
 - **Clic-sort** — case, défaut **décochée**  
   _Lance un sort sur un membre du groupe ou du raid d'un clic de souris et d'un modificateur._
@@ -163,14 +163,14 @@ Active ou coupe chaque module ici. Chacun a sa propre page dans la liste de gauc
   _Moins d'encombrement et un accès direct à des réglages Blizzard. Tout réglage Blizzard changé ici est rendu quand tu coupes l'option._
 - **Menu radial** — case, défaut **décochée**  
   _Maintenir une touche : un anneau de sorts, objets, macros et montures s'ouvre autour du curseur ; relâcher sur l'un le lance. Hors combat seulement._
-- **Minimap AeonUI** — case, défaut **décochée**  
-  _Minimap carrée (ou ronde) à la taille voulue, bordure au thème, nom de zone et coordonnées, zoom à la molette, boutons d'addons regroupés en rangée sous la carte. Déplaçable avec /aeon unlock._
+- **Minimap MuscaUI** — case, défaut **décochée**  
+  _Minimap carrée (ou ronde) à la taille voulue, bordure au thème, nom de zone et coordonnées, zoom à la molette, boutons d'addons regroupés en rangée sous la carte. Déplaçable avec /musca unlock._
 - **Minuteur d'attaque** — case, défaut **décochée**  
   _Une barre par arme jusqu'à votre prochaine attaque automatique. Demande l'événement PLAYER_SWING du client._
 - **Panneaux de données** — case, défaut **décochée**  
   _Bandeaux d'informations libres sur les movers : coordonnées, quêtes, régénération, vitesse, DPS et les textes de la barre du haut._
-- **Plaques de nom AeonUI** — case, défaut **décochée**  
-  _Remplace l'habillage Blizzard des plaques de nom par des barres AeonUI : vie (couleurs de réaction, de classe, de menace), nom, niveau, barre d'incantation avec icône, marqueur de raid, débuffs, surbrillance de la cible. Compatible avec le module des chevrons de cible._
+- **Plaques de nom MuscaUI** — case, défaut **décochée**  
+  _Remplace l'habillage Blizzard des plaques de nom par des barres MuscaUI : vie (couleurs de réaction, de classe, de menace), nom, niveau, barre d'incantation avec icône, marqueur de raid, débuffs, surbrillance de la cible. Compatible avec le module des chevrons de cible._
 - **Rappels** — case, défaut **cochée**  
   _Hors combat uniquement : te prévient quand un buff de classe manque (seulement pour les sorts que tu connais), quand la durabilité est basse, quand tes sacs sont pleins, ou quand tu as oublié de te camoufler._
 - **Recharges de raid** — case, défaut **décochée**  
@@ -179,7 +179,7 @@ Active ou coupe chaque module ici. Chacun a sa propre page dans la liste de gauc
   _Raccourcis de l'outil de recherche de groupe : inscription en un clic quand ton rôle est évident, et note de candidature mémorisée._
 - **Sacs** — case, défaut **décochée**  
   _Une seule fenêtre pour le sac à dos et les sacs équipés, sur son mover : recherche, tri, niveau d'objet sur l'équipement, objets gris signalés, bordure de qualité, recharges, emplacements libres et or. La banque reste celle de Blizzard._
-- **Suivi de quêtes AeonUI** — case, défaut **décochée**  
+- **Suivi de quêtes MuscaUI** — case, défaut **décochée**  
   _Le suivi d'objectifs Blizzard sur un support déplaçable, à la hauteur voulue, en-têtes au thème, replié de lui-même en combat ou en instance._
 - **Suivi par ID** — case, défaut **décochée**  
   _Une rangée d'icônes pour les sorts et auras choisis par leur identifiant : aura présente sur toi ou posée par toi sur la cible (durée, stacks), sinon recharge du sort._
@@ -188,7 +188,7 @@ Active ou coupe chaque module ici. Chacun a sa propre page dans la liste de gauc
 
 ## Profils
 
-Un profil contient tous les réglages de AeonUI. « Default » est partagé par tous tes personnages ; crée-en un pour ce personnage pour qu'il ait ses propres réglages.
+Un profil contient tous les réglages de MuscaUI. « Default » est partagé par tous tes personnages ; crée-en un pour ce personnage pour qu'il ait ses propres réglages.
 
 - **Profil utilisé par ce personnage** — liste, défaut **Default**
 - **Créer un profil pour ce personnage (copie de l'actuel)** — bouton
@@ -216,9 +216,9 @@ Un profil contient tous les réglages de AeonUI. « Default » est partagé par 
 - **Banque** — case, défaut **cochée**
 - **Barre de recharge globale** — case, défaut **cochée**
 - **Barre du haut** — case, défaut **cochée**
-- **Barres d'action AeonUI** — case, défaut **cochée**
+- **Barres d'action MuscaUI** — case, défaut **cochée**
 - **Barres d'auras** — case, défaut **cochée**
-- **Barres de données AeonUI** — case, défaut **cochée**
+- **Barres de données MuscaUI** — case, défaut **cochée**
 - **Barres de nom** — case, défaut **cochée**
 - **Barres de recharges personnalisées** — case, défaut **cochée**
 - **Barres de ressources** — case, défaut **cochée**
@@ -226,9 +226,9 @@ Un profil contient tous les réglages de AeonUI. « Default » est partagé par 
 - **Butin** — case, défaut **cochée**
 - **Cadres Blizzard déplaçables** — case, défaut **cochée**
 - **Cadres d'unité** — case, défaut **cochée**
-- **Cadres d'unité AeonUI** — case, défaut **cochée**
-- **Cadres de groupe et de raid AeonUI** — case, défaut **cochée**
-- **Chat AeonUI** — case, défaut **cochée**
+- **Cadres d'unité MuscaUI** — case, défaut **cochée**
+- **Cadres de groupe et de raid MuscaUI** — case, défaut **cochée**
+- **Chat MuscaUI** — case, défaut **cochée**
 - **Clic-sort** — case, défaut **cochée**
 - **Confort automatique** — case, défaut **cochée**
 - **Curseur et réticule** — case, défaut **cochée**
@@ -239,15 +239,15 @@ Un profil contient tous les réglages de AeonUI. « Default » est partagé par 
 - **Habillage** — case, défaut **cochée**
 - **Interface épurée** — case, défaut **cochée**
 - **Menu radial** — case, défaut **cochée**
-- **Minimap AeonUI** — case, défaut **cochée**
+- **Minimap MuscaUI** — case, défaut **cochée**
 - **Minuteur d'attaque** — case, défaut **cochée**
 - **Panneaux de données** — case, défaut **cochée**
-- **Plaques de nom AeonUI** — case, défaut **cochée**
+- **Plaques de nom MuscaUI** — case, défaut **cochée**
 - **Rappels** — case, défaut **cochée**
 - **Recharges de raid** — case, défaut **cochée**
 - **Recherche de groupe** — case, défaut **cochée**
 - **Sacs** — case, défaut **cochée**
-- **Suivi de quêtes AeonUI** — case, défaut **cochée**
+- **Suivi de quêtes MuscaUI** — case, défaut **cochée**
 - **Suivi par ID** — case, défaut **cochée**
 - **Utilitaire de raid** — case, défaut **cochée**
 - **Exporter le profil actuel** — bouton
@@ -281,7 +281,7 @@ Un profil contient tous les réglages de AeonUI. « Default » est partagé par 
 
 ### Profils de classe
 
-> Profils pensés pour ta classe, un par façon de la jouer : disposition du rôle, plus les réglages du style (ressources, coups blancs, barre d'incantation, recharge globale) et de la classe (familier, totems, formes, rappels). Applique-en un au profil actuel, ou bascule sur le profil « Classe - Style » (partagé par tes personnages de cette classe, créé avec toute l'interface AeonUI s'il manque).
+> Profils pensés pour ta classe, un par façon de la jouer : disposition du rôle, plus les réglages du style (ressources, coups blancs, barre d'incantation, recharge globale) et de la classe (familier, totems, formes, rappels). Applique-en un au profil actuel, ou bascule sur le profil « Classe - Style » (partagé par tes personnages de cette classe, créé avec toute l'interface MuscaUI s'il manque).
 
 - **Style** — liste, défaut **Lanceur de sorts**
 - **Appliquer ce style au profil actuel** — bouton
@@ -289,11 +289,11 @@ Un profil contient tous les réglages de AeonUI. « Default » est partagé par 
 
 ## Maintenance
 
-Le diagnostic liste ce que ce client de jeu propose, pour signaler un problème. Désinstaller rend tous les réglages Blizzard que AeonUI a changés.
+Le diagnostic liste ce que ce client de jeu propose, pour signaler un problème. Désinstaller rend tous les réglages Blizzard que MuscaUI a changés.
 
 - **Revoir la fenêtre de bienvenue** — bouton
-- **Lancer le diagnostic (/aeon diag)** — bouton
-- **Désinstaller proprement (/aeon uninstall)** — bouton
+- **Lancer le diagnostic (/musca diag)** — bouton
+- **Désinstaller proprement (/musca uninstall)** — bouton
 
 ## Alertes
 
@@ -407,18 +407,18 @@ Une fine barre en haut de l'écran : amis et guilde en ligne, heure, or, durabil
 - **Emplacement libre à gauche** — liste, défaut **Aucun**
 - **Emplacement libre à droite** — liste, défaut **Aucun**
 
-## Barres d'action AeonUI
+## Barres d'action MuscaUI
 
 Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges, compteurs, raccourcis, glisser-déposer gérés par le code Blizzard) : boutons par barre, par ligne, taille, espacement, opacité. La barre 1 change de page avec les postures et la furtivité. Remplace les barres Blizzard.
 
 > Les barres Blizzard reviennent après un /reload une fois ce module coupé. Les raccourcis sont ceux de Blizzard (Options > Raccourcis).
 
 - **Masquer les barres d'action Blizzard** — case, défaut **cochée**
-- **Micro-menu (personnage, grimoire, options…)** — liste, défaut **Déplaçable (/aeon unlock)**
-- **Barre des sacs** — liste, défaut **Déplaçable (/aeon unlock)**
-- **Barre de posture (postures, formes, auras, furtivité)** — liste, défaut **Déplaçable (/aeon unlock)**
-- **Barre de totems du chaman (Appel des éléments)** — liste, défaut **Déplaçable (/aeon unlock)**
-- **Barre du familier** — liste, défaut **Déplaçable (/aeon unlock)**
+- **Micro-menu (personnage, grimoire, options…)** — liste, défaut **Déplaçable (/musca unlock)**
+- **Barre des sacs** — liste, défaut **Déplaçable (/musca unlock)**
+- **Barre de posture (postures, formes, auras, furtivité)** — liste, défaut **Déplaçable (/musca unlock)**
+- **Barre de totems du chaman (Appel des éléments)** — liste, défaut **Déplaçable (/musca unlock)**
+- **Barre du familier** — liste, défaut **Déplaçable (/musca unlock)**
 - **Afficher les raccourcis sur les boutons** — case, défaut **cochée**
 - **Afficher le nom des macros sur les boutons** — case, défaut **cochée**
 - **Survoler une barre « au survol » les révèle toutes** — case, défaut **décochée**
@@ -431,7 +431,7 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **Icônes grisées pendant la recharge** — case, défaut **cochée**
 - **Couleur du voile de recharge** — couleur, défaut **#000000**
 - **Lueur des sorts en surbrillance** — liste, défaut **Blizzard**
-- **Mode raccourcis (/aeon kb)** — bouton  
+- **Mode raccourcis (/musca kb)** — bouton  
   _Survoler un bouton et appuyer sur une touche pour la lier. Échap sur un bouton efface ses touches, Échap ailleurs ferme le mode._
 - **Déverrouiller (déplacer les cadres)** — bouton
 
@@ -608,7 +608,7 @@ Tes buffs et débuffs en barres horizontales avec le temps restant, les plus cou
 - **Empiler vers le haut** — case, défaut **décochée**
 - **Couleur des buffs** — couleur, défaut **#3FA8F4**
 
-## Barres de données AeonUI
+## Barres de données MuscaUI
 
 Barre d'expérience (avec le bonus de repos, cachée au niveau maximum) et barre de la réputation suivie, déplaçables, avec texte et infobulle. Remplacent les barres Blizzard.
 
@@ -749,24 +749,24 @@ Bulles au thème, bordure à la couleur du canal, canaux affichés un par un.
 
 Fenêtre de butin au thème (au curseur ou sur son mover) et barres de jets de groupe : besoin, cupidité, désenchantement, passer, temps restant.
 
-- **Fenêtre de butin AeonUI** — case, défaut **cochée**
+- **Fenêtre de butin MuscaUI** — case, défaut **cochée**
 - **Ouvrir au curseur (sinon sur son mover)** — case, défaut **cochée**
-- **Barres de jets AeonUI** — case, défaut **cochée**
+- **Barres de jets MuscaUI** — case, défaut **cochée**
 - **Largeur** — curseur, défaut **300**, 200 – 500, pas 10
 - **Déverrouiller / verrouiller les cadres mobiles** — bouton
 
 ## Cadres Blizzard déplaçables
 
-Gestionnaire de recharges (essentiel, utilitaire, icônes de buff, barres de buff), buffs et débuffs du joueur sur des movers AeonUI, jamais reparentés. Chacun peut rester à Edit Mode.
+Gestionnaire de recharges (essentiel, utilitaire, icônes de buff, barres de buff), buffs et débuffs du joueur sur des movers MuscaUI, jamais reparentés. Chacun peut rester à Edit Mode.
 
-> Taille des icônes et lignes restent dans Edit Mode ; seule la position est AeonUI. Les positions Blizzard reviennent après un /reload une fois ce module coupé.
+> Taille des icônes et lignes restent dans Edit Mode ; seule la position est MuscaUI. Les positions Blizzard reviennent après un /reload une fois ce module coupé.
 
-- **Recharges : essentiel** — liste, défaut **Déplaçable (/aeon unlock)**
-- **Recharges : utilitaire** — liste, défaut **Déplaçable (/aeon unlock)**
-- **Recharges : icônes de buff** — liste, défaut **Déplaçable (/aeon unlock)**
-- **Recharges : barres de buff** — liste, défaut **Déplaçable (/aeon unlock)**
-- **Buffs** — liste, défaut **Déplaçable (/aeon unlock)**
-- **Débuffs** — liste, défaut **Déplaçable (/aeon unlock)**
+- **Recharges : essentiel** — liste, défaut **Déplaçable (/musca unlock)**
+- **Recharges : utilitaire** — liste, défaut **Déplaçable (/musca unlock)**
+- **Recharges : icônes de buff** — liste, défaut **Déplaçable (/musca unlock)**
+- **Recharges : barres de buff** — liste, défaut **Déplaçable (/musca unlock)**
+- **Buffs** — liste, défaut **Déplaçable (/musca unlock)**
+- **Débuffs** — liste, défaut **Déplaçable (/musca unlock)**
 - **Déverrouiller (déplacer les cadres)** — bouton
 
 ## Cadres d'unité
@@ -778,9 +778,9 @@ Retouches des cadres Blizzard du joueur, de la cible, du focus et du raid : mode
 - **Noms à la couleur de classe sur les cadres de raid** — case, défaut **cochée**
 - **Épées croisées à côté de la cible quand elle est en combat** — case, défaut **cochée**
 
-## Cadres d'unité AeonUI
+## Cadres d'unité MuscaUI
 
-Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du focus et du familier par des cadres AeonUI : vie, puissance, barre d'incantation, auras, nom, niveau, repères de combat, repos et chef, marqueur de raid, points de combo. Déplaçables avec /aeon unlock.
+Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du focus et du familier par des cadres MuscaUI : vie, puissance, barre d'incantation, auras, nom, niveau, repères de combat, repos et chef, marqueur de raid, points de combo. Déplaçables avec /musca unlock.
 
 > Les cadres Blizzard reviennent après un /reload une fois ce module coupé.
 
@@ -1092,9 +1092,9 @@ Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
 
-## Cadres de groupe et de raid AeonUI
+## Cadres de groupe et de raid MuscaUI
 
-Remplace les cadres Blizzard de groupe et de raid par des grilles AeonUI : vie, puissance, nom, icônes de rôle et de chef, marqueur de raid, bordures d'agro et de débuff dissipable, atténuation hors de portée. Clic pour cibler, clic droit pour le menu.
+Remplace les cadres Blizzard de groupe et de raid par des grilles MuscaUI : vie, puissance, nom, icônes de rôle et de chef, marqueur de raid, bordures d'agro et de débuff dissipable, atténuation hors de portée. Clic pour cibler, clic droit pour le menu.
 
 > Les cadres Blizzard de groupe et de raid reviennent après un /reload une fois ce module coupé.
 
@@ -1205,7 +1205,7 @@ Remplace les cadres Blizzard de groupe et de raid par des grilles AeonUI : vie, 
 - **Seulement mes propres sorts** — case, défaut **cochée**
 - **Remplir avec le préréglage de ma classe** — bouton
 
-## Chat AeonUI
+## Chat MuscaUI
 
 Fenêtres de chat au thème (fond, police, onglets plats, boutons latéraux cachés, sans fondu), URL cliquables, bouton de copie du chat, noms de canaux courts, couleur de classe partout, horodatage, zone de saisie en haut ou en bas.
 
@@ -1256,7 +1256,7 @@ Fenêtres de chat au thème (fond, police, onglets plats, boutons latéraux cach
 
 ### Fenêtres
 
-- **Fenêtre principale à gauche, fenêtre détachée à droite (déplaçables par /aeon unlock)** — case, défaut **cochée**
+- **Fenêtre principale à gauche, fenêtre détachée à droite (déplaçables par /musca unlock)** — case, défaut **cochée**
 - **Largeur à gauche** — curseur, défaut **430**, 296 – 900, pas 2
 - **Hauteur à gauche** — curseur, défaut **180**, 120 – 600, pas 2
 - **Largeur à droite** — curseur, défaut **320**, 296 – 900, pas 2
@@ -1268,7 +1268,7 @@ Fenêtres de chat au thème (fond, police, onglets plats, boutons latéraux cach
 
 Lance un sort sur un membre du groupe ou du raid d'un clic de souris et d'un modificateur.
 
-> S'applique aux cadres de groupe et de raid AeonUI, hors combat. Les clics sans liaison gardent cible (gauche) et menu (droit). Nom du sort sans rang : le rang le plus haut part.
+> S'applique aux cadres de groupe et de raid MuscaUI, hors combat. Les clics sans liaison gardent cible (gauche) et menu (droit). Nom du sort sans rang : le rang le plus haut part.
 
 - **Remplir avec le préréglage de ma classe** — bouton
 
@@ -1447,7 +1447,7 @@ Infobulles sombres avec nom et bordure à la couleur de classe, et deux flèches
 ### Panneaux
 
 - **Habiller les fenêtres, popups et menus Blizzard (fiche de personnage : bordures de qualité sur l'équipement)** — case, défaut **décochée**
-- **Style par défaut** — liste, défaut **Thème AeonUI (plat)**
+- **Style par défaut** — liste, défaut **Thème MuscaUI (plat)**
 
 #### Fenêtre par fenêtre
 
@@ -1521,7 +1521,7 @@ Moins d'encombrement et un accès direct à des réglages Blizzard. Tout réglag
 
 - **Toujours afficher les barres d'action, même les cases vides (mode débutant)** — case, défaut **décochée**
 - **Chiffres de recharge sur tous les boutons et icônes** — case, défaut **décochée**
-- **Texte de recharge coloré sur les boutons et icônes AeonUI** — case, défaut **décochée**
+- **Texte de recharge coloré sur les boutons et icônes MuscaUI** — case, défaut **décochée**
 - **Presque fini sous (secondes, avec une décimale)** — curseur, défaut **3**, 0 – 10, pas 1
 - **Couleur « presque fini »** — couleur, défaut **#FF3333**
 - **Couleur des secondes** — couleur, défaut **#FFE54C**
@@ -1567,9 +1567,9 @@ Maintenir une touche : un anneau de sorts, objets, macros et montures s'ouvre au
 - **Entrées** — zone de texte
 - **Ajouter ce qui est sur le curseur** — bouton
 
-## Minimap AeonUI
+## Minimap MuscaUI
 
-Minimap carrée (ou ronde) à la taille voulue, bordure au thème, nom de zone et coordonnées, zoom à la molette, boutons d'addons regroupés en rangée sous la carte. Déplaçable avec /aeon unlock.
+Minimap carrée (ou ronde) à la taille voulue, bordure au thème, nom de zone et coordonnées, zoom à la molette, boutons d'addons regroupés en rangée sous la carte. Déplaçable avec /musca unlock.
 
 > Le décor Blizzard de la minimap revient après un /reload une fois ce module coupé.
 
@@ -1656,9 +1656,9 @@ Bandeaux d'informations libres sur les movers : coordonnées, quêtes, régéné
 - **Avec une cible** — liste, défaut **Indifférent**
 - **Au survol seulement** — case, défaut **décochée**
 
-## Plaques de nom AeonUI
+## Plaques de nom MuscaUI
 
-Remplace l'habillage Blizzard des plaques de nom par des barres AeonUI : vie (couleurs de réaction, de classe, de menace), nom, niveau, barre d'incantation avec icône, marqueur de raid, débuffs, surbrillance de la cible. Compatible avec le module des chevrons de cible.
+Remplace l'habillage Blizzard des plaques de nom par des barres MuscaUI : vie (couleurs de réaction, de classe, de menace), nom, niveau, barre d'incantation avec icône, marqueur de raid, débuffs, surbrillance de la cible. Compatible avec le module des chevrons de cible.
 
 > Les plaques Blizzard reviennent après un /reload une fois ce module coupé.
 
@@ -1904,7 +1904,7 @@ Une seule fenêtre pour le sac à dos et les sacs équipés, sur son mover : rec
 - **Nom de « Cases libres »** — zone de texte
 - **Déverrouiller / verrouiller les cadres mobiles** — bouton
 
-## Suivi de quêtes AeonUI
+## Suivi de quêtes MuscaUI
 
 Le suivi d'objectifs Blizzard sur un support déplaçable, à la hauteur voulue, en-têtes au thème, replié de lui-même en combat ou en instance.
 
@@ -1963,6 +1963,6 @@ Bouton « Raid » sur son mover, visible en groupe : appel prêt, vérification 
 - **Compte à rebours 3 (secondes)** — curseur, défaut **15**, 3 – 30, pas 1
 - **Touche du compte à rebours 3 (ex. CTRL-F1)** — zone de texte
 
-> /aeon pull [secondes] lance un compte à rebours (le premier par défaut) ; /aeon pull 0 l'annule.
+> /musca pull [secondes] lance un compte à rebours (le premier par défaut) ; /musca pull 0 l'annule.
 
 - **Déverrouiller / verrouiller les cadres mobiles** — bouton

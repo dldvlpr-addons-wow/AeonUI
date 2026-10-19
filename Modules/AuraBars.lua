@@ -214,7 +214,7 @@ function AuraBars:Update()
 end
 
 local function Build()
-    holder = CreateFrame("Frame", "AeonUIAuraBars", UIParent)
+    holder = CreateFrame("Frame", "MuscaUIAuraBars", UIParent)
     local elapsed = 0
     holder:SetScript("OnUpdate", function(_, delta)
         elapsed = elapsed + delta

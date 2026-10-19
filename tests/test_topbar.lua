@@ -49,7 +49,7 @@ test("mémoire : addons triés, les plus gourmands d'abord", function()
     local list = TopBar.ScanMemory(2)
     eq(#list, 2)
     eq(list[1].name, "Gros")
-    eq(list[2].name, "AeonUI")
+    eq(list[2].name, "MuscaUI")
 end)
 
 test("menu Voyage : sorts connus seulement, boutons sécurisés, fermé en combat", function()
@@ -61,7 +61,7 @@ test("menu Voyage : sorts connus seulement, boutons sécurisés, fermé en comba
     Mock.spells[3561] = "Teleport: Stormwind"
     Mock.FireEvent("SPELLS_CHANGED")
     eq(elements.travel:IsShown(), true, "élément affiché")
-    local button = _G.AeonUITravelButton1
+    local button = _G.MuscaUITravelButton1
     eq(button:GetAttribute("type"), "spell")
     eq(button:GetAttribute("spell"), 3561)
     eq(Mock.stateDrivers[menu].visibility, "[combat] hide", "state driver de combat")

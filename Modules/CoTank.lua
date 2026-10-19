@@ -67,7 +67,7 @@ end
 --------------------------------------------------------------------------------
 
 local function Build()
-    button = CreateFrame("Button", "AeonUICoTank", UIParent, "SecureUnitButtonTemplate")
+    button = CreateFrame("Button", "MuscaUICoTank", UIParent, "SecureUnitButtonTemplate")
     button:RegisterForClicks("AnyUp")
     button:SetAttribute("type1", "target")
     button.bg = Media:CreateBackdrop(button)   -- fond et bordure 1 px du thème

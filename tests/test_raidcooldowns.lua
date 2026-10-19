@@ -60,7 +60,7 @@ test("minuteur d'attaque : inerte sans C_SwingTimer, barre remplie puis vidée a
     NS.db.modules.swingtimer.visibility = NS.Visibility.Spec()
     NS.Modules:SetEnabled("swingtimer", true)
     truthy(NS.Movers.registry.swingTimer, "mover")
-    local container, bar = _G.AeonUISwingTimer, nil
+    local container, bar = _G.MuscaUISwingTimer, nil
     truthy(container:IsShown())
     Mock.FireEvent("PLAYER_SWING", 2.6, 0)
     for _, frame in ipairs(Mock.frames) do

@@ -1,4 +1,4 @@
--- tests/test_unitframes.lua : cadres d'unité AeonUI (étape 2).
+-- tests/test_unitframes.lua : cadres d'unité MuscaUI (étape 2).
 local T = ...
 local NS, test, eq, truthy, reset = T.NS, T.test, T.eq, T.truthy, T.reset
 local Elements = NS.UnitFrameElements
@@ -24,11 +24,11 @@ test("unitframes : HideBlizzardFrame cache, reparente, rend", function()
     local original = PlayerFrame:GetParent()
     truthy(NS.HideBlizzardFrame("PlayerFrame"))
     eq(PlayerFrame:IsShown(), false)
-    eq(PlayerFrame:GetParent():GetName(), "AeonUI_Hidden")
+    eq(PlayerFrame:GetParent():GetName(), "MuscaUI_Hidden")
     truthy(NS.IsBlizzardFrameHidden("PlayerFrame"))
     -- Blizzard le reparente (Edit Mode) : ramené.
     PlayerFrame:SetParent(UIParent)
-    eq(PlayerFrame:GetParent():GetName(), "AeonUI_Hidden", "reparentage Blizzard annulé")
+    eq(PlayerFrame:GetParent():GetName(), "MuscaUI_Hidden", "reparentage Blizzard annulé")
     truthy(NS.ShowBlizzardFrame("PlayerFrame"))
     eq(PlayerFrame:GetParent(), original)
     eq(PlayerFrame:IsShown(), false, "pas de Show() contaminé : revient au /reload")

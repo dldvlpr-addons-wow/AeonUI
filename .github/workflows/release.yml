@@ -4,7 +4,7 @@ name: Release
 # packager BigWigs, le publie en release GitHub et l'envoie sur CurseForge.
 # Le tag, sans son « v », doit être la version du premier titre de CHANGELOG.md : cette section
 # devient le changelog CurseForge.
-# CurseForge : secret CF_API_KEY ; identifiant de projet lu dans AeonUI.toc (## X-Curse-Project-ID).
+# CurseForge : secret CF_API_KEY ; identifiant de projet lu dans MuscaUI.toc (## X-Curse-Project-ID).
 # L'envoi est fait ici, pas par le packager : le packager classerait l'interface 16001 en retail,
 # ici le fichier est marqué WoW Forever seulement, avec ForeverMeter en dépendance requise.
 
@@ -32,11 +32,11 @@ jobs:
         run: |
           version="${TAG#v}"
           case "$(head -n1 CHANGELOG.md | tr -d '\r') " in
-            "# AeonUI $version "*) ;;
-            *) echo "::error::Le premier titre de CHANGELOG.md n'est pas « # AeonUI $version »"; exit 1 ;;
+            "# MuscaUI $version "*) ;;
+            *) echo "::error::Le premier titre de CHANGELOG.md n'est pas « # MuscaUI $version »"; exit 1 ;;
           esac
           [ -n "$CF_API_KEY" ] || { echo "::error::Secret CF_API_KEY absent"; exit 1; }
-          grep -Eq '^## X-Curse-Project-ID: *[0-9]+' AeonUI.toc || { echo "::error::X-Curse-Project-ID absent de AeonUI.toc"; exit 1; }
+          grep -Eq '^## X-Curse-Project-ID: *[0-9]+' MuscaUI.toc || { echo "::error::X-Curse-Project-ID absent de MuscaUI.toc"; exit 1; }
 
       - name: Tests hors du jeu
         run: |
@@ -55,7 +55,7 @@ jobs:
           set -euo pipefail
           api=https://wow.curseforge.com/api
           version="${TAG#v}"
-          project_id=$(sed -n 's/^## X-Curse-Project-ID: *\([0-9]*\).*/\1/p' AeonUI.toc)
+          project_id=$(sed -n 's/^## X-Curse-Project-ID: *\([0-9]*\).*/\1/p' MuscaUI.toc)
 
           zip=(.release/*.zip)
           if [ "${#zip[@]}" -ne 1 ] || [ ! -f "${zip[0]}" ]; then
@@ -76,7 +76,7 @@ jobs:
 
           metadata=$(jq -n \
             --arg changelog "$(tr -d '\r' < CHANGELOG.md | awk '/^# /{n++} n==1')" \
-            --arg name "AeonUI $version" \
+            --arg name "MuscaUI $version" \
             --arg type "$release_type" \
             --arg dependency "$REQUIRED_DEPENDENCY" \
             --argjson versions "$game_version_ids" \

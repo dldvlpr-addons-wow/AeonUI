@@ -6,9 +6,9 @@ local MODULES = { "topbar", "automation", "reminders", "alerts", "nameplates", "
                   "groupfinder", "cursor", "gear", "skin", "interface" }
 
 test("DB : table globale + profil Default complet pour chaque module", function()
-    eq(AeonUIDB.version, NS.Database.VERSION, "version")
-    eq(g_addonCategoriesCollapsed.AeonUI, AeonUIDB, "table hôte Blizzard = même table")
-    local profile = AeonUIDB.profiles.Default
+    eq(MuscaUIDB.version, NS.Database.VERSION, "version")
+    eq(g_addonCategoriesCollapsed.MuscaUI, MuscaUIDB, "table hôte Blizzard = même table")
+    local profile = MuscaUIDB.profiles.Default
     truthy(profile, "profil Default")
     eq(NS.db, profile, "NS.db pointe sur le profil actif")
     for _, name in ipairs(MODULES) do
@@ -31,7 +31,7 @@ test("migration v1 -> v2 : les réglages à plat deviennent le profil Default", 
     eq(profile.modules.automation.repair, true, "défaut ajouté")
     eq(profile.anchors.reminders.point, "TOP", "ancrage migré")
     eq(db.theme, nil, "plus de réglages à plat")
-    eq(NS.Database.global, AeonUIDB, "Init ne rebranche pas la table active")
+    eq(NS.Database.global, MuscaUIDB, "Init ne rebranche pas la table active")
 end)
 
 test("profils : copie pour le personnage, isolée de Default, suppression", function()
@@ -39,10 +39,10 @@ test("profils : copie pour le personnage, isolée de Default, suppression", func
     NS:SwitchProfile("Testeur - Forever", "Default")
     eq(NS.Database:ActiveProfileName(), "Testeur - Forever")
     NS.db.modules.automation.sellJunk = false
-    eq(AeonUIDB.profiles.Default.modules.automation.sellJunk, true, "Default intact")
+    eq(MuscaUIDB.profiles.Default.modules.automation.sellJunk, true, "Default intact")
     eq(NS.Modules:Get("topbar").enabled, true, "modules rebranchés")
     NS:SwitchProfile("Default")
-    eq(NS.db, AeonUIDB.profiles.Default)
+    eq(NS.db, MuscaUIDB.profiles.Default)
     eq(NS.db.modules.automation.sellJunk, true)
     truthy(NS.Database:DeleteProfile("Testeur - Forever"), "supprimé")
     eq(NS.Database:DeleteProfile("Default"), false, "Default indélébile")
@@ -135,7 +135,7 @@ test("CVars : valeur d'origine gardée puis rendue, CVar inconnue ignorée", fun
     eq(Mock.cvars.autoLootDefault, "1")
     NS.CVars:Set("autoLootDefault", 0)
     NS.CVars:Set("autoLootDefault", 1)
-    eq(AeonUIDB.cvarBackup.autoLootDefault, "0", "l'origine n'est jamais écrasée")
+    eq(MuscaUIDB.cvarBackup.autoLootDefault, "0", "l'origine n'est jamais écrasée")
     NS.CVars:Restore("autoLootDefault")
     eq(Mock.cvars.autoLootDefault, "0", "rendue")
     eq(NS.CVars:IsChanged("autoLootDefault"), false)
@@ -172,7 +172,7 @@ test("CVars : coupée puis remise pendant le même combat = origine toujours gar
     NS.CVars:Set("autoLootDefault", 1)
     Mock.SetCombat(false)
     eq(Mock.cvars.autoLootDefault, "1", "le dernier choix gagne")
-    eq(AeonUIDB.cvarBackup.autoLootDefault, "0", "origine gardée")
+    eq(MuscaUIDB.cvarBackup.autoLootDefault, "0", "origine gardée")
     NS.CVars:Restore("autoLootDefault")
     eq(Mock.cvars.autoLootDefault, "0", "rendue plus tard")
 end)
@@ -185,7 +185,7 @@ test("CVars : écriture refusée à la déconnexion = sauvegarde gardée", funct
     C_CVar.SetCVar = function() return false end   -- CVar protégée en combat
     NS.CVars:RestoreAll(true)
     C_CVar.SetCVar = setCVar
-    eq(AeonUIDB.cvarBackup.autoLootDefault, "0", "origine gardée pour la prochaine fois")
+    eq(MuscaUIDB.cvarBackup.autoLootDefault, "0", "origine gardée pour la prochaine fois")
     NS.CVars:Restore("autoLootDefault")
     eq(Mock.cvars.autoLootDefault, "0")
 end)
@@ -205,7 +205,7 @@ end)
 local function MirrorText()
     local parts = {}
     for i = 1, NS.Database.MIRROR_SLOTS do
-        local chunk = Mock.cvars["AeonUIMirror" .. i]
+        local chunk = Mock.cvars["MuscaUIMirror" .. i]
         if not chunk or chunk == "" then break end
         parts[#parts + 1] = chunk
     end
@@ -222,16 +222,16 @@ test("miroir CVar : la table globale revient entière quand la SavedVariables es
     NS.global.profiles.Vide = Database.FillProfile({})
     truthy(Database:WriteMirror(), "première écriture")
     eq(Database:WriteMirror(), false, "rien ne change : pas de réécriture")
-    truthy(Mock.cvars.AeonUIMirror1 ~= "", "tranche 1 remplie")
-    eq(Mock.cvars.AeonUIMirror2, "", "sans les défauts, une tranche suffit")
-    truthy(Mock.cvars.AeonUIMirror1:find("^AEON2:"), "miroir compressé")
+    truthy(Mock.cvars.MuscaUIMirror1 ~= "", "tranche 1 remplie")
+    eq(Mock.cvars.MuscaUIMirror2, "", "sans les défauts, une tranche suffit")
+    truthy(Mock.cvars.MuscaUIMirror1:find("^AEON2:"), "miroir compressé")
     truthy(MirrorText():find("profiles.Vide=t", 1, true), "profil sans écart présent par nom")
     eq(MirrorText():find("automation.repair", 1, true), nil, "défaut non recopié")
     NS.global.profiles.Tank, NS.global.profiles.Vide, NS.global.profileKeys["Autre - Forever"] = nil, nil, nil
     NS.global.firstRunDone = false
     NS.db.modules.automation.sellJunk = true
 
-    g_addonCategoriesCollapsed.AeonUI = nil      -- chemin miroir CVar seul
+    g_addonCategoriesCollapsed.MuscaUI = nil      -- chemin miroir CVar seul
     local restored = Database:Load(nil)
     eq(restored.firstRunDone, true, "assistant marqué fait")
     eq(restored.profileKeys["Autre - Forever"], "Tank", "association personnage/profil")
@@ -253,15 +253,31 @@ test("table hôte : prioritaire sur le miroir CVar, SavedVariables prioritaire s
     NS.db.theme.fontSize = 13
     Database:WriteMirror()
     NS.db.theme.fontSize = 12
-    g_addonCategoriesCollapsed.AeonUI = { profiles = { Default = { theme = { fontSize = 17 } } } }
+    g_addonCategoriesCollapsed.MuscaUI = { profiles = { Default = { theme = { fontSize = 17 } } } }
     eq(Database:Load(nil).profiles.Default.theme.fontSize, 17, "table hôte avant le miroir CVar")
     eq(Database:Load({ version = Database.VERSION }).profiles.Default.theme.fontSize, 12, "SavedVariables non vide avant tout")
-    g_addonCategoriesCollapsed.AeonUI = {}
+    g_addonCategoriesCollapsed.MuscaUI = {}
     eq(Database:Load(nil).profiles.Default.theme.fontSize, 13, "table hôte vide : miroir CVar")
     g_addonCategoriesCollapsed = {}
     Database:WriteMirror()
-    eq(g_addonCategoriesCollapsed.AeonUI, AeonUIDB, "table hôte recréée : rebranchée à l'écriture")
+    eq(g_addonCategoriesCollapsed.MuscaUI, MuscaUIDB, "table hôte recréée : rebranchée à l'écriture")
     Database:WriteMirror()
+end)
+
+test("table hôte : réglages AeonUI repris par MuscaUI, puis l'ancienne clé retirée", function()
+    reset()
+    local Database = NS.Database
+    local saved = MuscaUIDB
+    g_addonCategoriesCollapsed.MuscaUI = nil
+    g_addonCategoriesCollapsed.AeonUI = { profiles = { Default = { theme = { fontSize = 19 } } } }
+    local restored = Database:Load(nil)
+    eq(restored.profiles.Default.theme.fontSize, 19, "ancienne clé lue quand la nouvelle manque")
+    g_addonCategoriesCollapsed.MuscaUI = { profiles = { Default = { theme = { fontSize = 15 } } } }
+    eq(Database:Load(nil).profiles.Default.theme.fontSize, 15, "nouvelle clé prioritaire")
+    g_addonCategoriesCollapsed.MuscaUI = saved
+    Database:HostGlobal()
+    eq(g_addonCategoriesCollapsed.AeonUI, nil, "ancienne clé retirée au rebranchement")
+    eq(g_addonCategoriesCollapsed.MuscaUI, MuscaUIDB, "nouvelle clé rebranchée")
 end)
 
 test("miroir CVar : découpage en tranches, refus au-delà de la capacité", function()
@@ -272,13 +288,13 @@ test("miroir CVar : découpage en tranches, refus au-delà de la capacité", fun
     NS.db.modules.automation.sellJunk = false
     truthy(Database:WriteMirror(), "écriture découpée")
     NS.db.modules.automation.sellJunk = true
-    truthy(Mock.cvars.AeonUIMirror2 ~= "", "au moins deux tranches")
-    g_addonCategoriesCollapsed.AeonUI = nil      -- chemin miroir CVar seul
+    truthy(Mock.cvars.MuscaUIMirror2 ~= "", "au moins deux tranches")
+    g_addonCategoriesCollapsed.MuscaUI = nil      -- chemin miroir CVar seul
     local restored = Database:Load(nil)
     eq(restored.profiles.Default.modules.automation.sellJunk, false, "recollé sans perte")
     -- Trop grand pour 8 x 128, même compressé : rien n'est écrit, le miroir précédent reste
     -- lisible, le joueur est prévenu une seule fois.
-    local before = Mock.cvars.AeonUIMirror1
+    local before = Mock.cvars.MuscaUIMirror1
     local noise = {}
     for i = 1, 400 do noise[i] = tostring((i * 7919) % 10007) end   -- peu compressible
     NS.global.profiles.Gros = Database.FillProfile({ theme = { font = table.concat(noise) } })
@@ -289,7 +305,7 @@ test("miroir CVar : découpage en tranches, refus au-delà de la capacité", fun
     Database.MIRROR_CHUNK, Database.MIRROR_SLOTS = chunk, slots
     eq(written, false, "trop grand : refusé")
     eq(again, false)
-    eq(Mock.cvars.AeonUIMirror1, before, "tranche 1 intacte")
+    eq(Mock.cvars.MuscaUIMirror1, before, "tranche 1 intacte")
     eq(#Mock.printed, 1, "prévenu une seule fois")
     -- Sans l'API, tout est inerte.
     local api = _G.C_CVar
@@ -330,12 +346,12 @@ end)
 test("miroir CVar : jamais écrit s'il ne pourrait pas être relu (trop grand une fois décompressé)", function()
     reset()
     NS.Database:WriteMirror()
-    local before = Mock.cvars.AeonUIMirror1
+    local before = Mock.cvars.MuscaUIMirror1
     NS.global.profiles.Enorme = NS.Database.FillProfile({ theme = { font = string.rep("x", 270000) } })
     local written = NS.Database:WriteMirror()   -- compressé, il tiendrait dans les tranches
     NS.global.profiles.Enorme = nil
     eq(written, false, "refusé")
-    eq(Mock.cvars.AeonUIMirror1, before, "miroir précédent gardé")
+    eq(Mock.cvars.MuscaUIMirror1, before, "miroir précédent gardé")
 end)
 
 test("import : une chaîne compressée de plus de 12 000 caractères reste refusée, le miroir l'accepte", function()
@@ -433,7 +449,7 @@ test("migration v6 -> v7 : réglages des modules renommés repris sous le nouvea
     eq(profile.theme.moduleMedia.radialmenu.font, "F")
 end)
 
-test("migration en échec : table rendue telle qu'avant, version gardée, erreur dans /aeon diag", function()
+test("migration en échec : table rendue telle qu'avant, version gardée, erreur dans /musca diag", function()
     local Database = NS.Database
     local db = { version = 1, theme = {}, anchors = {}, modules = {}, profiles = "abîmé" }
     Database.Migrate(db)
@@ -502,7 +518,7 @@ test("pixel : un seul Apply en file pendant le combat", function()
 end)
 
 test("Edit Mode : cacher et poser passent par les méthodes *Base, jamais par la surcharge Lua", function()
-    local frame = CreateFrame("Frame", "AeonUITestEditModeSystem", UIParent)
+    local frame = CreateFrame("Frame", "MuscaUITestEditModeSystem", UIParent)
     local calls = {}
     frame.HideBase, frame.Hide = frame.Hide, function() calls.hideOverride = true end
     frame.SetPointBase, frame.SetPoint = frame.SetPoint, function() calls.pointOverride = true end
@@ -527,7 +543,7 @@ test("Edit Mode : barre cachée par HideRegion sans hook (transparente si Update
         bar.UpdateVisibility = function(self) self:ShowBase() end
         return bar
     end
-    local stance = EditModeBar("AeonUITestStanceBar")
+    local stance = EditModeBar("MuscaUITestStanceBar")
     local updateVisibility = stance.UpdateVisibility
     NS.HideRegion(stance)
     eq(stance:IsShown(), false)
@@ -540,7 +556,7 @@ test("Edit Mode : barre cachée par HideRegion sans hook (transparente si Update
 end)
 
 test("HideRegion : un bouton réaffiché par SetShown(true) est recaché", function()
-    local button = CreateFrame("Button", "AeonUITestLandingButton", UIParent)
+    local button = CreateFrame("Button", "MuscaUITestLandingButton", UIParent)
     NS.HideRegion(button)
     button:SetShown(true)
     eq(button:IsShown(), false)
@@ -628,24 +644,24 @@ test("lueur commune : quatre styles, un pilote pour les animées, pièces réuti
     Glow.Show(frame, "pixel")
     eq(Glow.Current(frame), "pixel")
     truthy(Glow.animated[frame], "animée")
-    local line = frame.aeonGlowParts.pixel[1]
+    local line = frame.muscaGlowParts.pixel[1]
     local before = line.points[1][4]
     Mock.Advance(0.5)
     truthy(line.points[1][4] ~= before, "trait déplacé par le pilote")
     Glow.Show(frame, "classic", { r = 1, g = 0, b = 0 })
     eq(line:IsShown(), false, "style changé : traits cachés")
     eq(Glow.animated[frame], nil, "hors du pilote")
-    local back = frame.aeonGlowParts.classic[1]
+    local back = frame.muscaGlowParts.classic[1]
     truthy(back.pulse:IsPlaying(), "halo pulsé")
     eq(back.color[1], 1)
     Glow.Show(frame, "inconnu")
     eq(Glow.Current(frame), "pixel", "style inconnu : pixel")
-    eq(frame.aeonGlowParts.pixel[1], line, "pièces réutilisées")
+    eq(frame.muscaGlowParts.pixel[1], line, "pièces réutilisées")
     Glow.Hide(frame)
     eq(Glow.Current(frame), nil)
     eq(next(Glow.animated), nil, "pilote coupé")
     Glow.Show(frame, "button")
-    eq(frame.aeonGlowParts.button[1].blendMode, "ADD")
+    eq(frame.muscaGlowParts.button[1].blendMode, "ADD")
     Glow.Hide(frame)
 end)
 
@@ -653,17 +669,17 @@ test("thème : textures maison, exception par module, préréglages d'accent, mo
     reset()
     local Media, theme = NS.Media, NS.db.theme
     theme.statusbar = "aeon:gloss"
-    eq(Media:StatusBarTexture(), "Interface\\AddOns\\AeonUI\\Media\\Bars\\Gloss", "texture maison sans LibSharedMedia")
+    eq(Media:StatusBarTexture(), "Interface\\AddOns\\MuscaUI\\Media\\Bars\\Gloss", "texture maison sans LibSharedMedia")
     theme.moduleMedia.resourcebars = { statusbar = "aeon:stripes", font = "Fonts\\ARIALN.TTF" }
-    eq(Media:StatusBarTexture("resourcebars"), "Interface\\AddOns\\AeonUI\\Media\\Bars\\Stripes", "exception du module")
-    eq(Media:StatusBarTexture("unitframes"), "Interface\\AddOns\\AeonUI\\Media\\Bars\\Gloss", "autre module : thème")
+    eq(Media:StatusBarTexture("resourcebars"), "Interface\\AddOns\\MuscaUI\\Media\\Bars\\Stripes", "exception du module")
+    eq(Media:StatusBarTexture("unitframes"), "Interface\\AddOns\\MuscaUI\\Media\\Bars\\Gloss", "autre module : thème")
     local bar = NS.Modules:Within("resourcebars", function() return Media:CreateStatusBar(UIParent) end)
     local text = NS.Modules:Within("resourcebars", function() return Media:CreateText(UIParent) end)
-    eq(bar.barTexture, "Interface\\AddOns\\AeonUI\\Media\\Bars\\Stripes", "barre créée au nom du module")
+    eq(bar.barTexture, "Interface\\AddOns\\MuscaUI\\Media\\Bars\\Stripes", "barre créée au nom du module")
     eq(text:GetFont(), "Fonts\\ARIALN.TTF", "police du module")
     theme.moduleMedia.resourcebars = nil
     NS:Fire("THEME_CHANGED")
-    eq(bar.barTexture, "Interface\\AddOns\\AeonUI\\Media\\Bars\\Gloss", "exception retirée : thème repris")
+    eq(bar.barTexture, "Interface\\AddOns\\MuscaUI\\Media\\Bars\\Gloss", "exception retirée : thème repris")
     local choices = Media:StatusBarChoices("Plate")
     eq(choices[1].value, "")
     eq(choices[2].value, "aeon:smooth")

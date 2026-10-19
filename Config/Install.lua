@@ -1,10 +1,10 @@
 -- Config/Install.lua
 -- Installation en un clic : trois profils de base (Dégâts, Soigneur, Tank), chacun = interface
--- AeonUI complète + disposition ergonomique du rôle. Les préréglages complete/light restent
--- accessibles par /aeon install complete|light [rôle] sur le profil actif. Profils de classe
+-- MuscaUI complète + disposition ergonomique du rôle. Les préréglages complete/light restent
+-- accessibles par /musca install complete|light [rôle] sur le profil actif. Profils de classe
 -- (Install.CLASSES) : un par style jouable de la classe du joueur, rôle de base + style + classe,
--- par l'assistant ou /aeon install class <style>. Tout passe par la base
--- de réglages et les movers : rien d'irréversible, /aeon reset rend les défauts.
+-- par l'assistant ou /musca install class <style>. Tout passe par la base
+-- de réglages et les movers : rien d'irréversible, /musca reset rend les défauts.
 local _, NS = ...
 local L = NS.L
 
@@ -193,7 +193,7 @@ Install.CLASSES = {
 
 -- HUD de classe Musca-Auras (pack « <Classe> (Musca) » importé) : colonne centrée sous le personnage,
 -- 334 de large, de y -30 à -400 environ. Le HUD dessine déjà ressource, coups blancs et incantation :
--- les barres AeonUI de la colonne se coupent, la barre d'incantation rentre sous le cadre du joueur.
+-- les barres MuscaUI de la colonne se coupent, la barre d'incantation rentre sous le cadre du joueur.
 -- Joueur et cible à 300 du centre, familier et cible de la cible dessous, barre de familier à gauche,
 -- groupe et raid à gauche, tanks et assistants principaux sous la grille de raid.
 -- Posé après le rôle, le style et la classe : il gagne sur leurs ancrages de la colonne centrale.
@@ -252,7 +252,7 @@ paintFrame:SetScript("OnUpdate", function(self)
     if #paintQueue == 0 then self:Hide() end
 end)
 
---- Bordure des icônes du HUD Musca à la couleur d'accent AeonUI. Seules les bordures noires du
+--- Bordure des icônes du HUD Musca à la couleur d'accent MuscaUI. Seules les bordures noires du
 -- pack et celles à l'accent du repeint précédent changent : une couleur choisie à la main dans
 -- WeakAuras est gardée. Seules les icônes dont la couleur change sont rechargées : le repeint qui
 -- suit chaque WeakAuras.Add (réimport du pack) s'arrête donc au second passage.
@@ -288,6 +288,21 @@ function Install.PaintHud()
     NS.global.hudBorder = store
 end
 
+-- Import lancé par l'assistant : le HUD se place dès que le pack est importé (le joueur confirme
+-- dans la fenêtre de Musca), sans second clic. Seul l'Add de la racine du HUD vaut confirmation.
+-- Musca ne signale pas une annulation : l'attente cesse à la fermeture de l'assistant, sinon
+-- le réglage d'une aura du HUD (Add de la racine) le placerait plus tard.
+local hudPending, hudConfirmed = false, false
+function Install.ForgetHudImport() hudPending, hudConfirmed = false, false end
+function Install.ImportHud()
+    local import = _G.WeakAuras and _G.WeakAuras.ImportClassPack
+    if not import then return false end
+    hudPending = true
+    if import() then return true end
+    hudPending = false
+    return false
+end
+
 -- THEME_CHANGED arrive à chaque image pendant le glisser de la roue de couleur : un seul repeint
 -- par tranche de 0,2 s. Tant que WeakAuras n'a pas fini sa connexion, le repeint attend.
 local paintQueued = false
@@ -298,17 +313,33 @@ local function QueuePaint()
         paintQueued = false
         local weakAuras = _G.WeakAuras
         if weakAuras and weakAuras.IsLoginFinished and not weakAuras.IsLoginFinished() then return QueuePaint() end
-        NS:RunOutOfCombat(Install.PaintHud)
+        NS:RunOutOfCombat(function()
+            if hudConfirmed and Install.HasMuscaHud() then
+                hudPending, hudConfirmed = false, false
+                Install.ApplyHud()   -- repeint compris
+                NS.Modules:RefreshAll()   -- barre d'incantation rattachée au cadre du joueur
+                NS:Fire("HUD_PLACED")
+                NS.Print(L.SETUP_HUD_PLACED)
+            else
+                Install.PaintHud()
+            end
+        end)
     end)
 end
 -- Un réimport du pack (assistant ou bouton Class Pack de Musca) rend les bordures noires :
 -- chaque WeakAuras.Add relance un repeint.
-local addHooked = false
+local function OnAdd(data)
+    if hudPending and type(data) == "table" and data.id ~= nil and data.id == select(3, MuscaHud()) then
+        hudConfirmed = true
+    end
+    QueuePaint()
+end
+local hookedWeakAuras
 NS:On("LOGIN", function()
     local weakAuras = _G.WeakAuras
-    if not addHooked and weakAuras and type(weakAuras.Add) == "function" then
-        hooksecurefunc(weakAuras, "Add", QueuePaint)
-        addHooked = true
+    if hookedWeakAuras ~= weakAuras and weakAuras and type(weakAuras.Add) == "function" then
+        hooksecurefunc(weakAuras, "Add", OnAdd)
+        hookedWeakAuras = weakAuras
     end
     QueuePaint()
 end)
@@ -381,9 +412,9 @@ function Install:ApplyPreset(presetName, role, extra, label)
         for _, entry in ipairs(NS.FirstRun.RECOMMENDED_CVARS) do NS.CVars:Set(entry.name, entry.value) end
     end
     if preset.editMode and NS.PRESET_LAYOUTS and NS.PRESET_LAYOUTS.editMode ~= "" then
-        pcall(NS.ImportEditModeLayout, NS.PRESET_LAYOUTS.editMode, "AeonUI")
+        pcall(NS.ImportEditModeLayout, NS.PRESET_LAYOUTS.editMode, "MuscaUI")
     end
-    -- Chat remis à zéro seulement si le module chat AeonUI tourne (pas cédé à un autre addon de chat).
+    -- Chat remis à zéro seulement si le module chat MuscaUI tourne (pas cédé à un autre addon de chat).
     if preset.addons and NS.AddonPlacements then
         local chat = NS.Modules:Get("chat")
         NS.AddonPlacements:ApplyAll(chat and chat.enabled and not NS.Modules:IsYielded("chat"))
@@ -399,7 +430,7 @@ end
 -- Styles (page Style de l'assistant)
 --------------------------------------------------------------------------------
 
--- Modules qui remplacent un cadre Blizzard : style AeonUI = module actif (cadre Blizzard caché),
+-- Modules qui remplacent un cadre Blizzard : style MuscaUI = module actif (cadre Blizzard caché),
 -- style Blizzard = module coupé, cadre d'origine rendu.
 Install.STYLE_MODULES = { "unitframes", "groupframes", "nameplateframes", "actionbars", "minimap", "bags", "chat",
                           "databars", "questtracker" }

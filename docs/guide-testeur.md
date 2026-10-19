@@ -1,16 +1,16 @@
-# AeonUI 1.0.0 — guide du testeur
+# MuscaUI 1.0.0 — guide du testeur
 
-Merci de tester AeonUI. Ce guide tient en une page : installer, choisir un profil, vérifier
+Merci de tester MuscaUI. Ce guide tient en une page : installer, choisir un profil, vérifier
 quelques points, et signaler ce qui cloche. Aucune connaissance d'addon n'est nécessaire.
 
 ## 1. Installer
 
 1. Ferme le jeu.
-2. Décompresse `AeonUI-1.0.0.zip`.
-3. Copie le dossier `AeonUI` et tous les dossiers `AeonUI_*` dans le dossier des addons de ton client Forever :
+2. Décompresse `MuscaUI-1.0.0.zip`.
+3. Copie le dossier `MuscaUI` et tous les dossiers `MuscaUI_*` dans le dossier des addons de ton client Forever :
    `World of Warcraft/_classic_beta_/Interface/AddOns/`.
-   Chaque dossier garde son nom exact (`AeonUI` contient `AeonUI.toc`, `AeonUI_Bags` contient `AeonUI_Bags.toc`…).
-4. Lance le jeu. Sur l'écran des personnages, bouton **AddOns** : AeonUI et ses parties (Sacs, Barres d'action,
+   Chaque dossier garde son nom exact (`MuscaUI` contient `MuscaUI.toc`, `MuscaUI_Bags` contient `MuscaUI_Bags.toc`…).
+4. Lance le jeu. Sur l'écran des personnages, bouton **AddOns** : MuscaUI et ses parties (Sacs, Barres d'action,
    Cadres d'unité, Cadres de groupe, Barres de nom, Chat, Minicarte, Suivi de quêtes) doivent être cochés.
    Décoche une partie pour la remplacer par un autre addon (par exemple Sacs pour Bagnator).
 5. Active l'affichage des erreurs, une seule fois, dans le chat :
@@ -18,7 +18,7 @@ quelques points, et signaler ce qui cloche. Aucune connaissance d'addon n'est n�
    /console scriptErrors 1
    ```
 
-Si tu as un autre addon d'interface (barres, chat, minicarte, cadres) : AeonUI lui laisse la place
+Si tu as un autre addon d'interface (barres, chat, minicarte, cadres) : MuscaUI lui laisse la place
 (les modules concernés restent éteints). Pour un test complet, désactive ces addons.
 
 ## 2. Choisir un profil
@@ -26,7 +26,7 @@ Si tu as un autre addon d'interface (barres, chat, minicarte, cadres) : AeonUI l
 À la première connexion, la fenêtre d'installation s'ouvre seule. Sinon :
 
 ```
-/aeon setup
+/musca setup
 ```
 
 Page **Installation rapide** : trois boutons, un par rôle, et un bouton Léger.
@@ -39,13 +39,13 @@ Page **Installation rapide** : trois boutons, un par rôle, et un bouton Léger.
 | Léger : modules de confort seulement | Cadres Blizzard conservés ; barre du haut, automatisation, rappels, alertes |
 
 Clique sur ton rôle, puis tape `/reload`. Tu peux changer de profil à tout moment avec
-`/aeon setup` ou `/aeon install dps|heal|tank`.
+`/musca setup` ou `/musca install dps|heal|tank`.
 
 ## 3. Déplacer un cadre
 
 ```
-/aeon unlock     puis glisse les calques colorés, puis
-/aeon lock
+/musca unlock     puis glisse les calques colorés, puis
+/musca lock
 ```
 
 Après `/reload`, les positions doivent être conservées.
@@ -53,7 +53,7 @@ Après `/reload`, les positions doivent être conservées.
 ## 4. Régler
 
 ```
-/aeon
+/musca
 ```
 
 Ouvre les options. Colonne de gauche : une page par module, classées par ordre alphabétique.
@@ -74,13 +74,13 @@ Coche chaque ligne, note ce qui ne va pas.
 
 **En combat (un ou deux monstres)**
 - [ ] Aucune erreur Lua pendant ni après le combat.
-- [ ] Plaques de nom AeonUI : rouge quand le monstre t'attaque ; nom seul sur les alliés.
+- [ ] Plaques de nom MuscaUI : rouge quand le monstre t'attaque ; nom seul sur les alliés.
 - [ ] Barre d'incantation du monstre visible sur sa plaque et sur le cadre de cible.
 - [ ] Ta barre d'incantation apparaît sous les recharges (Dégâts, Tank) ou sous ton cadre (Soigneur).
 - [ ] Pendant le combat, aucun message « Échec d'une action d'interface ».
 
 **En groupe ou en raid**
-- [ ] Cadres de groupe AeonUI à gauche, cadres Blizzard cachés.
+- [ ] Cadres de groupe MuscaUI à gauche, cadres Blizzard cachés.
 - [ ] Un membre trop loin est grisé ; un membre avec un débuff que ta classe dissipe a une bordure colorée.
 - [ ] En raid : grille par groupes de 5 ; clic gauche cible le membre.
 - [ ] Nom long tronqué à 8 caractères (réglable dans les options).
@@ -96,7 +96,7 @@ Coche chaque ligne, note ce qui ne va pas.
 - [ ] Options > Profils : Exporter remplit la zone de texte, Ctrl-C fonctionne ; la zone défile à la molette.
 
 **Barres, infobulles, absence, boss**
-- [ ] `/aeon kb`, survoler un bouton, appuyer sur une touche : la touche lance ce bouton. Échap pour fermer.
+- [ ] `/musca kb`, survoler un bouton, appuyer sur une touche : la touche lance ce bouton. Échap pour fermer.
 - [ ] Options > Barres d'action, « Visible seulement au survol » sur une barre : elle n'apparaît qu'au survol.
 - [ ] Options > Interface épurée, « Chiffres de recharge » : les secondes s'affichent sur les recharges.
 - [ ] Survol d'un joueur : sa cible et son rang de guilde dans l'infobulle.
@@ -104,8 +104,8 @@ Coche chaque ligne, note ce qui ne va pas.
 - [ ] En donjon, face à un boss : cadres de boss à droite de l'écran.
 
 **Recherche, déplacement précis, profil au groupe**
-- [ ] Options > AeonUI : tape « butin » dans la recherche en haut. Clique le résultat : la page Butin s'ouvre.
-- [ ] `/aeon unlock`, clique un cadre : une case X / Y apparaît en haut. Tourne la molette sur le cadre : il bouge de 1 px. Tape 0 et 0 puis Entrée : il se centre sur son point.
+- [ ] Options > MuscaUI : tape « butin » dans la recherche en haut. Clique le résultat : la page Butin s'ouvre.
+- [ ] `/musca unlock`, clique un cadre : une case X / Y apparaît en haut. Tourne la molette sur le cadre : il bouge de 1 px. Tape 0 et 0 puis Entrée : il se centre sur son point.
 - [ ] En groupe avec un autre testeur : Options > Profils, « Envoyer ce profil à mon groupe ». L'autre reçoit une question ; « Oui » prend ton profil. Dis-nous combien de temps l'envoi a pris.
 
 **Sacs**
@@ -149,8 +149,8 @@ Coche chaque ligne, note ce qui ne va pas.
 - [ ] Options > Cadres d'unité, « Liste noire » : un identifiant de sort y disparaît des cadres, des plaques et du co-tank.
 
 **Valeurs secrètes et recharges**
-- [ ] `/aeon diag` : copier la ligne « Midnight » dans ton signalement (elle dit ce que ton client permet).
-- [ ] Options > Interface épurée, « Texte de recharge coloré » : sur les barres AeonUI, secondes en jaune, dernières secondes en rouge avec une décimale.
+- [ ] `/musca diag` : copier la ligne « Midnight » dans ton signalement (elle dit ce que ton client permet).
+- [ ] Options > Interface épurée, « Texte de recharge coloré » : sur les barres MuscaUI, secondes en jaune, dernières secondes en rouge avec une décimale.
 - [ ] Options > Cadres d'unité, « Couleur de vie du rouge au vert » : la barre change de couleur en perdant de la vie, même en combat.
 - [ ] En groupe, un membre qui s'éloigne est grisé, y compris en combat.
 
@@ -163,28 +163,28 @@ Pour chaque problème, envoie :
 3. **Le texte de l'erreur** s'il y en a une : dans la fenêtre d'erreur, Ctrl-A puis Ctrl-C.
 4. Le résultat de cette commande, copié depuis le chat (bouton `[c]` au survol de la fenêtre) :
    ```
-   /aeon diag
+   /musca diag
    ```
 5. Ta classe, ton niveau, et si tu étais seul, en groupe ou en raid.
 
 ## 7. Tout remettre comme avant
 
 ```
-/aeon uninstall
+/musca uninstall
 ```
 
-Rend tous les réglages Blizzard et coupe AeonUI. Puis `/reload`. Pour repartir de zéro sur le
-profil actuel sans désinstaller : `/aeon reset`.
+Rend tous les réglages Blizzard et coupe MuscaUI. Puis `/reload`. Pour repartir de zéro sur le
+profil actuel sans désinstaller : `/musca reset`.
 
 ## Commandes utiles
 
 ```
-/aeon             options
-/aeon setup       installation rapide (profils Dégâts, Soigneur, Tank)
-/aeon unlock      déplacer les cadres        /aeon lock   figer
-/aeon kb          lier des touches aux boutons en les survolant
-/aeon status      profil actif et état des modules
-/aeon diag        infos à joindre à un signalement
-/aeon reset       remettre le profil actuel par défaut
-/aeon uninstall   tout rendre à Blizzard
+/musca             options
+/musca setup       installation rapide (profils Dégâts, Soigneur, Tank)
+/musca unlock      déplacer les cadres        /musca lock   figer
+/musca kb          lier des touches aux boutons en les survolant
+/musca status      profil actif et état des modules
+/musca diag        infos à joindre à un signalement
+/musca reset       remettre le profil actuel par défaut
+/musca uninstall   tout rendre à Blizzard
 ```

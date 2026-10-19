@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: |cff3fa9f5Musca|rUI Nameplates
+## Title-frFR: |cff3fa9f5Musca|rUI Barres de nom
+## Notes: MuscaUI nameplates. Disable to use another nameplate addon.
+## Notes-frFR: Barres de nom MuscaUI. À désactiver pour utiliser un autre addon de barres de nom.
+## Version: @project-version@
+## Dependencies: MuscaUI
+## Group: MuscaUI
+## IconTexture: Interface\AddOns\MuscaUI\Media\Logo
+## Category: User Interface
+## Category-frFR: Interface utilisateur
+## X-License: All Rights Reserved
+
+Nameplates.lua
+NamePlateFrames.lua

@@ -6,22 +6,22 @@ test("cadres Blizzard : viewers et buffs adoptés par des movers, laissés à Ed
     reset()
     NS.Modules:SetEnabled("blizzardframes", true)
     local point, relTo = EssentialCooldownViewer:GetPoint()
-    eq(point, "CENTER"); eq(relTo, AeonUI_Holder_cdm_essential)
+    eq(point, "CENTER"); eq(relTo, MuscaUI_Holder_cdm_essential)
     eq(EssentialCooldownViewer:GetParent(), UIParent, "jamais reparenté")
     local bpoint, brel = BuffFrame:GetPoint()
-    eq(bpoint, "TOPRIGHT"); eq(brel, AeonUI_Holder_buffs)
+    eq(bpoint, "TOPRIGHT"); eq(brel, MuscaUI_Holder_buffs)
     truthy(NS.Movers:Anchor("cdm_buffbar") and NS.Movers:Anchor("debuffs"))
     EssentialCooldownViewer:ClearAllPoints()
     EssentialCooldownViewer:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 0)
     local _, again = EssentialCooldownViewer:GetPoint()
-    eq(again, AeonUI_Holder_cdm_essential, "Edit Mode le replace : le hook reprend la main")
+    eq(again, MuscaUI_Holder_cdm_essential, "Edit Mode le replace : le hook reprend la main")
     NS.db.modules.blizzardframes.buffs = "keep"
     NS.Modules:Refresh("blizzardframes")
-    eq(AeonUI_Holder_buffs:IsShown(), false)
+    eq(MuscaUI_Holder_buffs:IsShown(), false)
     eq(NS.Movers:List()[1] ~= nil, true)
     NS.db.modules.blizzardframes.buffs = "move"
     NS.Modules:SetEnabled("blizzardframes", false)
-    eq(AeonUI_Holder_cdm_essential:IsShown(), false)
+    eq(MuscaUI_Holder_cdm_essential:IsShown(), false)
     eq(NS.Modules:Get("blizzardframes").reloadOnDisable, true, "les options proposent /reload à la coupure")
 end)
 
@@ -83,19 +83,19 @@ test("gestionnaire de recharges : habillage par barre, bordure, compteurs, barre
     skin.buffbar.showName = false
     NS.Modules:SetEnabled("cooldownmanager", true)
     Mock.Advance(0.1)
-    truthy(icon.aeonBorder, "bordure posée")
+    truthy(icon.muscaBorder, "bordure posée")
     eq(icon.ChargeCount.Current.fontSize, 18, "compteur à la taille choisie")
     eq(barItem.Bar.barColor[3], skin.buffbar.barColor.b, "couleur de barre du thème")
     eq(barItem.Bar.BarBG:GetAlpha(), 0, "fond Blizzard effacé")
     eq(barItem.Bar.Name:GetAlpha(), 0, "nom masqué")
     eq(barItem.Bar.Duration:GetAlpha(), 1, "durée gardée")
-    truthy(barItem.Icon.aeonBorder, "bordure sur l'icône de la barre")
+    truthy(barItem.Icon.muscaBorder, "bordure sur l'icône de la barre")
     NS.Modules:SetEnabled("cooldownmanager", false)
     eq(icon.ChargeCount.Current.fontSize, 14, "police Blizzard rendue")
     eq(barItem.Bar.barColor[2], 0.5, "couleur Blizzard rendue")
     eq(barItem.Bar.Name:GetAlpha(), 1)
     local shown = false
-    for _, edge in pairs(icon.aeonBorder) do shown = shown or edge:IsShown() end
+    for _, edge in pairs(icon.muscaBorder) do shown = shown or edge:IsShown() end
     eq(shown, false, "bordure cachée")
     skin.essential.fontSize, skin.buffbar.showName = 0, true
     essential.itemFramePool, buffbar.itemFramePool = nil, nil
@@ -110,7 +110,7 @@ test("barres de recharges personnalisées : sorts connus dans l'ordre, grisés e
     local cfg = NS.db.modules.cooldownbars.bars.bar1
     cfg.spells = "2139, 122, 1953"
     NS.Modules:SetEnabled("cooldownbars", true)
-    local holder = _G.AeonUICooldownBar1
+    local holder = _G.MuscaUICooldownBar1
     truthy(holder:IsShown())
     local first, second = holder:GetChildren()
     eq(select(4, second:GetPoint(1)), cfg.size + cfg.spacing, "Nova inconnue écartée : Transfert en second")
@@ -131,7 +131,7 @@ test("barres de recharges personnalisées : sorts connus dans l'ordre, grisés e
     NS.Modules:Refresh("cooldownbars")
     eq(first.texture.desaturatedTexture, true, "prêts masqués : Transfert seul, en tête")
     eq(second:IsShown(), false)
-    eq(_G.AeonUICooldownBar2:IsShown(), false, "barre 2 coupée par défaut")
+    eq(_G.MuscaUICooldownBar2:IsShown(), false, "barre 2 coupée par défaut")
     NS.Modules:SetEnabled("cooldownbars", false)
     eq(holder:IsShown(), false)
     cfg.spells, cfg.hideReady = "", false

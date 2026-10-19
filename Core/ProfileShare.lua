@@ -8,7 +8,7 @@ local L = NS.L
 local ProfileShare = {}
 NS.ProfileShare = ProfileShare
 
-local PREFIX = "AeonUI"
+local PREFIX = "MuscaUI"
 local CHUNK = 240                 -- 255 octets par message, en-tête compris
 local SEND_INTERVAL = 0.25
 local MAX_CHUNKS = 400            -- ~96 Ko : au-delà, envoi ignoré
@@ -84,7 +84,7 @@ function ProfileShare:Send()
     return true
 end
 
-StaticPopupDialogs["AEONUI_PROFILE_RECEIVED"] = {
+StaticPopupDialogs["MUSCAUI_PROFILE_RECEIVED"] = {
     text = "",
     button1 = YES,
     button2 = NO,
@@ -133,8 +133,8 @@ function ProfileShare.Receive(text, sender)
     local profile = table.concat(entry.parts)
     -- Préfixe seulement : la décompression attend l'accord du joueur (voir Database.Export).
     if not NS.Database.IsProfileString(profile) then return end
-    StaticPopupDialogs.AEONUI_PROFILE_RECEIVED.text = string.format(L.MSG_PROFILE_RECEIVED, sender)
-    StaticPopup_Show("AEONUI_PROFILE_RECEIVED", nil, nil, profile)
+    StaticPopupDialogs.MUSCAUI_PROFILE_RECEIVED.text = string.format(L.MSG_PROFILE_RECEIVED, sender)
+    StaticPopup_Show("MUSCAUI_PROFILE_RECEIVED", nil, nil, profile)
 end
 
 local events = CreateFrame("Frame")

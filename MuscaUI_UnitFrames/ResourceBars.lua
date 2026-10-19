@@ -1,4 +1,4 @@
--- AeonUI_UnitFrames/ResourceBars.lua
+-- MuscaUI_UnitFrames/ResourceBars.lua
 -- Barres de ressources du joueur, détachées des cadres d'unité et placées où l'on veut :
 --   * vie (désactivée par défaut) ;
 --   * puissance principale (mana, rage, énergie), couleur de Blizzard ;
@@ -6,7 +6,7 @@
 --   * mana en forme de druide (ours, félin : la puissance affichée n'est plus le mana).
 -- Chaque barre a son mover : ancrable sous le cadre du joueur, largeur reprise, etc.
 -- Valeurs secrètes (moteur 12.x) : passées telles quelles à SetValue / SetText, jamais comparées.
-local NS = AeonUI
+local NS = MuscaUI
 local L = NS.L
 local Media = NS.Media
 local Elements = NS.UnitFrameElements
@@ -65,7 +65,7 @@ local function ManaType() return Enum and Enum.PowerType and Enum.PowerType.Mana
 
 local function Build()
     for _, spec in ipairs(BARS) do
-        local holder = CreateFrame("Frame", "AeonUIResource_" .. spec.key, UIParent)
+        local holder = CreateFrame("Frame", "MuscaUIResource_" .. spec.key, UIParent)
         Media:CreateBackdrop(holder)
         local bar = Media:CreateStatusBar(holder)
         bar:SetAllPoints(holder)

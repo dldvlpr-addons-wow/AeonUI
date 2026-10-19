@@ -1,5 +1,5 @@
 -- Modules/DataBars.lua
--- Barres de données AeonUI : expérience (avec repos) et réputation suivie. Deux barres
+-- Barres de données MuscaUI : expérience (avec repos) et réputation suivie. Deux barres
 -- déplaçables, texte réglable, infobulle au survol. Les barres Blizzard sont cachées sans
 -- reparentage (Edit Mode). Valeurs passées telles quelles aux widgets (jamais comparées si secrètes).
 local _, NS = ...
@@ -78,7 +78,7 @@ end
 --------------------------------------------------------------------------------
 
 local function Create(key)
-    local frame = CreateFrame("Frame", "AeonUI_DataBar_" .. key, UIParent)
+    local frame = CreateFrame("Frame", "MuscaUI_DataBar_" .. key, UIParent)
     frame.key = key
     frame:SetFrameStrata("LOW")
     frame:EnableMouse(true)

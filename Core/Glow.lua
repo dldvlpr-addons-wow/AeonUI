@@ -40,8 +40,8 @@ local function Pulse(texture)
 end
 
 local function Parts(frame, style)
-    frame.aeonGlowParts = frame.aeonGlowParts or {}
-    local parts = frame.aeonGlowParts[style]
+    frame.muscaGlowParts = frame.muscaGlowParts or {}
+    local parts = frame.muscaGlowParts[style]
     if parts then return parts end
     parts = {}
     if style == "pixel" then
@@ -76,7 +76,7 @@ local function Parts(frame, style)
         parts[1] = back
     end
     for _, part in ipairs(parts) do part:Hide() end
-    frame.aeonGlowParts[style] = parts
+    frame.muscaGlowParts[style] = parts
     return parts
 end
 
@@ -114,7 +114,7 @@ local function Animate(frame, style, now)
     width, height = width + 2 * offset, height + 2 * offset
     local perimeter = 2 * (width + height)
     local length, thickness = sizes.length, sizes.thickness
-    for _, part in ipairs(frame.aeonGlowParts[style]) do
+    for _, part in ipairs(frame.muscaGlowParts[style]) do
         local p = ((now / part.period + part.phase) % 1) * perimeter
         local x, y, horizontal = Glow.PerimeterPoint(p, width, height)
         part:ClearAllPoints()
@@ -149,7 +149,7 @@ end
 -- pâle ; halo « button » : couleurs de la texture). Rappel avec le même style : couleur seule.
 function Glow.Show(frame, style, color)
     if not KNOWN[style] then style = "pixel" end
-    if frame.aeonGlow and frame.aeonGlow ~= style then Glow.Hide(frame) end
+    if frame.muscaGlow and frame.muscaGlow ~= style then Glow.Hide(frame) end
     local parts = Parts(frame, style)
     for _, part in ipairs(parts) do
         if style == "button" and not part.solid then
@@ -159,8 +159,8 @@ function Glow.Show(frame, style, color)
             NS.SetSolidColor(part, c.r, c.g, c.b, c.a or 1)
         end
     end
-    if frame.aeonGlow == style then return end
-    frame.aeonGlow = style
+    if frame.muscaGlow == style then return end
+    frame.muscaGlow = style
     if style == "button" then
         -- ponytail: halo calé sur la taille à l'allumage ; suivre OnSizeChanged si un cadre lueur change de taille.
         local spread = (frame:GetWidth() or 0) * BUTTON_SPREAD
@@ -180,10 +180,10 @@ function Glow.Show(frame, style, color)
 end
 
 function Glow.Hide(frame)
-    local style = frame.aeonGlow
+    local style = frame.muscaGlow
     if not style then return end
-    frame.aeonGlow = nil
-    for _, part in ipairs(frame.aeonGlowParts[style]) do
+    frame.muscaGlow = nil
+    for _, part in ipairs(frame.muscaGlowParts[style]) do
         part:Hide()
         if part.pulse then part.pulse:Stop() end
     end
@@ -196,7 +196,7 @@ function Glow.Set(frame, on, style, color)
 end
 
 --- Style affiché sur `frame`, ou nil.
-function Glow.Current(frame) return frame.aeonGlow end
+function Glow.Current(frame) return frame.muscaGlow end
 
 --- Choix pour une liste déroulante d'options.
 function Glow.Choices()

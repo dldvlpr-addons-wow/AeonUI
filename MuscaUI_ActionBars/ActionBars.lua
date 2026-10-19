@@ -1,7 +1,7 @@
--- AeonUI_ActionBars/ActionBars.lua
--- Barres d'action AeonUI : six barres de boutons Blizzard (ActionBarButtonTemplate : icône,
+-- MuscaUI_ActionBars/ActionBars.lua
+-- Barres d'action MuscaUI : six barres de boutons Blizzard (ActionBarButtonTemplate : icône,
 -- recharge, compteur, portée, raccourci et glisser-déposer dessinés par le code Blizzard, donc
--- sûrs face aux valeurs secrètes) posés sur des barres AeonUI protégées (SecureFrameTemplate).
+-- sûrs face aux valeurs secrètes) posés sur des barres MuscaUI protégées (SecureFrameTemplate).
 --
 -- Pagination sans gestionnaire d'état (_onstate-*) : un pilote d'attribut par bouton de la barre 1
 -- (RegisterAttributeDriver "actionpage", formes, furtivité, pages 2-6), relu par le code
@@ -9,7 +9,7 @@
 -- touches Blizzard (ACTIONBUTTONn, MULTIACTIONBARnBUTTONn). Les barres Blizzard remplacées
 -- sont cachées et coupées de leurs événements (jamais reparentées : gérées par Edit Mode).
 -- Seuls snippets restreints : la prise et la pose par glisser-déposer (WrapScript, voir dragHeader).
-local NS = AeonUI
+local NS = MuscaUI
 local L = NS.L
 local Movers = NS.Movers
 
@@ -41,8 +41,8 @@ local ActionBars = NS.Modules:Register("actionbars", {
         macroNames = true,        -- nom de la macro sur les boutons
         linkedMouseover = false,  -- survoler une barre « au survol » révèle toutes les autres
         iconStyle = "blizzard",   -- "blizzard" : rendu d'origine ; "aeon" : icône recadrée, bordure fine, fond
-        iconZoom = 0.08,          -- recadrage de l'icône en style AeonUI (part de chaque bord)
-        classBorder = false,      -- bordure à la couleur de classe (style AeonUI)
+        iconZoom = 0.08,          -- recadrage de l'icône en style MuscaUI (part de chaque bord)
+        classBorder = false,      -- bordure à la couleur de classe (style MuscaUI)
         cooldownDesaturate = true, -- icône grisée pendant une recharge (hors recharge globale)
         cooldownColor = { r = 0, g = 0, b = 0 },   -- couleur du voile de recharge
         procGlow = "blizzard",    -- lueur d'un sort en surbrillance : "blizzard" ou un style de NS.Glow
@@ -108,6 +108,8 @@ local BUTTON_EVENTS = {
     "ACTION_RANGE_CHECK_UPDATE", "ACTION_USABLE_CHANGED",
     -- Clignotement de l'attaque auto et du tir automatique (StartFlash / StopFlash du modèle).
     "PLAYER_ENTER_COMBAT", "PLAYER_LEAVE_COMBAT", "START_AUTOREPEAT_SPELL", "STOP_AUTOREPEAT_SPELL",
+    -- État coché d'une monture ou d'un sort de véhicule (UpdateState du modèle).
+    "COMPANION_UPDATE",
 }
 -- Événements après lesquels recharge et proc sont relus (ActionBars.UpdateButtonExtras).
 local EXTRAS_EVENTS = {
@@ -118,7 +120,7 @@ local EXTRAS_EVENTS = {
 local BUTTON_UNIT_EVENTS = {
     "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_CHANNEL_STOP",
     "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_SENT",
-    "UNIT_INVENTORY_CHANGED", "UNIT_AURA",
+    "UNIT_INVENTORY_CHANGED", "UNIT_AURA", "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE",
 }
 
 --- Recharge d'un bouton sans jamais comparer ni transmettre une valeur secrète à SetCooldown.
@@ -225,32 +227,32 @@ end
 -- son OnLoad ; un diffuseur Blizzard qui le lit est tainté de toute façon.
 local function SecretSafeCooldown(button)
     local cooldown = button.cooldown
-    if not cooldown or button.aeonShadowSetCooldown then return end
+    if not cooldown or button.muscaShadowSetCooldown then return end
     local original = cooldown.SetCooldown
-    button.aeonShadowSetCooldown = function(self, start, duration, modRate)
+    button.muscaShadowSetCooldown = function(self, start, duration, modRate)
         if issecretvalue and (issecretvalue(start) or issecretvalue(duration) or issecretvalue(modRate)) then
             ActionBars.PaintCooldown(button)
         else
             original(self, start, duration, modRate)
         end
     end
-    cooldown.SetCooldown = button.aeonShadowSetCooldown
+    cooldown.SetCooldown = button.muscaShadowSetCooldown
 end
 
 --- Pendant notre dispatch : UpdateCooldown du mixin remplacé par notre peinture.
 local function ShadowCooldown(button)
     if not button.cooldown then return end
     SecretSafeCooldown(button)
-    button.aeonOwnUpdateCooldown = rawget(button, "UpdateCooldown")   -- méthode du mixin, rendue ensuite
+    button.muscaOwnUpdateCooldown = rawget(button, "UpdateCooldown")   -- méthode du mixin, rendue ensuite
     button.UpdateCooldown = ActionBars.PaintCooldown    -- si le mixin appelle self:UpdateCooldown()
 end
 local function UnshadowCooldown(button)
-    button.UpdateCooldown = button.aeonOwnUpdateCooldown
-    button.aeonOwnUpdateCooldown = nil
+    button.UpdateCooldown = button.muscaOwnUpdateCooldown
+    button.muscaOwnUpdateCooldown = nil
 end
 
 -- Micro-menu et sacs : systèmes Edit Mode, jamais reparentés ; posés sur un mover, ou cachés.
--- styled : ils ont aussi un style AeonUI (modes "aeonui" et "topbar", voir plus bas).
+-- styled : ils ont aussi un style MuscaUI (modes "aeonui" et "topbar", voir plus bas).
 local SIDE_FRAMES = {
     micromenu = { names = { "MicroMenuContainer", "MicroButtonAndBagsBar" }, option = "microMenu", label = "MOVER_MICROMENU", default = { "BOTTOMRIGHT", -10, 10 }, styled = true },
     bags = { names = { "BagsBar" }, option = "bags", label = "MOVER_BAGS", default = { "BOTTOMRIGHT", -10, 60 }, styled = true },
@@ -264,14 +266,14 @@ local function SideFrame(def)
     return frame
 end
 
--- Style AeonUI : boutons plats du thème qui relaient le clic au bouton Blizzard (action
+-- Style MuscaUI : boutons plats du thème qui relaient le clic au bouton Blizzard (action
 -- sécurisée "click" : le panneau s'ouvre comme d'un clic direct, sans taint). Rangée sur son
 -- mover ("aeonui") ou dans la barre du haut ("topbar"). Construite hors combat.
 -- ponytail: pas d'alertes Blizzard (talent à dépenser…) ni de glisser-déposer sur les sacs.
 local STYLED_SIZE = 24
 local BAG_BUTTONS = { "MainMenuBarBackpackButton", "CharacterBag0Slot", "CharacterBag1Slot", "CharacterBag2Slot",
                       "CharacterBag3Slot", "CharacterReagentBag0Slot" }
-local styled = {}   -- [clé] = rangée AeonUI
+local styled = {}   -- [clé] = rangée MuscaUI
 
 local STYLED_SOURCES = {
     -- Liste globale MICRO_BUTTONS si le client l'a ; sinon (moteur 12.x) les boutons « …MicroButton »
@@ -337,7 +339,7 @@ end
 local function BuildStyled(key, size)
     local frame = styled[key]
     if not frame then
-        frame = CreateFrame("Frame", "AeonUI_Styled_" .. key, UIParent)
+        frame = CreateFrame("Frame", "MuscaUI_Styled_" .. key, UIParent)
         frame.buttons = {}
         styled[key] = frame
     end
@@ -378,7 +380,7 @@ local function ReleaseStyled(key)
     frame:Hide()
 end
 
---- Rangée AeonUI : dans la barre du haut si demandé et active, sinon sur son mover.
+--- Rangée MuscaUI : dans la barre du haut si demandé et active, sinon sur son mover.
 local function ApplyStyled(key, def, mode)
     local topBar = NS.Modules:Get("topbar")
     if mode == "topbar" and topBar and topBar.enabled and topBar.Dock then
@@ -509,6 +511,7 @@ local COMBAT_DEFERRED = { ACTIONBAR_SLOT_CHANGED = true, PLAYER_ENTERING_WORLD =
 
 local Dispatch
 function Dispatch(event, ...)
+    if event == "COMPANION_UPDATE" and ... ~= "MOUNT" then return end   -- familiers des autres joueurs : rien à relire
     if COMBAT_DEFERRED[event] and NS.InCombat() then pendingFullUpdate = true return end
     if COALESCED[event] then
         if frameSeen[event] then trailing[event] = true ArmUpdater() return end
@@ -569,19 +572,19 @@ function ActionBars.StyleButton(button)
     local normal = button.GetNormalTexture and button:GetNormalTexture()
     if normal then normal:SetAlpha(aeon and 0 or 1) end
     local mask = button.IconMask
-    if mask and icon.RemoveMaskTexture and button.aeonMasked ~= not aeon then
+    if mask and icon.RemoveMaskTexture and button.muscaMasked ~= not aeon then
         if aeon then icon:RemoveMaskTexture(mask) else icon:AddMaskTexture(mask) end
-        button.aeonMasked = not aeon
+        button.muscaMasked = not aeon
     end
-    if aeon and not button.aeonBorder then
-        button.aeonBorderColor = {}
-        button.aeonBorder = NS.Media:CreateBorder(button, button.aeonBorderColor)
-        button.aeonBackground = button:CreateTexture(nil, "BACKGROUND", nil, -8)
-        button.aeonBackground:SetAllPoints(button)
-        NS.SetSolidColor(button.aeonBackground, 0, 0, 0, 0.5)
+    if aeon and not button.muscaBorder then
+        button.muscaBorderColor = {}
+        button.muscaBorder = NS.Media:CreateBorder(button, button.muscaBorderColor)
+        button.muscaBackground = button:CreateTexture(nil, "BACKGROUND", nil, -8)
+        button.muscaBackground:SetAllPoints(button)
+        NS.SetSolidColor(button.muscaBackground, 0, 0, 0, 0.5)
     end
-    if not button.aeonBorder then return end
-    local color = button.aeonBorderColor
+    if not button.muscaBorder then return end
+    local color = button.muscaBorderColor
     if db.classBorder then
         local _, classFile = UnitClass("player")
         color.r, color.g, color.b = NS.ClassColor(not NS.IsSecret(classFile) and classFile or nil)
@@ -590,11 +593,11 @@ function ActionBars.StyleButton(button)
         local c = NS.db.theme.border
         color.r, color.g, color.b, color.a = c.r, c.g, c.b, c.a or 1
     end
-    for _, edge in pairs(button.aeonBorder) do
+    for _, edge in pairs(button.muscaBorder) do
         NS.SetSolidColor(edge, color.r, color.g, color.b, color.a)
         edge:SetShown(aeon)
     end
-    button.aeonBackground:SetShown(aeon)
+    button.muscaBackground:SetShown(aeon)
 end
 
 --- Sort de l'action en surbrillance (proc) ? false si illisible ou sans API.
@@ -608,7 +611,7 @@ local function Overlayed(button)
     return ok and not NS.IsSecret(on) and on == true
 end
 
---- Recharge grisée et colorée, lueur de proc AeonUI. Recharge illisible (secrète) : icône intacte.
+--- Recharge grisée et colorée, lueur de proc MuscaUI. Recharge illisible (secrète) : icône intacte.
 function ActionBars.UpdateButtonExtras(button)
     local db = ActionBars.db
     local icon = Icon(button)
@@ -643,7 +646,7 @@ end
 -- bloqués en combat. Un gestionnaire sécurisé fait la prise et la pose à sa place.
 local dragHeader = CreateFrame("Frame", nil, UIParent, "SecureHandlerBaseTemplate")
 local DRAG_SLOT = "return 'action', self:GetID() + (self:GetAttribute('actionpage') - 1) * " .. NUM_BUTTONS
-local ON_DRAG_START = "if self:GetAttribute('aeon-locked') and not IsModifiedClick('PICKUPACTION') then return false end "
+local ON_DRAG_START = "if self:GetAttribute('musca-locked') and not IsModifiedClick('PICKUPACTION') then return false end "
     .. DRAG_SLOT
 local ON_RECEIVE_DRAG = "if not kind then return false end " .. DRAG_SLOT
 
@@ -655,12 +658,12 @@ local function UpdateDragLock(force)
     if locked == dragLocked and not force then return end   -- CVAR_UPDATE arrive pour toute CVar
     dragLocked = locked
     for _, bar in pairs(ActionBars.bars) do
-        for _, button in ipairs(bar.buttons) do button:SetAttribute("aeon-locked", locked) end
+        for _, button in ipairs(bar.buttons) do button:SetAttribute("musca-locked", locked) end
     end
 end
 
 local function NewBar(index)
-    local bar = CreateFrame("Frame", "AeonUI_Bar" .. index, UIParent, "SecureFrameTemplate")
+    local bar = CreateFrame("Frame", "MuscaUI_Bar" .. index, UIParent, "SecureFrameTemplate")
     bar.index = index
     bar.buttons = {}
     for i = 1, NUM_BUTTONS do
@@ -864,9 +867,9 @@ local function RunFader()
 end
 
 --------------------------------------------------------------------------------
--- Mode raccourcis (/aeon kb)
+-- Mode raccourcis (/musca kb)
 --------------------------------------------------------------------------------
--- Survoler un bouton AeonUI et appuyer sur une touche : la touche est liée à la commande
+-- Survoler un bouton MuscaUI et appuyer sur une touche : la touche est liée à la commande
 -- Blizzard du bouton (ACTIONBUTTONn, MULTIACTIONBARnBUTTONn), que BindBar relaie ensuite.
 -- Échap sur un bouton efface ses touches, Échap ailleurs ferme le mode. SetBinding est
 -- interdit en combat : le mode se ferme à l'entrée en combat.
@@ -874,7 +877,7 @@ end
 local MODIFIER_KEYS = { LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true, LALT = true, RALT = true,
                         LMETA = true, RMETA = true, UNKNOWN = true }
 
-local binder = CreateFrame("Frame", "AeonUI_KeyBinder", UIParent)
+local binder = CreateFrame("Frame", "MuscaUI_KeyBinder", UIParent)
 binder:SetFrameStrata("DIALOG")
 binder:SetAllPoints(UIParent)
 binder:EnableKeyboard(true)
@@ -1068,9 +1071,9 @@ function ActionBars:BuildOptions(o)
     local SIDE_CHOICES = {
         { name = L.AB_SIDE_MOVE, value = "move" }, { name = L.AB_SIDE_HIDE, value = "hide" }, { name = L.AB_SIDE_KEEP, value = "keep" },
     }
-    -- Micro-menu et sacs : affichés ou non, style Blizzard ou AeonUI, où les poser.
+    -- Micro-menu et sacs : affichés ou non, style Blizzard ou MuscaUI, où les poser.
     local STYLED_CHOICES = {
-        { name = L.AB_SIDE_TOPBAR, value = "topbar" }, { name = L.AB_SIDE_AEONUI, value = "aeonui" },
+        { name = L.AB_SIDE_TOPBAR, value = "topbar" }, { name = L.AB_SIDE_MUSCAUI, value = "aeonui" },
     }
     for _, choice in ipairs(SIDE_CHOICES) do STYLED_CHOICES[#STYLED_CHOICES + 1] = choice end
     o:Dropdown("microMenu", L.OPT_AB_MICROMENU, STYLED_CHOICES)

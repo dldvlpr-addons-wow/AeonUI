@@ -1,6 +1,6 @@
 -- Modules/BlizzardFrames.lua
 -- Cadres Blizzard déplaçables : gestionnaire de temps de recharge (quatre viewers), buffs et
--- débuffs du joueur. Systèmes Edit Mode : jamais reparentés, posés sur un support AeonUI
+-- débuffs du joueur. Systèmes Edit Mode : jamais reparentés, posés sur un support MuscaUI
 -- (Movers:Adopt) ou laissés à Blizzard. Les viewers se chargent à la demande
 -- (Blizzard_CooldownViewer) : rattrapés sur ADDON_LOADED.
 local _, NS = ...

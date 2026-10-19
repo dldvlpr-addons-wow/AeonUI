@@ -1,0 +1,14 @@
+## Interface: 16001
+## Title: |cff3fa9f5Musca|rUI Quest Tracker
+## Title-frFR: |cff3fa9f5Musca|rUI Suivi de quêtes
+## Notes: MuscaUI quest tracker.
+## Notes-frFR: Suivi de quêtes MuscaUI.
+## Version: @project-version@
+## Dependencies: MuscaUI
+## Group: MuscaUI
+## IconTexture: Interface\AddOns\MuscaUI\Media\Logo
+## Category: User Interface
+## Category-frFR: Interface utilisateur
+## X-License: All Rights Reserved
+
+QuestTracker.lua

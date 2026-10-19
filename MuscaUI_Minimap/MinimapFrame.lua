@@ -1,13 +1,13 @@
--- AeonUI_Minimap/MinimapFrame.lua
--- Minimap AeonUI : carte carrée à la taille voulue, bordure au thème, nom de zone et
--- coordonnées AeonUI, zoom à la molette, boutons d'addons regroupés sous la carte.
+-- MuscaUI_Minimap/MinimapFrame.lua
+-- Minimap MuscaUI : carte carrée à la taille voulue, bordure au thème, nom de zone et
+-- coordonnées MuscaUI, zoom à la molette, boutons d'addons regroupés sous la carte.
 --
 -- `Minimap` est reparentée sur notre support : laissée dans MinimapCluster, son rendu reste
 -- découpé par le conteneur Blizzard et la carte ne s'affiche qu'après un ping (vérifié en jeu).
 -- Reparentage différé d'une image et hors combat ; des hooks de SetParent et SetPoint reprennent
 -- la main si Blizzard la replace. Le décor Blizzard (bordure, boussole, horloge, zoom) est caché ;
 -- tout revient au /reload après désactivation.
-local NS = AeonUI
+local NS = MuscaUI
 local L = NS.L
 local Media = NS.Media
 
@@ -120,7 +120,7 @@ local function ReparentMinimap()
 end
 
 local function Build()
-    holder = CreateFrame("Frame", "AeonUI_Minimap", UIParent)
+    holder = CreateFrame("Frame", "MuscaUI_Minimap", UIParent)
     holder:SetFrameStrata("LOW")
     -- Fond noir fixe : la carte est transparente hors terrain, la couleur de fond du thème
     -- transparaîtrait. Seule la bordure suit le thème.
@@ -136,11 +136,11 @@ local function Build()
     holder.performance = Media:CreateText(holder, "OVERLAY", -2)
     holder.difficulty = Media:CreateText(holder, "OVERLAY", 0)
     holder.difficulty:SetPoint("TOPLEFT", holder, "TOPLEFT", 4, -28)
-    buttonBar = CreateFrame("Frame", "AeonUI_MinimapButtons", holder)
+    buttonBar = CreateFrame("Frame", "MuscaUI_MinimapButtons", holder)
     buttonBar:EnableMouse(true)
     -- Mode "button" : un petit bouton dans la carte, en bas au centre (coins, zone et
     -- coordonnées déjà pris) ; un clic ouvre ou ferme la grille d'addons à côté de la carte.
-    buttonToggle = CreateFrame("Button", "AeonUI_MinimapButtonsToggle", holder)
+    buttonToggle = CreateFrame("Button", "MuscaUI_MinimapButtonsToggle", holder)
     buttonToggle:SetFrameStrata("MEDIUM")
     local toggleBg = buttonToggle:CreateTexture(nil, "BACKGROUND")
     toggleBg:SetAllPoints(buttonToggle)
@@ -340,7 +340,7 @@ end
 --------------------------------------------------------------------------------
 
 -- Boutons Blizzard enfants de la carte selon le client : jamais déplacés.
-local BLIZZARD_PREFIXES = { "^Mini[mM]ap", "^AeonUI", "^Queue", "^GameTime", "^TimeManager", "^Expansion",
+local BLIZZARD_PREFIXES = { "^Mini[mM]ap", "^MuscaUI", "^Queue", "^GameTime", "^TimeManager", "^Expansion",
                             "^AddonCompartment", "^Garrison", "^Craft", "^Mail" }
 
 function MinimapFrame.IsAddonButton(frame)

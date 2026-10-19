@@ -1,0 +1,14 @@
+## Interface: 16001
+## Title: |cff3fa9f5Musca|rUI Minimap
+## Title-frFR: |cff3fa9f5Musca|rUI Minicarte
+## Notes: MuscaUI minimap. Disable to use another minimap addon.
+## Notes-frFR: Minicarte MuscaUI. À désactiver pour utiliser un autre addon de minicarte.
+## Version: @project-version@
+## Dependencies: MuscaUI
+## Group: MuscaUI
+## IconTexture: Interface\AddOns\MuscaUI\Media\Logo
+## Category: User Interface
+## Category-frFR: Interface utilisateur
+## X-License: All Rights Reserved
+
+MinimapFrame.lua

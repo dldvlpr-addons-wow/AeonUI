@@ -1,6 +1,6 @@
 -- Core/Media.lua
 -- Thème commun : police (taille, contour), couleur d'accent, fond, bordure 1 px, texture
--- de barre. Les textes et les fonds créés par AeonUI s'enregistrent ici et suivent le
+-- de barre. Les textes et les fonds créés par MuscaUI s'enregistrent ici et suivent le
 -- thème sans /reload (THEME_CHANGED) et l'échelle (PIXEL_CHANGED).
 -- Textures de barre maison (Media/Bars, tools/generate_bar_textures.lua), listées même sans
 -- LibSharedMedia et inscrites dedans quand elle est là. Exception par module : police et texture
@@ -19,13 +19,13 @@ local backdrops = setmetatable({}, { __mode = "k" })    -- [frame] = { bg, edges
 
 local function Theme() return NS.db and NS.db.theme end
 
-local BAR_PATH = "Interface\\AddOns\\AeonUI\\Media\\Bars\\"
+local BAR_PATH = "Interface\\AddOns\\MuscaUI\\Media\\Bars\\"
 --- Textures de barre maison : { key (valeur de theme.statusbar), name, path }.
 Media.BAR_TEXTURES = {
-    { key = "aeon:smooth", name = "AeonUI Smooth", path = BAR_PATH .. "Smooth" },
-    { key = "aeon:gloss", name = "AeonUI Gloss", path = BAR_PATH .. "Gloss" },
-    { key = "aeon:soft", name = "AeonUI Soft", path = BAR_PATH .. "Soft" },
-    { key = "aeon:stripes", name = "AeonUI Stripes", path = BAR_PATH .. "Stripes" },
+    { key = "aeon:smooth", name = "MuscaUI Smooth", path = BAR_PATH .. "Smooth" },
+    { key = "aeon:gloss", name = "MuscaUI Gloss", path = BAR_PATH .. "Gloss" },
+    { key = "aeon:soft", name = "MuscaUI Soft", path = BAR_PATH .. "Soft" },
+    { key = "aeon:stripes", name = "MuscaUI Stripes", path = BAR_PATH .. "Stripes" },
     -- Texture du client vanilla (style Classic) ; LibSharedMedia l'a déjà sous le nom « Blizzard ».
     { key = "blizzard:classic", name = "Blizzard Classic", path = "Interface\\TargetingFrame\\UI-StatusBar" },
 }
@@ -117,7 +117,7 @@ local function FontFamily(path, height, flags)
             members[#members + 1] = { alphabet = member.alphabet, file = member.file, height = height, flags = flags }
         end
         familyCount = familyCount + 1
-        local ok, family = pcall(CreateFontFamily, "AeonUIFontFamily" .. familyCount, members)
+        local ok, family = pcall(CreateFontFamily, "MuscaUIFontFamily" .. familyCount, members)
         families[key] = ok and family or false
     end
     return families[key] or nil
@@ -204,7 +204,7 @@ function Media:StatusBarChoices(flatName)
     local LSM = _G.LibStub and LibStub("LibSharedMedia-3.0", true)
     for _, name in ipairs(LSM and LSM:List("statusbar") or {}) do
         local path = LSM:Fetch("statusbar", name, true)
-        if not name:find("^AeonUI ") then list[#list + 1] = { name = name, value = name, texture = path } end
+        if not (name:find("^MuscaUI ") or name:find("^AeonUI ")) then list[#list + 1] = { name = name, value = name, texture = path } end
     end
     return list
 end
@@ -214,7 +214,11 @@ function Media:RegisterSharedMedia()
     local LSM = _G.LibStub and LibStub("LibSharedMedia-3.0", true)
     if not LSM then return false end
     for _, texture in ipairs(self.BAR_TEXTURES) do
-        if texture.key:find("^aeon:") then LSM:Register("statusbar", texture.name, texture.path) end
+        if texture.key:find("^aeon:") then
+            LSM:Register("statusbar", texture.name, texture.path)
+            -- Ancien nom (AeonUI), encore sauvegardé par d'autres addons.
+            LSM:Register("statusbar", (texture.name:gsub("^MuscaUI", "AeonUI")), texture.path)
+        end
     end
     return true
 end

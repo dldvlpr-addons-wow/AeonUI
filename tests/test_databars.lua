@@ -1,4 +1,4 @@
--- tests/test_databars.lua : barres de données AeonUI (étape 6).
+-- tests/test_databars.lua : barres de données MuscaUI (étape 6).
 local T = ...
 local NS, test, eq, truthy, reset = T.NS, T.test, T.eq, T.truthy, T.reset
 local DB = NS.Modules:Get("databars")

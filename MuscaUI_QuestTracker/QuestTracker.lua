@@ -1,12 +1,12 @@
--- AeonUI_QuestTracker/QuestTracker.lua
--- Suivi de quêtes AeonUI : le suivi Blizzard (ObjectiveTrackerFrame, ou WatchFrame sur un
+-- MuscaUI_QuestTracker/QuestTracker.lua
+-- Suivi de quêtes MuscaUI : le suivi Blizzard (ObjectiveTrackerFrame, ou WatchFrame sur un
 -- client plus ancien) est posé sur un support déplaçable, à la hauteur voulue, en-têtes au thème
 -- (fond caché, police), et replié de lui-même en combat ou en instance si demandé.
 --
 -- Le cadre Blizzard n'est pas reparenté (système Edit Mode) : réancré seulement, un hook de
 -- SetPoint reprend la main si Blizzard le replace. Les API de repli changent selon le moteur :
 -- SetCollapsed, sinon ObjectiveTracker_Collapse/Expand, sinon rien (tout en pcall).
-local NS = AeonUI
+local NS = MuscaUI
 local L = NS.L
 local Media = NS.Media
 
@@ -232,7 +232,7 @@ local function SkinHeaders()
 end
 
 local function Build()
-    holder = CreateFrame("Frame", "AeonUI_QuestTracker", UIParent)
+    holder = CreateFrame("Frame", "MuscaUI_QuestTracker", UIParent)
     holder:SetFrameStrata("LOW")
     if not hooked then
         hooked = true
@@ -281,7 +281,7 @@ function QuestTracker:BindQuestItem(on)
         local key = self.db.questItemKey
         on = on and type(key) == "string" and key ~= ""
         if on and not questItemButton then
-            questItemButton = CreateFrame("Button", "AeonUIQuestItemButton", UIParent, "SecureActionButtonTemplate")
+            questItemButton = CreateFrame("Button", "MuscaUIQuestItemButton", UIParent, "SecureActionButtonTemplate")
             questItemButton:RegisterForClicks("AnyDown")
             questItemButton:SetAttribute("type", "item")
             questItemButton:Hide()

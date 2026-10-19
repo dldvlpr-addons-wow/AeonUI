@@ -6,7 +6,7 @@
 local _, NS = ...
 local L = NS.L
 
-local RING = "Interface\\AddOns\\AeonUI\\Media\\Ring"
+local RING = "Interface\\AddOns\\MuscaUI\\Media\\Ring"
 
 local Cursor = NS.Modules:Register("cursor", {
     titleKey = "CURSOR_TITLE",
@@ -29,7 +29,7 @@ local active = false
 local ring, crosshair
 
 local function Build()
-    ring = CreateFrame("Frame", "AeonUICursorRing", UIParent)
+    ring = CreateFrame("Frame", "MuscaUICursorRing", UIParent)
     ring:SetFrameStrata("TOOLTIP")
     ring.texture = ring:CreateTexture(nil, "OVERLAY")
     ring.texture:SetAllPoints()
@@ -42,7 +42,7 @@ local function Build()
     end)
     ring:Hide()
 
-    crosshair = CreateFrame("Frame", "AeonUICrosshair", UIParent)
+    crosshair = CreateFrame("Frame", "MuscaUICrosshair", UIParent)
     crosshair:SetFrameStrata("BACKGROUND")
     crosshair:SetPoint("CENTER")
     crosshair.h = crosshair:CreateTexture(nil, "OVERLAY")

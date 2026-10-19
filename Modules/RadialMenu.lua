@@ -261,7 +261,7 @@ local function Close()
 end
 
 local function Build()
-    palette = CreateFrame("Frame", "AeonUIRadialMenuPalette", UIParent)
+    palette = CreateFrame("Frame", "MuscaUIRadialMenuPalette", UIParent)
     palette:SetFrameStrata("DIALOG")
     palette:SetSize(1, 1)
     palette.label = Media:CreateText(palette, "OVERLAY", 2)
@@ -269,7 +269,7 @@ local function Build()
     palette:SetScript("OnUpdate", Track)
     palette:Hide()
 
-    button = CreateFrame("Button", "AeonUIRadialMenuButton", UIParent, "SecureActionButtonTemplate")
+    button = CreateFrame("Button", "MuscaUIRadialMenuButton", UIParent, "SecureActionButtonTemplate")
     button:RegisterForClicks("AnyDown", "AnyUp")
     -- ActionButtonUseKeyDown à 1 : sans ceci, le modèle n'agit qu'à l'appui, avant nos attributs.
     button:SetAttribute("useOnKeyDown", false)

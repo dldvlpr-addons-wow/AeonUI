@@ -158,10 +158,10 @@ test("cadres : épées croisées quand la cible est en combat", function()
     NS.Modules:SetEnabled("frames", true)
     Mock.units.target = { guid = "Creature-2", combat = true }
     Mock.FireEvent("PLAYER_TARGET_CHANGED")
-    truthy(AeonUITargetCombat:IsShown(), "affichées")
+    truthy(MuscaUITargetCombat:IsShown(), "affichées")
     Mock.secret[true] = true
     Mock.FireEvent("UNIT_FLAGS", "target")
-    eq(AeonUITargetCombat:IsShown(), false, "valeur secrète : masquées")
+    eq(MuscaUITargetCombat:IsShown(), false, "valeur secrète : masquées")
     Mock.secret = {}
     NS.Modules:SetEnabled("frames", false)
 end)

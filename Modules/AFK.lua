@@ -30,7 +30,7 @@ end
 AFK.FormatElapsed = FormatElapsed
 
 local function Build()
-    panel = CreateFrame("Frame", "AeonUI_AFK", WorldFrame)
+    panel = CreateFrame("Frame", "MuscaUI_AFK", WorldFrame)
     panel:SetFrameStrata("FULLSCREEN")
     panel:SetPoint("BOTTOMLEFT", WorldFrame, "BOTTOMLEFT", 0, 0)
     panel:SetPoint("BOTTOMRIGHT", WorldFrame, "BOTTOMRIGHT", 0, 0)
@@ -49,7 +49,7 @@ local function Build()
     panel.timer:SetPoint("RIGHT", panel, "RIGHT", -24, 0)
     panel.brand = Media:CreateText(panel, "OVERLAY", 4)
     panel.brand:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -24, 10)
-    panel.brand:SetText("|cff3fa9f5Aeon|rUI")
+    panel.brand:SetText("|cff3fa9f5Musca|rUI")
 
     panel.elapsed = 0
     panel:SetScript("OnUpdate", function(self, dt)

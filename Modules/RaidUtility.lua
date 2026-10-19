@@ -111,7 +111,7 @@ function RaidUtility.Disband()
     C_PartyInfo.LeaveParty()
 end
 
-StaticPopupDialogs["AEONUI_DISBAND"] = {
+StaticPopupDialogs["MUSCAUI_DISBAND"] = {
     text = "",   -- posé à l'ouverture : la langue peut changer après le chargement
     button1 = YES,
     button2 = NO,
@@ -146,11 +146,11 @@ local function Build()
     toggle = TextButton(UIParent, L.RAIDUTILITY_BUTTON, function()
         if NS.InCombat() then return end   -- panneau protégé : pas d'ouverture en combat
         panel:SetShown(not panel:IsShown())
-    end, "AeonUIRaidUtilityToggle")
+    end, "MuscaUIRaidUtilityToggle")
     toggle:SetFrameStrata("MEDIUM")
     toggle:SetSize(S(80), S(20))
 
-    panel = CreateFrame("Frame", "AeonUIRaidUtility", toggle)
+    panel = CreateFrame("Frame", "MuscaUIRaidUtility", toggle)
     Media:CreateBackdrop(panel)
     panel:SetPoint("TOP", toggle, "BOTTOM", 0, -S(4))
     panel:Hide()
@@ -163,8 +163,8 @@ local function Build()
         { L.RAIDUTILITY_COUNTDOWN_CANCEL, function() RaidUtility.Countdown(0) end, hasCountdown },
         { "", RaidUtility.ToggleRaid, _G.C_PartyInfo and C_PartyInfo.ConvertToRaid ~= nil },
         { L.RAIDUTILITY_DISBAND, function()
-            StaticPopupDialogs.AEONUI_DISBAND.text = L.RAIDUTILITY_DISBAND_CONFIRM
-            StaticPopup_Show("AEONUI_DISBAND")
+            StaticPopupDialogs.MUSCAUI_DISBAND.text = L.RAIDUTILITY_DISBAND_CONFIRM
+            StaticPopup_Show("MUSCAUI_DISBAND")
         end, _G.C_PartyInfo and C_PartyInfo.LeaveParty ~= nil },
     }
     local y = -S(5)
@@ -179,7 +179,7 @@ local function Build()
         if i == 3 then
             for n, key in ipairs(COUNTDOWN_KEYS) do
                 local button = TextButton(panel, "", function() RaidUtility.Countdown(RaidUtility.db[key]) end,
-                    "AeonUIRaidCountdown" .. n)
+                    "MuscaUIRaidCountdown" .. n)
                 button:SetPoint("TOPLEFT", panel, "TOPLEFT", S(5) + (n - 1) * S(third + 2), y)
                 button:SetSize(S(third), S(20))
                 Disable(button, hasCountdown)
@@ -255,7 +255,7 @@ end
 --- Bande compacte : 8 marqueurs (clic gauche sur la cible, clic droit au sol, Maj pour retirer),
 -- puis effacer, appel prêt / rôles, compte à rebours.
 local function BuildBand()
-    band = CreateFrame("Frame", "AeonUIRaidBand", UIParent)
+    band = CreateFrame("Frame", "MuscaUIRaidBand", UIParent)
     Media:CreateBackdrop(band)
     band:SetFrameStrata("MEDIUM")
     band.buttons = {}

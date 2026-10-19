@@ -1,13 +1,13 @@
--- AeonUI_Nameplates/Nameplates.lua
+-- MuscaUI_Nameplates/Nameplates.lua
 -- Deux chevrons de part et d'autre de la barre de nom de la cible, pointés vers elle.
 -- Hostiles seulement (réglable). Pendant une incantation de la cible, le chevron gauche
 -- s'écarte pour ne pas masquer la barre d'incantation.
 -- L'état « incante » vient des events START/STOP : en combat, UnitCastingInfo peut rendre
 -- des valeurs secrètes, qu'on ne sait que tester pour « existe ».
-local NS = AeonUI
+local NS = MuscaUI
 local L = NS.L
 
-local CHEVRON = "Interface\\AddOns\\AeonUI\\Media\\Chevron"
+local CHEVRON = "Interface\\AddOns\\MuscaUI\\Media\\Chevron"
 -- Colonnes opaques de Chevron.tga (64 px de large : 8 à 53) : la texture est recadrée pour
 -- qu'un écart de 0 colle la pointe à la barre.
 local CHEVRON_LEFT, CHEVRON_RIGHT = 8 / 64, 54 / 64
@@ -36,7 +36,7 @@ local inCombat = false   -- InCombatLockdown est encore faux pendant PLAYER_REGE
 local function Build()
     -- Reste enfant d'UIParent : reparenté à une plaque protégée, il hériterait de la protection
     -- et ne pourrait plus bouger en combat. Ancrer sur la plaque suffit.
-    arrows = CreateFrame("Frame", "AeonUITargetArrows", UIParent)
+    arrows = CreateFrame("Frame", "MuscaUITargetArrows", UIParent)
     arrows:SetFrameStrata("HIGH")
     arrows:SetSize(1, 1)
     arrows.left = arrows:CreateTexture(nil, "OVERLAY")
@@ -69,7 +69,7 @@ local function ReadTargetCasting()
     return false
 end
 
---- Barre de vie de la plaque : celle de AeonUI si le module de plaques la monte, sinon
+--- Barre de vie de la plaque : celle de MuscaUI si le module de plaques la monte, sinon
 -- celle de Blizzard, sinon la plaque entière.
 local function HealthBar(plate)
     local plateFrames = NS.Modules:Get("nameplateframes")

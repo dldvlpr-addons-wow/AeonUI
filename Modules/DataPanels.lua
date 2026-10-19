@@ -164,7 +164,7 @@ local function NewSlot(panel)
 end
 
 local function Build(i)
-    local panel = CreateFrame("Frame", "AeonUIDataPanel" .. i, UIParent)
+    local panel = CreateFrame("Frame", "MuscaUIDataPanel" .. i, UIParent)
     panel:SetFrameStrata("LOW")
     panel.bg = Media:CreateBackdrop(panel)
     panel.slots = {}

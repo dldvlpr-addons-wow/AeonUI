@@ -1,4 +1,4 @@
--- tests/test_questtracker.lua : suivi de quêtes AeonUI et panneaux sombres (étape 6).
+-- tests/test_questtracker.lua : suivi de quêtes MuscaUI et panneaux sombres (étape 6).
 local T = ...
 local NS, test, eq, truthy, reset = T.NS, T.test, T.eq, T.truthy, T.reset
 local QT = NS.Modules:Get("questtracker")
@@ -9,7 +9,7 @@ local function Disable() NS.Modules:SetEnabled("questtracker", false) end
 test("suivi de quêtes : support, hauteur, en-têtes au thème, hook d'ancrage, rendu au disable", function()
     reset()
     Enable()
-    local holder = _G.AeonUI_QuestTracker
+    local holder = _G.MuscaUI_QuestTracker
     truthy(holder and holder:IsShown())
     eq(ObjectiveTrackerFrame:GetHeight(), 500)
     local _, relTo = ObjectiveTrackerFrame:GetPoint()
@@ -157,7 +157,7 @@ test("suivi de quêtes : touche d'objet de quête, quête suivie d'abord, figée
     NS.db.modules.questtracker.questItemKey = "g"
     Enable()
     local button = QT:GetQuestItemButton()
-    eq(Mock.overrideBindings[button].G, "AeonUIQuestItemButton", "touche liée")
+    eq(Mock.overrideBindings[button].G, "MuscaUIQuestItemButton", "touche liée")
     eq(button:GetAttribute("type"), "item")
     eq(button:GetAttribute("item"), "item:200", "quête suivie d'abord")
     watched[2] = nil

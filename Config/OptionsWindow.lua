@@ -1,5 +1,5 @@
 -- Config/OptionsWindow.lua
--- Fenêtre d'options propre à AeonUI (/aeon) : déplaçable, largeur et hauteur réglables, fermée par Échap.
+-- Fenêtre d'options propre à MuscaUI (/musca) : déplaçable, largeur et hauteur réglables, fermée par Échap.
 --   * en haut : titre, puis les catégories en onglets (Général, puis les groupes de modules) ;
 --   * à gauche : les pages de la catégorie choisie, chaque module avec un point d'état (vert actif,
 --     gris coupé, orange cédé à un addon tiers) ; la recherche en bas ;
@@ -212,7 +212,7 @@ end
 --------------------------------------------------------------------------------
 
 local function Build()
-    frame = CreateFrame("Frame", "AeonUIOptionsWindow", UIParent)
+    frame = CreateFrame("Frame", "MuscaUIOptionsWindow", UIParent)
     frame:SetSize(WIDTH, HEIGHT)
     frame:SetPoint("CENTER")
     frame:SetFrameStrata("DIALOG")
@@ -246,9 +246,9 @@ local function Build()
 
     local title = top:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
     title:SetPoint("LEFT", top, "LEFT", 16, 0)
-    title:SetText("|cff3fa9f5Aeon|rUI")
+    title:SetText("|cff3fa9f5Musca|rUI")
     local metadata = _G.C_AddOns and C_AddOns.GetAddOnMetadata
-    local version = metadata and metadata("AeonUI", "Version")
+    local version = metadata and metadata("MuscaUI", "Version")
     local versionText = top:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     versionText:SetPoint("LEFT", title, "RIGHT", 8, -2)
     versionText:SetText(version or "")
@@ -281,7 +281,7 @@ local function Build()
     sidebarEdge:SetPoint("BOTTOMRIGHT")
     NS.SetSolidColor(sidebarEdge, 1, 1, 1, 0.08)
 
-    local search = CreateFrame("EditBox", "AeonUIOptionsSearch", sidebar, "InputBoxTemplate")
+    local search = CreateFrame("EditBox", "MuscaUIOptionsSearch", sidebar, "InputBoxTemplate")
     search:SetSize(SIDEBAR_WIDTH - 36, 22)
     search:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMLEFT", 20, 14)
     search:SetAutoFocus(false)
@@ -327,7 +327,7 @@ local function Build()
         NS.Widgets.HideTip()
         NS:Fire("OPTIONS_HIDDEN")
     end)
-    table.insert(UISpecialFrames, "AeonUIOptionsWindow")
+    table.insert(UISpecialFrames, "MuscaUIOptionsWindow")
     frame:Hide()
 end
 

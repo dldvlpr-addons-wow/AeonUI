@@ -5,7 +5,7 @@
 --   * une page par module : en-tête fixe (titre et case du module, explication, recherche
 --     dans la page, onglets), puis ce que le module décrit lui-même dans module:BuildOptions(o) ;
 --     à droite, un aperçu cliquable si le module en décrit un (module:BuildPreview(p)).
--- Options > AddOns > AeonUI ne garde qu'un bouton qui ouvre la fenêtre.
+-- Options > AddOns > MuscaUI ne garde qu'un bouton qui ouvre la fenêtre.
 -- Les getters relisent NS.db à chaque appel : changer de profil remplace la table.
 local _, NS = ...
 local L = NS.L
@@ -21,7 +21,7 @@ local PREVIEW_COLUMN = 270   -- colonne de l'aperçu, à droite des réglages
 -- Confirmations
 --------------------------------------------------------------------------------
 
-StaticPopupDialogs["AEONUI_RESET_POSITIONS"] = {
+StaticPopupDialogs["MUSCAUI_RESET_POSITIONS"] = {
     text = "",   -- posé à l'ouverture : la langue peut changer après le chargement
     button1 = YES,
     button2 = NO,
@@ -48,7 +48,7 @@ Options.Confirm = Confirm
 local function ReloadOverlay(popup)
     local button = (popup.GetButton and popup:GetButton(1)) or popup.button1
     if not button then return end
-    local overlay = popup.AeonUIReload
+    local overlay = popup.MuscaUIReload
     if not overlay then
         overlay = CreateFrame("Button", nil, button, "InsecureActionButtonTemplate")
         overlay:SetAllPoints(button)
@@ -56,7 +56,7 @@ local function ReloadOverlay(popup)
         overlay:SetAttribute("useOnKeyDown", false)
         overlay:SetAttribute("type", "macro")
         overlay:SetAttribute("macrotext", "/reload")
-        popup.AeonUIReload = overlay
+        popup.MuscaUIReload = overlay
     end
     overlay:SetParent(button)
     overlay:SetAllPoints(button)
@@ -68,19 +68,19 @@ end
 local function AskReload(message)
     -- En combat, les attributs du calque ne s'écrivent pas : message seul, /reload à la main.
     if NS.InCombat() then
-        StaticPopupDialogs.AEONUI_RELOAD_COMBAT = {
+        StaticPopupDialogs.MUSCAUI_RELOAD_COMBAT = {
             text = "%s", button1 = _G.OKAY or "OK",
             timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
         }
-        StaticPopup_Show("AEONUI_RELOAD_COMBAT", message .. "\n\n" .. L.MSG_RELOAD_TYPE)
+        StaticPopup_Show("MUSCAUI_RELOAD_COMBAT", message .. "\n\n" .. L.MSG_RELOAD_TYPE)
         return
     end
-    StaticPopupDialogs.AEONUI_RELOAD = {
+    StaticPopupDialogs.MUSCAUI_RELOAD = {
         text = "%s", button1 = L.OPT_RELOAD_NOW, button2 = L.OPT_LATER,
-        OnHide = function(popup) if popup and popup.AeonUIReload then popup.AeonUIReload:Hide() end end,
+        OnHide = function(popup) if popup and popup.MuscaUIReload then popup.MuscaUIReload:Hide() end end,
         timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
     }
-    local popup = StaticPopup_Show("AEONUI_RELOAD", message)
+    local popup = StaticPopup_Show("MUSCAUI_RELOAD", message)
     if popup then ReloadOverlay(popup) end
 end
 Options.AskReload = AskReload
@@ -88,7 +88,7 @@ Options.AskReload = AskReload
 -- Cadre Blizzard rendu sans module coupé (profil, case d'unité, « Cacher Blizzard » décoché) :
 -- il ne revient qu'au /reload. Popup déjà ouverte (module coupé) : son message est gardé.
 NS:On("BLIZZARD_FRAMES_RELEASED", function()
-    if not (_G.StaticPopup_Visible and StaticPopup_Visible("AEONUI_RELOAD")) then AskReload(L.MSG_RELOAD_BLIZZARD) end
+    if not (_G.StaticPopup_Visible and StaticPopup_Visible("MUSCAUI_RELOAD")) then AskReload(L.MSG_RELOAD_BLIZZARD) end
 end)
 
 --- Active ou coupe un module depuis les options ; propose /reload si ses cadres Blizzard ne reviennent qu'ainsi.
@@ -166,7 +166,7 @@ end
 --- Page : en-tête fixe (titre, explication, recherche, onglets) puis contenu défilant en grille.
 -- `sideWidth` : colonne fixe à droite (panel.side), les réglages défilent à sa gauche.
 local function NewPage(key, title, description, sideWidth)
-    local panel = CreateFrame("Frame", "AeonUIOptions" .. key)
+    local panel = CreateFrame("Frame", "MuscaUIOptions" .. key)
     panel:Hide()
     local header = CreateFrame("Frame", nil, panel)
     header:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
@@ -454,8 +454,8 @@ local function BuildGeneral()
         function(value) NS.db.theme.grid = value; NS:Fire("THEME_CHANGED") end)
     layout:Button(L.OPT_UNLOCK, function() NS:SetUnlocked(not NS.unlocked) end)
     layout:Button(L.OPT_RESET_POSITIONS, function()
-        StaticPopupDialogs.AEONUI_RESET_POSITIONS.text = L.MSG_RESET_POSITIONS_CONFIRM
-        StaticPopup_Show("AEONUI_RESET_POSITIONS")
+        StaticPopupDialogs.MUSCAUI_RESET_POSITIONS.text = L.MSG_RESET_POSITIONS_CONFIRM
+        StaticPopup_Show("MUSCAUI_RESET_POSITIONS")
     end)
     layout:Finish()
     return panel
@@ -568,7 +568,7 @@ local function BuildProfiles()
         NS:SwitchProfile(NS.Database.CharacterKey(), NS.Database:ActiveProfileName())
     end)
     layout:Button(L.OPT_PROFILE_RESET, function()
-        Confirm("AEONUI_PROFILE_RESET",
+        Confirm("MUSCAUI_PROFILE_RESET",
             string.format(L.MSG_PROFILE_RESET_CONFIRM, NS.Database:ActiveProfileName()),
             function() NS:ResetProfile() end)
     end)
@@ -578,13 +578,13 @@ local function BuildProfiles()
         if not backup then NS.Print(L.MSG_BACKUP_NONE) return end
         local when = type(backup.time) == "number" and date("%Y-%m-%d %H:%M", backup.time) or "?"
         local why = L["BACKUP_REASON_" .. string.upper(tostring(backup.reason))] or "?"
-        Confirm("AEONUI_PROFILE_RESTORE", string.format(L.MSG_BACKUP_RESTORE_CONFIRM, when, why),
+        Confirm("MUSCAUI_PROFILE_RESTORE", string.format(L.MSG_BACKUP_RESTORE_CONFIRM, when, why),
             function() NS:RestoreBackup() end)
     end)
     layout:Button(L.OPT_PROFILE_DELETE, function()
         local name = NS.Database:ActiveProfileName()
         if name == NS.Database.DEFAULT_PROFILE then return end
-        Confirm("AEONUI_PROFILE_DELETE", string.format(L.MSG_PROFILE_DELETE_CONFIRM, name), function()
+        Confirm("MUSCAUI_PROFILE_DELETE", string.format(L.MSG_PROFILE_DELETE_CONFIRM, name), function()
             NS:SwitchProfile(NS.Database.DEFAULT_PROFILE)
             NS:RunOutOfCombat(function()
                 NS.Database:DeleteProfile(name)
@@ -694,7 +694,7 @@ local function BuildProfiles()
             local message = string.format(L.MSG_IMPORT_CONFIRM, NS.Database:ActiveProfileName(), list)
             if skipped > 0 then message = message .. "\n" .. string.format(L.MSG_IMPORT_SKIPPED, skipped) end
             -- Même borne que l'aperçu ; la chaîne est déjà reconnue comme profil simple.
-            Confirm("AEONUI_IMPORT_PROFILE", message .. "\n" .. L.MSG_IMPORT_BACKUP_NOTE,
+            Confirm("MUSCAUI_IMPORT_PROFILE", message .. "\n" .. L.MSG_IMPORT_BACKUP_NOTE,
                 function() NS:ImportProfile(text, allowAccount, sections) end)
             return
         end
@@ -711,7 +711,7 @@ local function BuildProfiles()
         for _, picked in pairs(exportPick) do
             if picked == false then message = message .. "\n" .. L.MSG_IMPORT_ACCOUNT_ALL break end
         end
-        Confirm("AEONUI_IMPORT_ACCOUNT", message .. "\n" .. L.MSG_IMPORT_BACKUP_NOTE,
+        Confirm("MUSCAUI_IMPORT_ACCOUNT", message .. "\n" .. L.MSG_IMPORT_BACKUP_NOTE,
             function() NS:ImportProfile(text, true) end)
     end)
     layout:Button(L.OPT_PROFILE_SEND, function() NS.ProfileShare:Send() end)
@@ -811,8 +811,8 @@ end
 local function BuildMaintenance()
     local panel, layout = NewPage("maintenance", L.OPT_MAINTENANCE, L.OPT_MAINTENANCE_HINT)
     layout:Button(L.OPT_FIRST_RUN, function() if NS.FirstRun then NS.FirstRun:Show() end end)
-    layout:Button(L.OPT_DIAG, function() SlashCmdList.AEONUI("diag") end)
-    layout:Button(L.OPT_UNINSTALL, function() SlashCmdList.AEONUI("uninstall") end)
+    layout:Button(L.OPT_DIAG, function() SlashCmdList.MUSCAUI("diag") end)
+    layout:Button(L.OPT_UNINSTALL, function() SlashCmdList.MUSCAUI("uninstall") end)
     layout:Finish()
     return panel
 end
@@ -1182,7 +1182,7 @@ end
 --- Ouvre la page d'un module.
 function Options.OpenModule(name) Window:Show(name) end
 
---- Ouvre la fenêtre (/aeon) ; sans page demandée, un second appel la ferme.
+--- Ouvre la fenêtre (/musca) ; sans page demandée, un second appel la ferme.
 function Options:Open(key)
     if not key and Window:IsShown() then Window:Hide() return end
     Window:Show(key)
@@ -1245,7 +1245,7 @@ Window.ResetOf = function(key)
     local module = NS.Modules:Get(key)
     if not module then return nil end
     return L.OPT_RESET_MODULE, function()
-        Confirm("AEONUI_MODULE_RESET", string.format(L.MSG_RESET_MODULE_CONFIRM, module.title),
+        Confirm("MUSCAUI_MODULE_RESET", string.format(L.MSG_RESET_MODULE_CONFIRM, module.title),
             function() ResetModule(key) end)
     end
 end
@@ -1260,11 +1260,11 @@ NS:On("PROFILE_CHANGED", function() Options:Refresh() end)
 -- Mode déplacement : la fenêtre cacherait les calques ; la barre d'outils prend le relais.
 NS:On("UNLOCK", function(unlocked) if unlocked then Window:Hide() end end)
 
---- Options > AddOns > AeonUI : un bouton vers la fenêtre.
+--- Options > AddOns > MuscaUI : un bouton vers la fenêtre.
 local function BuildBlizzardPanel()
-    local panel = CreateFrame("Frame", "AeonUIOptionsLauncher")
+    local panel = CreateFrame("Frame", "MuscaUIOptionsLauncher")
     local layout = NS.Widgets.NewLayout(panel, 16, PAGE_WIDTH)
-    layout:Header("|cff3fa9f5Aeon|rUI")
+    layout:Header("|cff3fa9f5Musca|rUI")
     layout:Note(L.OPT_LAUNCHER_HINT)
     -- Pas de HideUIPanel : appelé par l'addon, il contamine le gestionnaire de panneaux, et
     -- tout panneau ouvert ensuite (Edit Mode) tourne contaminé. La fenêtre passe au-dessus.
@@ -1276,7 +1276,7 @@ end
 -- Bouton dans le menu Échap : sous Options (et Boutique), sections suivantes décalées.
 --------------------------------------------------------------------------------
 
-local MENU_TITLE = "|cff3fa9f5Aeon|rUI"
+local MENU_TITLE = "|cff3fa9f5Musca|rUI"
 local MENU_HEIGHT = 35
 
 -- Le menu reste ouvert sous la fenêtre : HideUIPanel contaminerait l'Edit Mode (voir plus haut).
@@ -1291,7 +1291,7 @@ end
 
 --- Menu du moteur récent (buttonPool, Layout) : repositionné à chaque Layout.
 local function PositionModernButton(menu)
-    local button = menu.AeonUI
+    local button = menu.MuscaUI
     local firstSection = { [_G.GAMEMENU_OPTIONS or ""] = 1, [_G.BLIZZARD_STORE or ""] = 2 }
     local anchorIndex = (_G.StoreEnabled and StoreEnabled() and 2) or 1
     for other in menu.buttonPool:EnumerateActive() do
@@ -1309,7 +1309,7 @@ end
 --- Menu Classic (GameMenuButton*) : inséré avant Déconnexion.
 local function PositionClassicButton()
     local menu, logout = GameMenuFrame, _G.GameMenuButtonLogout
-    local button = menu.AeonUI
+    local button = menu.MuscaUI
     local _, relTo, _, _, offY = logout:GetPoint()
     if relTo ~= button then
         button:ClearAllPoints()
@@ -1322,17 +1322,17 @@ end
 
 function Options.SetupGameMenu()
     local menu = _G.GameMenuFrame
-    if not menu or menu.AeonUI then return end
+    if not menu or menu.MuscaUI then return end
     local button
     if menu.buttonPool and menu.Layout then
-        button = CreateFrame("Button", "AeonUI_GameMenuButton", menu, "MainMenuFrameButtonTemplate")
+        button = CreateFrame("Button", "MuscaUI_GameMenuButton", menu, "MainMenuFrameButtonTemplate")
         button:SetSize(200, MENU_HEIGHT)
-        menu.AeonUI = button
+        menu.MuscaUI = button
         hooksecurefunc(menu, "Layout", PositionModernButton)
     elseif _G.GameMenuButtonLogout and _G.GameMenuFrame_UpdateVisibleButtons then
-        button = CreateFrame("Button", "AeonUI_GameMenuButton", menu, "GameMenuButtonTemplate")
+        button = CreateFrame("Button", "MuscaUI_GameMenuButton", menu, "GameMenuButtonTemplate")
         button:SetSize(GameMenuButtonLogout:GetSize())
-        menu.AeonUI = button
+        menu.MuscaUI = button
         hooksecurefunc("GameMenuFrame_UpdateVisibleButtons", PositionClassicButton)
     else
         return
@@ -1356,5 +1356,5 @@ NS:On("PROFILE_READY", function()
             Window:AddPage(module.name, module.title, function() return BuildModulePage(module) end, "modules")
         end
     end
-    NS.RegisterOptionsPanel(BuildBlizzardPanel(), "AeonUI")
+    NS.RegisterOptionsPanel(BuildBlizzardPanel(), "MuscaUI")
 end)

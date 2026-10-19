@@ -1,7 +1,7 @@
 -- Core/CVars.lua
--- Toute CVar modifiée par AeonUI passe par ici : la valeur d'origine est mémorisée
--- (AeonUIDB.cvarBackup, compte entier) avant la première modification, et rendue quand
--- le module qui l'a changée est coupé, ou par /aeon uninstall.
+-- Toute CVar modifiée par MuscaUI passe par ici : la valeur d'origine est mémorisée
+-- (MuscaUIDB.cvarBackup, compte entier) avant la première modification, et rendue quand
+-- le module qui l'a changée est coupé, ou par /musca uninstall.
 -- Certaines CVars sont protégées en combat : les écritures attendent la fin du combat.
 local _, NS = ...
 
@@ -45,7 +45,7 @@ function CVars:Set(name, value)
     return true
 end
 
---- Rend la valeur d'origine d'une CVar, si AeonUI l'avait changée.
+--- Rend la valeur d'origine d'une CVar, si MuscaUI l'avait changée.
 function CVars:Restore(name)
     local original = NS.global.cvarBackup[name]
     if original == nil then return false end

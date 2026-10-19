@@ -1,5 +1,5 @@
--- AeonUI_Nameplates/NamePlateFrames.lua
--- Plaques de nom AeonUI : sur chaque plaque Blizzard, un cadre AeonUI (santé, nom, niveau,
+-- MuscaUI_Nameplates/NamePlateFrames.lua
+-- Plaques de nom MuscaUI : sur chaque plaque Blizzard, un cadre MuscaUI (santé, nom, niveau,
 -- barre d'incantation, marqueur de raid, débuffs, surbrillance de la cible, couleur de menace).
 --
 -- Nos cadres sont des enfants d'UIParent ancrés sur la plaque, jamais reparentés sous elle : une
@@ -10,7 +10,7 @@
 -- Filtres de style : règles « si (cible, incantation, combat, réaction, classification, quête,
 -- vie sous x %, nom) alors (couleur, lueur, taille, opacité, masquer) ». La première règle active
 -- qui correspond s'applique. Une condition illisible (valeur secrète) fait échouer la règle.
-local NS = AeonUI
+local NS = MuscaUI
 local L = NS.L
 local Elements = NS.UnitFrameElements
 
@@ -85,7 +85,7 @@ local NamePlateFrames = NS.Modules:Register("nameplateframes", {
 })
 
 local active = false
-local plates = {}      -- [plate Blizzard] = cadre AeonUI (pool, réutilisé)
+local plates = {}      -- [plate Blizzard] = cadre MuscaUI (pool, réutilisé)
 local byUnit = {}      -- [jeton nameplateN] = cadre monté
 local hiddenBlizzard = setmetatable({}, { __mode = "k" })   -- [plate.UnitFrame] = true
 
@@ -543,7 +543,7 @@ end
 
 function NamePlateFrames:GetFrame(unit) return byUnit[unit] end
 
---- Cadre AeonUI monté sur une plaque Blizzard, ou nil (chevrons du module « Barres de nom »).
+--- Cadre MuscaUI monté sur une plaque Blizzard, ou nil (chevrons du module « Barres de nom »).
 function NamePlateFrames:GetFrameForPlate(plate)
     local frame = plates[plate]
     return frame and frame:IsShown() and frame or nil

@@ -101,7 +101,7 @@ test("utilitaire de raid : visibilité en groupe, panneau, actions, marqueurs", 
     eq(toggle:IsShown(), false)
 end)
 
-test("utilitaire de raid : trois comptes à rebours, /aeon pull, conversion, dissolution", function()
+test("utilitaire de raid : trois comptes à rebours, /musca pull, conversion, dissolution", function()
     reset()
     NS.Modules:SetEnabled("raidutility", true)
     local _, panel = Raid:GetFrames()
@@ -111,11 +111,11 @@ test("utilitaire de raid : trois comptes à rebours, /aeon pull, conversion, dis
     eq(panel.countdowns[2].label:GetText(), string.format(L.RAIDUTILITY_SECONDS, 12), "libellé suit le réglage")
     NS.db.modules.raidutility.countdown3Key = "ctrl-f3"
     NS.Modules:Refresh("raidutility")
-    eq(Mock.overrideBindings[panel]["CTRL-F3"], "AeonUIRaidCountdown3", "touche liée au bouton")
+    eq(Mock.overrideBindings[panel]["CTRL-F3"], "MuscaUIRaidCountdown3", "touche liée au bouton")
     NS.db.modules.raidutility.countdown3Key = ""
-    SlashCmdList.AEONUI("pull")
-    SlashCmdList.AEONUI("pull 7")
-    SlashCmdList.AEONUI("pull 0")
+    SlashCmdList.MUSCAUI("pull")
+    SlashCmdList.MUSCAUI("pull 7")
+    SlashCmdList.MUSCAUI("pull 0")
     eq(Mock.raidActions[1][2], 5, "premier compte à rebours par défaut")
     eq(Mock.raidActions[2][2], 7)
     eq(Mock.raidActions[3][2], 0)
@@ -133,7 +133,7 @@ test("utilitaire de raid : trois comptes à rebours, /aeon pull, conversion, dis
     Mock.raidActions = {}
     panel.actions[5]:GetScript("OnClick")(panel.actions[5])
     eq(#Mock.raidActions, 0, "confirmation d'abord")
-    StaticPopupDialogs.AEONUI_DISBAND.OnAccept()
+    StaticPopupDialogs.MUSCAUI_DISBAND.OnAccept()
     eq(#Mock.raidActions, 2)
     eq(Mock.raidActions[1][1], "uninvite"); eq(Mock.raidActions[1][2], "Ana-Ailleurs")
     eq(Mock.raidActions[2][1], "leave")
@@ -195,7 +195,7 @@ test("utilitaire de raid : bande compacte, visibilité, garde chef ou assistant"
     db.toggleKey = "ctrl-r"
     NS.Modules:Refresh("raidutility")
     local _, panel = Raid:GetFrames()
-    eq(Mock.overrideBindings[panel]["CTRL-R"], "AeonUIRaidUtilityToggle")
+    eq(Mock.overrideBindings[panel]["CTRL-R"], "MuscaUIRaidUtilityToggle")
     db.toggleKey = ""
     NS.Modules:SetEnabled("raidutility", false)
     eq(band:IsShown(), false)

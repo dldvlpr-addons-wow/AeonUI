@@ -1,4 +1,4 @@
--- tests/test_actionbars.lua : barres d'action AeonUI (étape 5).
+-- tests/test_actionbars.lua : barres d'action MuscaUI (étape 5).
 local T = ...
 local NS, test, eq, truthy, reset = T.NS, T.test, T.eq, T.truthy, T.reset
 local AB = NS.Modules:Get("actionbars")
@@ -21,8 +21,8 @@ test("barres : activation crée trois barres de douze boutons Blizzard, pagine, 
     eq(AB:GetBar(2).buttons[1].buttonType, "MULTIACTIONBAR1BUTTON")
     truthy(Mock.attributeDrivers[bar1.buttons[1]].actionpage:find("bonusbar:1"), "pilote de page par bouton")
     eq(Mock.attributeDrivers[AB:GetBar(2).buttons[1]], nil, "barre 2 : page fixe")
-    eq(Mock.overrideBindings[bar1]["1"], "AeonUI_Bar1Button1")
-    eq(Mock.overrideBindings[AB:GetBar(2)]["F1"], "AeonUI_Bar2Button1")
+    eq(Mock.overrideBindings[bar1]["1"], "MuscaUI_Bar1Button1")
+    eq(Mock.overrideBindings[AB:GetBar(2)]["F1"], "MuscaUI_Bar2Button1")
     eq(AB:GetBar(4), nil, "barre 4 coupée par défaut")
     truthy(NS.IsBlizzardFrameHidden("MainActionBar"))
     eq(MainActionBar:GetParent(), UIParent, "barre principale jamais reparentée (Edit Mode)")
@@ -30,7 +30,7 @@ test("barres : activation crée trois barres de douze boutons Blizzard, pagine, 
     MainActionBar:Show()
     eq(MainActionBar:GetAlpha(), 0, "Edit Mode la remontre : alpha réassuré")
     truthy(NS.IsBlizzardFrameHidden("MultiBarBottomLeft"))
-    eq(MultiBarBottomLeft:GetParent(), AeonUI_Hidden, "autres barres sous le cadre caché")
+    eq(MultiBarBottomLeft:GetParent(), MuscaUI_Hidden, "autres barres sous le cadre caché")
     truthy(NS.Movers:Anchor("bar1"))
     Disable()
     eq(bar1:IsShown(), false)
@@ -150,9 +150,9 @@ test("barres : rebind sur UPDATE_BINDINGS hors combat, cède à Bartender4", fun
     Mock.bindings.ACTIONBUTTON1 = "Q"
     Mock.SetCombat(true)
     Mock.FireEvent("UPDATE_BINDINGS")
-    eq(Mock.overrideBindings[AB:GetBar(1)]["1"], "AeonUI_Bar1Button1", "en combat : inchangé")
+    eq(Mock.overrideBindings[AB:GetBar(1)]["1"], "MuscaUI_Bar1Button1", "en combat : inchangé")
     Mock.SetCombat(false)
-    eq(Mock.overrideBindings[AB:GetBar(1)]["Q"], "AeonUI_Bar1Button1", "après le combat : relié")
+    eq(Mock.overrideBindings[AB:GetBar(1)]["Q"], "MuscaUI_Bar1Button1", "après le combat : relié")
     Mock.bindings.ACTIONBUTTON1 = "1"
     NS.Options:BuildMain()
     Disable()
@@ -173,7 +173,7 @@ test("barres : boutons retirés des diffuseurs Blizzard, recharge peinte sans va
     -- Sans objet durée : SetCooldown seulement sur des valeurs connues.
     Mock.actionCooldown = { start = 10, duration = 5 }
     Mock.Advance(0.1) Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
-    eq(button.lastEvent, "ACTIONBAR_UPDATE_COOLDOWN", "événement dispatché par AeonUI")
+    eq(button.lastEvent, "ACTIONBAR_UPDATE_COOLDOWN", "événement dispatché par MuscaUI")
     eq(button.action, 1)
     eq(button.cooldown.painted[1], 10)
     Mock.actionCooldown = { start = Mock.SetSecret(20), duration = 5 }
@@ -254,6 +254,12 @@ test("barres : clignotement demandé hors dispatch, rafale regroupée à la fram
         Mock.FireEvent(event)
         eq(button.lastEvent, event, "clignotement de l'attaque auto : " .. event)
     end
+    for _, event in ipairs({ "COMPANION_UPDATE", "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE" }) do
+        Mock.FireEvent(event, event == "COMPANION_UPDATE" and "MOUNT" or "player")
+        eq(button.lastEvent, event, "état coché relu : " .. event)
+    end
+    Mock.FireEvent("COMPANION_UPDATE", "CRITTER")
+    eq(button.lastEvent, "UNIT_EXITED_VEHICLE", "familier : aucun passage")
     button.OnEvent, button.OnUpdate, button.needsUpdate = original, nil, nil
     Disable()
 end)
@@ -277,27 +283,27 @@ test("barres : micro-menu et sacs sur movers, cachés sur option, rendus au disa
     reset()
     Enable()
     local _, relTo = MicroMenuContainer:GetPoint()
-    eq(relTo, AeonUI_Holder_micromenu, "micro-menu posé sur son support")
+    eq(relTo, MuscaUI_Holder_micromenu, "micro-menu posé sur son support")
     eq(MicroMenuContainer:GetParent(), UIParent, "jamais reparenté")
     truthy(NS.Movers:Anchor("micromenu") and NS.Movers:Anchor("bags"))
     local _, stanceHolder = StanceBar:GetPoint()
-    eq(stanceHolder, AeonUI_Holder_stance, "barre de posture sur son support")
+    eq(stanceHolder, MuscaUI_Holder_stance, "barre de posture sur son support")
     truthy(NS.Movers:Anchor("stance") and NS.Movers:Anchor("pet"))
     MicroMenuContainer:ClearAllPoints()
     MicroMenuContainer:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 0)
     local _, again = MicroMenuContainer:GetPoint()
-    eq(again, AeonUI_Holder_micromenu, "Edit Mode le replace : le hook reprend la main")
+    eq(again, MuscaUI_Holder_micromenu, "Edit Mode le replace : le hook reprend la main")
     NS.db.modules.actionbars.bags = "hide"
     NS.Modules:Refresh("actionbars")
     truthy(NS.IsRegionHidden(BagsBar))
-    eq(AeonUI_Holder_bags:IsShown(), false)
+    eq(MuscaUI_Holder_bags:IsShown(), false)
     NS.db.modules.actionbars.bags = "move"
     Disable()
     eq(NS.IsRegionHidden(BagsBar), false)
-    eq(AeonUI_Holder_micromenu:IsShown(), false)
+    eq(MuscaUI_Holder_micromenu:IsShown(), false)
 end)
 
-test("barres d'action : micro-menu et sacs au style AeonUI, sur mover ou dans la barre du haut", function()
+test("barres d'action : micro-menu et sacs au style MuscaUI, sur mover ou dans la barre du haut", function()
     reset()
     local character = CreateFrame("Button", "CharacterMicroButton", UIParent)
     _G.MICRO_BUTTONS = { "CharacterMicroButton", "AbsentMicroButton" }
@@ -307,7 +313,7 @@ test("barres d'action : micro-menu et sacs au style AeonUI, sur mover ou dans la
     NS.db.modules.actionbars.bags = "topbar"
     NS.Modules:SetEnabled("actionbars", true)
     local micro, bags = AB.GetStyled("micromenu"), AB.GetStyled("bags")
-    truthy(micro and micro:IsShown(), "rangée AeonUI du micro-menu")
+    truthy(micro and micro:IsShown(), "rangée MuscaUI du micro-menu")
     eq(micro.buttons[1]:GetAttribute("type"), "click")
     eq(micro.buttons[1]:GetAttribute("clickbutton"), character, "relaie le bouton Blizzard")
     eq(micro.buttons[2], nil, "bouton absent ignoré")
@@ -330,7 +336,7 @@ test("barres d'action : micro-menu et sacs au style AeonUI, sur mover ou dans la
     _G.MICRO_BUTTONS = nil
 end)
 
-test("barres d'action : micro-menu AeonUI sans MICRO_BUTTONS (moteur 12.x)", function()
+test("barres d'action : micro-menu MuscaUI sans MICRO_BUTTONS (moteur 12.x)", function()
     reset()
     _G.MICRO_BUTTONS = nil
     local menu = _G.MicroMenu or CreateFrame("Frame", "MicroMenu", MicroMenuContainer)
@@ -370,7 +376,7 @@ test("barres d'action : visibilité commune dans le driver, survol lié entre ba
     db.bars[2].visibility = NS.Visibility.Spec()
 end)
 
-test("barres : style AeonUI, recharge grisée hors GCD, lueur de proc, barre 7 sur la page 14", function()
+test("barres : style MuscaUI, recharge grisée hors GCD, lueur de proc, barre 7 sur la page 14", function()
     reset()
     local db = NS.db.modules.actionbars
     db.iconStyle, db.classBorder, db.procGlow = "aeon", true, "pixel"
@@ -383,8 +389,8 @@ test("barres : style AeonUI, recharge grisée hors GCD, lueur de proc, barre 7 s
     Enable()
     local button = AB:GetBar(1).buttons[1]
     eq(button.icon.texCoord[1], db.iconZoom, "icône recadrée")
-    truthy(button.aeonBorder.top:IsShown(), "bordure fine")
-    eq(button.aeonBorder.top.color[1], RAID_CLASS_COLORS.MAGE.r, "couleur de classe")
+    truthy(button.muscaBorder.top:IsShown(), "bordure fine")
+    eq(button.muscaBorder.top.color[1], RAID_CLASS_COLORS.MAGE.r, "couleur de classe")
     eq(button.icon:IsDesaturated(), true, "recharge : icône grisée")
     cooldown = { isActive = true, isOnGCD = true, duration = 1.5 }
     Mock.Advance(0.1) Mock.FireEvent("ACTIONBAR_UPDATE_COOLDOWN")
@@ -405,7 +411,7 @@ test("barres : style AeonUI, recharge grisée hors GCD, lueur de proc, barre 7 s
     Mock.secret[true] = nil   -- le mock marque la valeur elle-même
     overlayed = true
     Mock.FireEvent("SPELL_ACTIVATION_OVERLAY_GLOW_SHOW")
-    eq(NS.Glow.Current(button), "pixel", "proc : lueur AeonUI")
+    eq(NS.Glow.Current(button), "pixel", "proc : lueur MuscaUI")
     overlayed = false
     Mock.FireEvent("SPELL_ACTIVATION_OVERLAY_GLOW_HIDE")
     eq(NS.Glow.Current(button), nil)
@@ -415,7 +421,7 @@ test("barres : style AeonUI, recharge grisée hors GCD, lueur de proc, barre 7 s
     db.iconStyle = "blizzard"
     NS.Modules:Refresh("actionbars")
     eq(button.icon.texCoord[1], 0, "style Blizzard rendu")
-    eq(button.aeonBorder.top:IsShown(), false)
+    eq(button.muscaBorder.top:IsShown(), false)
     Disable()
     db.classBorder, db.procGlow, db.bars[7].enabled = false, "blizzard", false
     _G.C_ActionBar, _G.GetActionInfo, _G.IsSpellOverlayed = nil, nil, nil
@@ -425,8 +431,10 @@ test("barres : inscription Blizzard hors dispatch retirée aussitôt, jumeaux ca
     reset()
     local twin = CreateFrame("CheckButton", "MultiBarBottomLeftButton3", MultiBarBottomLeft)
     tinsert(ActionBarButtonEventsFrame.frames, twin)
+    ActionBarButtonUpdateFrame.frames[twin] = twin               -- clignotement déjà inscrit avant le masquage
     MultiBarBottomLeft.actionButtons = { twin }
     Enable()
+    eq(ActionBarButtonUpdateFrame.frames[twin], nil, "jumeau déjà inscrit au clignotement retiré au masquage")
     local button = AB:GetBar(1).buttons[1]
     ActionBarActionEventsFrame:RegisterFrame(button)             -- Update Blizzard : page changée en combat
     for _, frame in pairs(ActionBarActionEventsFrame.frames) do truthy(frame ~= button, "notre bouton retiré sur place") end

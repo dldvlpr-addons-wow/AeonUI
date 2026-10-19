@@ -62,7 +62,7 @@ test("recharges : sans formateur natif, rien n'est touché", function()
     NS.Modules:Refresh("interface")
 end)
 
-test("recharges : les barres d'action AeonUI s'enregistrent", function()
+test("recharges : les barres d'action MuscaUI s'enregistrent", function()
     reset()
     NS.db.modules.interface.cooldownColors = true
     NS.Modules:Refresh("interface")
@@ -157,6 +157,6 @@ end)
 
 test("diagnostic : ligne Midnight", function()
     reset()
-    SlashCmdList.AEONUI("diag")
+    SlashCmdList.MUSCAUI("diag")
     truthy(Mock.FindPrinted("Midnight : formateur de recharge oui"), "ligne Midnight")
 end)

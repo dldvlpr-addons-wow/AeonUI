@@ -34,7 +34,7 @@ Widgets.SimpleMode = function() return false end
 local counter = 0
 local function NextName()
     counter = counter + 1
-    return "AeonUIWidget" .. counter
+    return "MuscaUIWidget" .. counter
 end
 
 --- Largeur du texte d'un bouton (estimée si le client ne la donne pas).
@@ -226,7 +226,7 @@ Widgets.DismissTip = DismissTip
 function Widgets.Tip(anchor, key, text)
     if Widgets.TipSeen(key) or (tip and tip:IsShown()) then return end
     if not tip then
-        tip = CreateFrame("Frame", "AeonUITip", UIParent)
+        tip = CreateFrame("Frame", "MuscaUITip", UIParent)
         tip:SetFrameStrata("FULLSCREEN_DIALOG")
         tip:SetSize(240, 60)
         NS.Media:CreateBackdrop(tip)
@@ -295,7 +295,7 @@ local function PaintMenu()
 end
 
 local function BuildMenu()
-    menu = CreateFrame("Frame", "AeonUIDropdownMenu", UIParent)
+    menu = CreateFrame("Frame", "MuscaUIDropdownMenu", UIParent)
     menu:SetFrameStrata("FULLSCREEN_DIALOG")
     menu:SetClampedToScreen(true)
     menu:EnableMouse(true)

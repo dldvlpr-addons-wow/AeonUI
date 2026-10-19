@@ -172,7 +172,7 @@ local tooltipAnchor
 function Skin:UpdateTooltipAnchor()
     if active and self.db.anchorFixed then
         if not tooltipAnchor then
-            tooltipAnchor = CreateFrame("Frame", "AeonUITooltipAnchor", UIParent)
+            tooltipAnchor = CreateFrame("Frame", "MuscaUITooltipAnchor", UIParent)
             tooltipAnchor:SetSize(160, 40)
         end
         NS.Movers:Register("tooltip", tooltipAnchor, L.MOVER_TOOLTIP, "BOTTOMRIGHT", -80, 180)

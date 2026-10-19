@@ -316,7 +316,7 @@ end
 --------------------------------------------------------------------------------
 
 local function Build()
-    frame = CreateFrame("Frame", "AeonUIReminders", UIParent)
+    frame = CreateFrame("Frame", "MuscaUIReminders", UIParent)
     frame:SetSize(320, MAX_LINES * 22)
     frame:SetFrameStrata("MEDIUM")
     frame.hint = Media:CreateText(frame, "OVERLAY")
@@ -335,7 +335,7 @@ end
 -- l'entrée en combat. Créé hors combat, au besoin.
 local function CastButton(line)
     if line.castButton then return line.castButton end
-    local button = CreateFrame("Button", "AeonUIReminderCast" .. line.index, UIParent, "SecureActionButtonTemplate")
+    local button = CreateFrame("Button", "MuscaUIReminderCast" .. line.index, UIParent, "SecureActionButtonTemplate")
     button:SetSize(20, 20)
     button:RegisterForClicks("AnyUp", "AnyDown")
     button:SetAttribute("type", "spell")

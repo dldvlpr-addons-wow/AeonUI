@@ -22,7 +22,7 @@ local active = false
 local holder, bar
 
 local function Build()
-    holder = CreateFrame("Frame", "AeonUIGCDBar", UIParent)
+    holder = CreateFrame("Frame", "MuscaUIGCDBar", UIParent)
     Media:CreateBackdrop(holder)
     bar = Media:CreateStatusBar(holder)
     bar:SetAllPoints(holder)

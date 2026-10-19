@@ -1,4 +1,4 @@
--- tests/test_nameplateframes.lua : plaques de nom AeonUI (étape 3).
+-- tests/test_nameplateframes.lua : plaques de nom MuscaUI (étape 3).
 local T = ...
 local NS, test, eq, truthy, reset = T.NS, T.test, T.eq, T.truthy, T.reset
 local NPF = NS.Modules:Get("nameplateframes")

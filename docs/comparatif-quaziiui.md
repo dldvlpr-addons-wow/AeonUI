@@ -1,8 +1,8 @@
-# Comparatif QuaziiUI (QUI) / AeonUI
+# Comparatif QuaziiUI (QUI) / MuscaUI
 
 Date : 2026-10-12. Références comparées :
 - QUI v5.3.1 : retail 12.1, Interface 120100, GPL-3, dans `quazii/addon-qui/QUI-main`.
-- AeonUI : Interface 16001, cible WoW Forever 1.60.1.
+- MuscaUI : Interface 16001, cible WoW Forever 1.60.1.
 
 Ce document compare des fonctionnalités et des limites du client. Aucun code QUI n'y est repris.
 
@@ -15,8 +15,8 @@ Ce document compare des fonctionnalités et des limites du client. Aucun code QU
 | QUI : CDM | 39 fichiers lus en entier, dont `cdm_icon_runtime_refresh.lua` (1213 lignes) ; `core/defaults.lua` lu en entier (4524 lignes) | Bonne ; défauts des filtres de conteneur absents de `defaults.lua` (posés ailleurs) |
 | QUI : Options (tuiles, assistant, éditeur d'auras, recherche, widgets, profils) | Fichiers lus en entier, dont `framework.lua` (7949 lignes) et `core/migrations.lua` (1697 lignes) ; `search_cache.lua` lu pour son schéma (fichier généré) | Bonne ; pas de reset par réglage, pas de dépendances entre réglages (vérifié) |
 | QUI : Debug, Logger, meta | En-têtes | Outillage dev, hors produit |
-| AeonUI : cœur (Core, Config) | Code lu | Bonne |
-| AeonUI : Modules/*.lua et sous-addons `AeonUI_*` | README, `docs/options.md`, greps `Register`/`secure`/`yieldsTo` | Moyenne : corps des fichiers non lu |
+| MuscaUI : cœur (Core, Config) | Code lu | Bonne |
+| MuscaUI : Modules/*.lua et sous-addons `MuscaUI_*` | README, `docs/options.md`, greps `Register`/`secure`/`yieldsTo` | Moyenne : corps des fichiers non lu |
 
 Non vérifié sur Forever : `C_DamageMeter`, `C_EncounterTimeline`, `C_CooldownViewer`, `C_Secrets`, `CustomAuraButtonTemplate` (slots d'aura sécurisés), `CustomAuraContainerTemplate` (AuraContainer), `C_DeathRecap`, `C_CurveUtil.EvaluateColorValueFromBoolean`, `C_ActionBar.GetActionCooldownDuration` (vu en jeu sur 70124, signature non relue), `C_NamePlateManager`, `UnitGetDetailedHealPrediction` et `CreateUnitHealPredictionCalculator`, les filtres d'aura `BIG_DEFENSIVE`, `EXTERNAL_DEFENSIVE`, `IMPORTANT` et `CROWD_CONTROL`. Ces API sont à passer à l'agent `wow-api` avant toute reprise d'idée qui en dépend.
 
@@ -24,22 +24,22 @@ Non vérifié sur Forever : `C_DamageMeter`, `C_EncounterTimeline`, `C_CooldownV
 
 Légende de pertinence sur Forever : **forte** (le contenu vanilla s'en sert), **partielle** (une partie seulement), **faible** (retail, spé, M+).
 
-| Domaine | QUI | AeonUI | Écart principal | Pertinence Forever |
+| Domaine | QUI | MuscaUI | Écart principal | Pertinence Forever |
 |---|---|---|---|---|
 | Architecture | Cœur + 11 sous-addons LoadOnDemand, options en LOD | Cœur + 8 sous-addons, options chargées au login | Options en LOD, page « Module Addons » en jeu | Partielle |
 | Options | 18 tuiles, index de recherche généré, synonymes, widget modifiable dans les résultats, aperçus intégrés, éditeur d'auras par intention | Catégories, recherche à la volée, mode simple/avancé | Synonymes, saut au widget, aperçus, sélecteur de sorts | Forte (UX) |
-| Assistant | 7 pages, chaque étape immédiate | 8 pages, HUD Musca, CVars réversibles | Équivalent ; AeonUI plus riche | — |
+| Assistant | 7 pages, chaque étape immédiate | 8 pages, HUD Musca, CVars réversibles | Équivalent ; MuscaUI plus riche | — |
 | Profils | AceDB, pins, copie par catégorie, aperçu d'import par catégorie, STRIP des clés invalides, sauvegardes de migration | Perso/spé/contexte, export partiel, export compte, envoi au groupe, miroir de persistance | Pins, aperçu d'import, sauvegarde avant migration | Forte |
 | Layout / movers | Layout Mode avec poignées, désancrage, intégrations boss mods | Movers, aimant, ancrage mover à mover, Lock X/Y | Proches ; QUI a les intégrations tierces | Partielle |
 | Valeurs secrètes | Taxonomie `@secret-policy`, SafeCall à politiques | `Compat.lua` seul point d'appel, `NS.IsSecret` | Taxonomie documentée | Forte (méthode) |
 | UnitFrames | Très complet (absorbs, heal prediction, ticks de canal, Dark Mode, GCD en castbar) | Complet, formats à balises, totems, humeur du familier | Ticks de canal, GCD en castbar, castbar standalone, aperçu dans la page | Forte |
 | GroupFrames | Spotlight, targeted spells, overlay de dispel par slots sécurisés, raid buffs, click-cast avancé | En-têtes sécurisés, tanks/assist, dissipation table Classic, click-cast 8 liaisons | Click-cast, spotlight, mode test, raid buffs manquants | Forte |
 | Nameplates | 6 types de plaque, presets, kick tick, CVars en file | Plaques ancrées, 5 règles de style, chevrons de cible | Kick tick, presets nommés, types de plaque | Forte |
-| ActionBars | Moteur « owned », flyout, GSE, mouseover, buff borders | 8 barres, `/aeon kb`, cession à Bartender/Dominos | Proches ; QUI plus fin sur le style | Forte |
-| ResourceBars | Liées au Cooldown Manager, indexées par spé | Barres séparées (puissance, combo, mana druide) | QUI peu adapté à Forever | AeonUI mieux placé |
+| ActionBars | Moteur « owned », flyout, GSE, mouseover, buff borders | 8 barres, `/musca kb`, cession à Bartender/Dominos | Proches ; QUI plus fin sur le style | Forte |
+| ResourceBars | Liées au Cooldown Manager, indexées par spé | Barres séparées (puissance, combo, mana druide) | QUI peu adapté à Forever | MuscaUI mieux placé |
 | Cooldown Manager | ~42 000 lignes autour des viewers Blizzard + conteneurs perso | Réglages par sort, movers des viewers | Composer, conteneurs perso | Faible (dépend du CDM) |
 | Damage meter | `C_DamageMeter`, 5 fenêtres, 11 modes, breakout | Absent (laissé à ForeverMeter) | Module entier | À vérifier (API) |
-| Reminders | Défensive à presser sur timer de boss mod | Rappels de buffs de classe, groupe, durabilité, posture | Objets différents | QUI faible, AeonUI fort |
+| Reminders | Défensive à presser sur timer de boss mod | Rappels de buffs de classe, groupe, durabilité, posture | Objets différents | QUI faible, MuscaUI fort |
 | Bags | Catégories, recherche à opérateurs, tri multi-passes, cache multi-perso, banque de guilde | Fenêtre unique, recherche, tri, banque au thème | Écart large | Forte |
 | Chat | Remplacement complet de l'affichage, historique persistant, conversations, combat log en onglet | Habillage de ChatFrame, copie, mots-clés, historique au reload | Écart large, coût et risque élevés | Partielle |
 | Minimap / infobar / datatexts | Minimap, infobar LDB | TopBar, DataPanels, Minimap, LDB | Équivalent | — |
@@ -56,12 +56,12 @@ QUI :
 - QUI_Options (~2,9 Mo) n'est chargé qu'à la première ouverture. Le thème est servi au login par le cœur.
 - Les locales compilées s'auto-désactivent.
 
-AeonUI :
-- Sous-addons `AeonUI_*` chargés au login, désactivables dans la liste d'addons du jeu.
+MuscaUI :
+- Sous-addons `MuscaUI_*` chargés au login, désactivables dans la liste d'addons du jeu.
 - Registre de modules avec xpcall, `failed`, `secure`, `reloadOnDisable`, `yieldsTo`.
 - Options construites page par page à la première ouverture, mais leur code est chargé au login.
 
-Écart : QUI ne charge pas le code des options au login. AeonUI construit déjà ses pages à la demande ; le gain restant est la mémoire et le temps de compilation. Une page « Modules » existe déjà dans AeonUI. Il lui manque la gestion des sous-addons eux-mêmes (activer `AeonUI_Bags` depuis les options), qui demande `C_AddOns.EnableAddOn` et un reload.
+Écart : QUI ne charge pas le code des options au login. MuscaUI construit déjà ses pages à la demande ; le gain restant est la mémoire et le temps de compilation. Une page « Modules » existe déjà dans MuscaUI. Il lui manque la gestion des sous-addons eux-mêmes (activer `MuscaUI_Bags` depuis les options), qui demande `C_AddOns.EnableAddOn` et un reload.
 
 ### 2.2 Fenêtre d'options
 QUI :
@@ -97,7 +97,7 @@ QUI :
 - Reset : un seul bouton « Reset to Defaults » en pied de fenêtre. Il appelle le hook de la tuile active, sinon « No reset hook registered for this page ». Pas de reset par réglage, pas de valeur par défaut affichée, pas d'undo hors couleur et Échap du curseur.
 - Dépendances : aucune entre réglages, hors désactivation codée dans chaque page. `relatedTo` et « Related » sont de simples liens de navigation.
 
-AeonUI :
+MuscaUI :
 - Catégories Général, Cadres, Combat, Interface, Confort ; liste à gauche avec point d'état vert/gris/orange.
 - Recherche à la volée (2 lettres minimum), mode simple/avancé, réinitialiser la page, recharger par bouton macro.
 - Aperçus party/raid dans les options de groupe.
@@ -121,7 +121,7 @@ QUI a un éditeur commun aux unit frames, group frames, nameplates, cadres de bu
 - tri : expiration, nom, défensifs d'abord, priorité de debuff, inversé ;
 - sélecteur de sorts : recherche, sections (auras actives, grimoire, talents, déjà vus, presets), homonymes groupés avec « ajouter toutes les variantes », résolution sort lancé vers aura.
 
-AeonUI : listes d'auras partagées entre unit frames, plaques et co-tank, saisies par ID.
+MuscaUI : listes d'auras partagées entre unit frames, plaques et co-tank, saisies par ID.
 
 Écarts utiles : sélecteur de sorts avec recherche (plus de saisie d'ID), mode simple par intention avec phrase de résumé. Seaux par spé et filtres retail à écarter.
 
@@ -137,9 +137,9 @@ QUI, 7 pages (fenêtre 560x440, compteur « n / 7 », Back/Next, fermer = « Not
 
 Ouverture automatique sur installation fraîche ; sur un profil existant, un seul message au login. Échelle, import et layout sont refusés en combat.
 
-AeonUI, 8 pages : profils de classe, modules, style, disposition Edit Mode, Cooldown Manager, CVars réversibles, HUD Musca, résumé.
+MuscaUI, 8 pages : profils de classe, modules, style, disposition Edit Mode, Cooldown Manager, CVars réversibles, HUD Musca, résumé.
 
-Écart : AeonUI est déjà plus complet. Idées à reprendre : afficher la chaîne Edit Mode à copier quand l'import automatique échoue ; récapitulatif final des seules actions faites pendant ce passage.
+Écart : MuscaUI est déjà plus complet. Idées à reprendre : afficher la chaîne Edit Mode à copier quand l'import automatique échoue ; récapitulatif final des seules actions faites pendant ce passage.
 
 ### 2.4 Profils, import et export
 QUI :
@@ -160,30 +160,30 @@ QUI :
   - Import d'une chaîne sous le plancher refusé avec un message explicite.
 - Aucune sauvegarde avant import.
 
-AeonUI :
+MuscaUI :
 - Profils par personnage, par spé, par contexte (world, dungeon, raid, pvp), raccourci clavier par profil.
 - `AEON1:` / `AEON2:`, export partiel par modules, export de tout le compte, `Sanitize`/`ClampColors`/`DropNonFinite`.
 - Envoi du profil au groupe, avec confirmation avant décompression.
-- Migrations v2 à v7 sous pcall, échecs listés par `/aeon diag`.
+- Migrations v2 à v7 sous pcall, échecs listés par `/musca diag`.
 - Persistance de secours (table hôte, CVars miroir) propre à Forever.
 
 Écarts utiles :
-- Aperçu d'import avec cases par module : AeonUI a déjà l'export partiel, l'import sélectif est la moitié manquante.
+- Aperçu d'import avec cases par module : MuscaUI a déjà l'export partiel, l'import sélectif est la moitié manquante.
 - Sauvegarde du profil avant migration, avec le pcall existant : en cas d'échec, restauration automatique et version non incrémentée. QUI sauvegarde mais ne restaure qu'à la main.
 - Garde-fous chiffrés (profondeur, nombre de nœuds) dans `Sanitize`, si absents.
 - Rapport de nettoyage à l'import (clés retirées), comme le bouton STRIP.
 - Import sélectif : garder le thème et la disposition locaux quand ils ne sont pas cochés.
-- Sauvegarde avant import : QUI ne la fait pas ; AeonUI pourrait la faire avec le même slot que la migration.
+- Sauvegarde avant import : QUI ne la fait pas ; MuscaUI pourrait la faire avec le même slot que la migration.
 - Pins : utile si les joueurs changent souvent de profil ; à décider.
 
-AeonUI a en plus : profils par contexte, envoi au groupe, export du compte, persistance de secours.
+MuscaUI a en plus : profils par contexte, envoi au groupe, export du compte, persistance de secours.
 
 ### 2.5 Mode disposition
 QUI : barre d'outils, grille, snap, poignées (clic droit réglages, Shift redimension, clic milieu désancrage), save/discard, suspension en combat, gardes contre l'Edit Mode, intégration BigWigs, DandersFrames, AbilityTimeline.
 
-AeonUI : calques glissés, aimant 8 px, lignes guides, flèches 1/10 px, clic droit vers la page du module, ancrage mover à mover avec détection de cycle, Lock X/Y, `fallback`, `pin`, `grow`, enregistrer/annuler.
+MuscaUI : calques glissés, aimant 8 px, lignes guides, flèches 1/10 px, clic droit vers la page du module, ancrage mover à mover avec détection de cycle, Lock X/Y, `fallback`, `pin`, `grow`, enregistrer/annuler.
 
-Écart : AeonUI est au niveau, et plus riche sur l'ancrage. Il manque le redimensionnement au mover (Shift + glisser) et les movers pour les addons tiers (DBM/BigWigs sont placés par `AddonPlacements`, sans mover).
+Écart : MuscaUI est au niveau, et plus riche sur l'ancrage. Il manque le redimensionnement au mover (Shift + glisser) et les movers pour les addons tiers (DBM/BigWigs sont placés par `AddonPlacements`, sans mover).
 
 ### 2.6 Valeurs secrètes
 QUI :
@@ -191,14 +191,14 @@ QUI :
 - Le « rulebook » est en tête de `QUI_Nameplates/nameplates/shared.lua`.
 - Logique tri-état (vrai, faux, inconnu) dans Reminders et la recherche des sacs.
 
-AeonUI : `Compat.lua` est le seul fichier qui appelle des API à risque ; `NS.IsSecret` ; les modules passent par `NS.*`.
+MuscaUI : `Compat.lua` est le seul fichier qui appelle des API à risque ; `NS.IsSecret` ; les modules passent par `NS.*`.
 
-Écart : la méthode d'AeonUI (un seul point d'appel) est plus stricte. La taxonomie de QUI apporte la documentation de la décision à chaque site d'appel. Elle se reprend sous forme de convention de commentaire, sans code.
+Écart : la méthode d'MuscaUI (un seul point d'appel) est plus stricte. La taxonomie de QUI apporte la documentation de la décision à chaque site d'appel. Elle se reprend sous forme de convention de commentaire, sans code.
 
 ## 3. Modules
 
 ### 3.1 Unit frames
-QUI a, et AeonUI n'a pas (d'après la doc AeonUI) :
+QUI a, et MuscaUI n'a pas (d'après la doc MuscaUI) :
 - ticks de canal (table statique, calibration par combat log désactivée dans QUI) ;
 - GCD affiché dans la castbar du joueur ;
 - castbar joueur standalone, active même sans unit frames ;
@@ -210,12 +210,12 @@ QUI a, et AeonUI n'a pas (d'après la doc AeonUI) :
 - surbrillance de la frame boss ciblée et fondu hors de portée des boss ;
 - intégration Clique (`ClickCastFrames`).
 
-AeonUI a, et QUI n'a pas : balises de texte libres (`[cur] [max] [perc] [missing] [status] [name] [level]`), totems cliquables, humeur du familier de chasseur, castbar colorée quand l'interruption est prête, zone de latence, listes d'auras partagées avec plaques et co-tank, lueur sur contrôles.
+MuscaUI a, et QUI n'a pas : balises de texte libres (`[cur] [max] [perc] [missing] [status] [name] [level]`), totems cliquables, humeur du familier de chasseur, castbar colorée quand l'interruption est prête, zone de latence, listes d'auras partagées avec plaques et co-tank, lueur sur contrôles.
 
 Pertinence Forever : forte. Les ticks de canal (Drain Life, Arcane Missiles, Blizzard, Mind Flay) servent en vanilla ; la table statique suffit, le combat log est interdit.
 
 ### 3.2 Group frames
-QUI a, et AeonUI n'a pas :
+QUI a, et MuscaUI n'a pas :
 - dimensions par taille de raid (6-15, 16-25, 26-40) ;
 - spotlight (en-tête séparé tanks/healers) ;
 - party target frames ;
@@ -227,12 +227,12 @@ QUI a, et AeonUI n'a pas :
 - mode test avec frames factices ;
 - throttle par famille d'événement, budget « heavy » par frame.
 
-AeonUI a, et QUI n'a pas : cadres tanks et assistants principaux, cadres boss alliés, CoTank, sorts suivis par coin avec préréglage de classe.
+MuscaUI a, et QUI n'a pas : cadres tanks et assistants principaux, cadres boss alliés, CoTank, sorts suivis par coin avec préréglage de classe.
 
-Pertinence Forever : forte, sauf spé/loadout, Mythic, Bleed/Enrage, buffs Evoker/Skyfury. Missing raid buffs en version vanilla (Fortitude, Arcane Intellect, Mark of the Wild, Blessings) recoupe Reminders d'AeonUI. Les slots d'aura sécurisés sont à vérifier sur Forever.
+Pertinence Forever : forte, sauf spé/loadout, Mythic, Bleed/Enrage, buffs Evoker/Skyfury. Missing raid buffs en version vanilla (Fortitude, Arcane Intellect, Mark of the Wild, Blessings) recoupe Reminders d'MuscaUI. Les slots d'aura sécurisés sont à vérifier sur Forever.
 
 ### 3.3 Nameplates
-QUI a, et AeonUI n'a pas :
+QUI a, et MuscaUI n'a pas :
 - 6 types de plaque avec réglages complets chacun (familier, amical, boss/élite, mineur, joueur ennemi, PNJ ennemi) ;
 - modes normal / simplified / nameonly / off ;
 - priorité de couleur sur 8 niveaux, assombrissement hors combat ;
@@ -243,9 +243,9 @@ QUI a, et AeonUI n'a pas :
 - presets (default, compact, chunky) et profils nommés assignables par rôle ;
 - CVars de plaque écrites en file hors combat.
 
-AeonUI a, et QUI n'a pas : règles de style conditionnelles (5 règles, première qui correspond), chevrons de cible, masquage des noms flottants, plaques sur familiers et gardiens jusqu'à 60 yards.
+MuscaUI a, et QUI n'a pas : règles de style conditionnelles (5 règles, première qui correspond), chevrons de cible, masquage des noms flottants, plaques sur familiers et gardiens jusqu'à 60 yards.
 
-Pertinence Forever : forte. Le kick tick sert à tout interrupteur vanilla (Kick, Pummel, Shield Bash, Earth Shock, Counterspell). Les règles d'AeonUI couvrent déjà une bonne part des types de plaque de QUI.
+Pertinence Forever : forte. Le kick tick sert à tout interrupteur vanilla (Kick, Pummel, Shield Bash, Earth Shock, Counterspell). Les règles d'MuscaUI couvrent déjà une bonne part des types de plaque de QUI.
 
 ### 3.4 Action bars
 QUI :
@@ -265,13 +265,13 @@ QUI :
 - Performance : une seule frame OnUpdate (0,033 s en combat, 0,2 s hors combat), seuls les emplacements « sales » sont relus.
 - Retail seulement : flyout propre, Rotation Assist, GSE.
 
-AeonUI : 8 barres, pagination par attribute driver, `/aeon kb`, micro-menu, sacs, posture, totems, familier en 4 modes, style des boutons, cession à Bartender4/Dominos.
+MuscaUI : 8 barres, pagination par attribute driver, `/musca kb`, micro-menu, sacs, posture, totems, familier en 4 modes, style des boutons, cession à Bartender4/Dominos.
 
 Écarts :
 - couleur distincte pour le manque de mana ;
 - gloss et fond des boutons ;
 - « Copy Settings From » et « Apply to All Bars » ;
-- barre de marqueurs de raid avec bande de chef (AeonUI a les marqueurs dans RaidUtility) ;
+- barre de marqueurs de raid avec bande de chef (MuscaUI a les marqueurs dans RaidUtility) ;
 - remplacement des cadres de buffs du joueur ;
 - aperçu à 30 % des emplacements vides pendant un glisser.
 
@@ -289,9 +289,9 @@ QUI :
 - Aperçu en direct : cycle simulé de 10 s.
 - Performance : mise à jour limitée à 0,016 s ; runes et essence à 50 ms.
 
-AeonUI : barres de vie, puissance, combo, mana de druide, chacune sur son mover, seuils colorés, repères en %.
+MuscaUI : barres de vie, puissance, combo, mana de druide, chacune sur son mover, seuils colorés, repères en %.
 
-Verdict : AeonUI est mieux adapté à Forever. À reprendre seulement : l'aperçu animé dans la page d'options, les repères de seuil si absents.
+Verdict : MuscaUI est mieux adapté à Forever. À reprendre seulement : l'aperçu animé dans la page d'options, les repères de seuil si absents.
 
 ### 3.6 Cooldown Manager
 QUI :
@@ -339,9 +339,9 @@ Page de réglages d'un conteneur, 6 onglets (Filters et Per-Spec seulement pour 
 
 Réglages portables sans CDM ni spé : Appearance par rangée, Filters, lueurs, textes de raccourci. Liés au CDM : conteneurs intégrés, masquage des effets Blizzard, effet de pression Blizzard, bordure de recommandation. Liés à la spé : Per-Spec, Per-Loadout, bandeau d'Entries.
 
-AeonUI : `cooldownmanager` (réglages par sort, lueur, bordure, couleur de barre) et `blizzardframes` (viewers sur movers). `cooldownbars` et `tracker` couvrent les rangées par ID de sort.
+MuscaUI : `cooldownmanager` (réglages par sort, lueur, bordure, couleur de barre) et `blizzardframes` (viewers sur movers). `cooldownbars` et `tracker` couvrent les rangées par ID de sort.
 
-Verdict : faible pertinence tant que le Cooldown Manager n'est pas confirmé sur Forever. Le HUD Musca joue ce rôle côté AeonUI. Idées reprenables sans le CDM :
+Verdict : faible pertinence tant que le Cooldown Manager n'est pas confirmé sur Forever. Le HUD Musca joue ce rôle côté MuscaUI. Idées reprenables sans le CDM :
 - composer (ajout par recherche et réordonnancement visuels) pour `cooldownbars` et `tracker`, qui demandent aujourd'hui des ID ;
 - désaturation qui tient compte des charges restantes ;
 - fondu de HUD quand la santé est sous 100 %, par courbe ;
@@ -359,7 +359,7 @@ QUI :
 - Rafraîchissement 0,5 s en combat, 2 s au repos.
 - GUID secrets en combat : joueurs reconnus par icône de spé mise en cache. Nombres secrets ramenés à 0, tris abandonnés sur clé secrète.
 
-AeonUI : absent, laissé à ForeverMeter (dépendance requise côté CurseForge). DataPanels affiche un DPS secret à largeur fixe.
+MuscaUI : absent, laissé à ForeverMeter (dépendance requise côté CurseForge). DataPanels affiche un DPS secret à largeur fixe.
 
 Verdict : à ne pas reprendre tant que ForeverMeter couvre le besoin. Si `C_DamageMeter` existe sur Forever, un module natif supprimerait la dépendance ; vérifier l'API d'abord. L'identification par icône de spé ne marche pas sans spé.
 
@@ -372,12 +372,12 @@ QUI :
 - Sorties : callout, son/TTS, chat, lueur sur le CDM.
 - Catalogue des sorts déjà vus (400 au plus).
 
-AeonUI : rappels de buffs de classe et de groupe, durabilité, sacs pleins, posture, familier, nourriture, buffs personnalisés, icône cliquable.
+MuscaUI : rappels de buffs de classe et de groupe, durabilité, sacs pleins, posture, familier, nourriture, buffs personnalisés, icône cliquable.
 
-Verdict : objets différents. Le module QUI dépend de la spé et des saisons retail : faible sur Forever. À retenir : le bus normalisé BigWigs/DBM (une seule source active), utile si AeonUI veut un jour réagir aux timers de boss ; la liste par spé serait remplacée par une liste par classe.
+Verdict : objets différents. Le module QUI dépend de la spé et des saisons retail : faible sur Forever. À retenir : le bus normalisé BigWigs/DBM (une seule source active), utile si MuscaUI veut un jour réagir aux timers de boss ; la liste par spé serait remplacée par une liste par classe.
 
 ### 3.9 Bags et banque
-QUI a, et AeonUI n'a pas :
+QUI a, et MuscaUI n'a pas :
 - layout par catégories (Recent, Equipment, Consumables, Trade Goods, Quest, Recipes, Misc, Junk) ;
 - coins d'icône configurables (quantité, ilvl, junk, set d'équipement, liaison BoE) avec widget de repli ;
 - teinte rouge des objets inutilisables ;
@@ -392,33 +392,33 @@ QUI a, et AeonUI n'a pas :
 - banque de guilde complète (onglets, droits, journaux) ;
 - barre de monnaies en pied.
 
-AeonUI : fenêtre unique, recherche, tri client, ilvl, gris signalés, bordure de qualité, recharges, places libres et or ; banque au thème.
+MuscaUI : fenêtre unique, recherche, tri client, ilvl, gris signalés, bordure de qualité, recharges, places libres et or ; banque au thème.
 
 Pertinence Forever : forte, hors banque de bande de guerre, sac de réactifs, qualité de craft, scrapping. Écart le plus large de tous les modules : compteurs multi-personnages, catégories, recherche à opérateurs, auto-ouverture, banque de guilde.
 
 ### 3.10 Chat
 QUI : remplacement complet de l'affichage (capture des `CHAT_MSG_*`, store de messages, rendu par `ScrollingMessageFrame` propre), onglets à filtres, conversations de chuchotement par interlocuteur, journal de combat en onglet, historique persistant (5000 lignes, en tranches), copie, URLs et coordonnées cliquables, menu joueur étendu, alerte mots-clés, texte redondant compacté (loot, XP, réputation), sons par canal, barre de boutons.
 
-AeonUI : habillage des ChatFrame Blizzard, URLs, copie `[c]`, canaux courts, couleur de classe, horodatage, mots-clés avec son, anti-spam, historique au reload (100 lignes par fenêtre), deux fenêtres réorganisables, bulles au thème.
+MuscaUI : habillage des ChatFrame Blizzard, URLs, copie `[c]`, canaux courts, couleur de classe, horodatage, mots-clés avec son, anti-spam, historique au reload (100 lignes par fenêtre), deux fenêtres réorganisables, bulles au thème.
 
-Verdict : l'approche de QUI coûte très cher. Elle doit suivre le lockdown de messagerie, les corps secrets et la restauration de Blizzard. AeonUI reste sur l'habillage, plus sûr. Petits écarts reprenables : texte redondant compacté, coordonnées cliquables, onglet par interlocuteur.
+Verdict : l'approche de QUI coûte très cher. Elle doit suivre le lockdown de messagerie, les corps secrets et la restauration de Blizzard. MuscaUI reste sur l'habillage, plus sûr. Petits écarts reprenables : texte redondant compacté, coordonnées cliquables, onglet par interlocuteur.
 
 ### 3.11 Minimap, barre d'infos, datatexts
-Équivalent fonctionnel. AeonUI a TopBar, DataPanels (jusqu'à 12 panneaux), menu Voyage, ledger d'or, LDB. QUI a infobar et datatexts LDB, minimap. Rien de notable à reprendre.
+Équivalent fonctionnel. MuscaUI a TopBar, DataPanels (jusqu'à 12 panneaux), menu Voyage, ledger d'or, LDB. QUI a infobar et datatexts LDB, minimap. Rien de notable à reprendre.
 
 ### 3.12 Skinning et fiche de personnage
 QUI : très nombreuses frames, panneau personnage avec stats sensibles aux secrets, inspection avec ilvl, enchantements et gemmes.
 
-AeonUI : `skin` (~50 frames, infobulles), `gear` (ilvl par emplacement, enchantements manquants, inspection).
+MuscaUI : `skin` (~50 frames, infobulles), `gear` (ilvl par emplacement, enchantements manquants, inspection).
 
 Écart : gemmes sans objet en vanilla. Équivalent sinon.
 
 ### 3.13 QoL
 QUI : combat timer, lust, brez, consumables, crosshair, curseur, tooltip, vendeur, sons, Blizzard Mover, macros de consommables, masquage d'éléments Blizzard par type d'instance, texte de combat, range utils, incoming casts.
 
-AeonUI : Automation, Alerts, Cursor, AFK, RadialMenu, MovableWindows, Interface épurée, GroupFinder, RaidUtility, Loot, MovementAlert, AuraBars.
+MuscaUI : Automation, Alerts, Cursor, AFK, RadialMenu, MovableWindows, Interface épurée, GroupFinder, RaidUtility, Loot, MovementAlert, AuraBars.
 
-Écart : macros de consommables (bouton qui prend le meilleur consommable en sac), masquage d'éléments Blizzard par type d'instance. AeonUI a en plus RadialMenu, AFK, GroupFinder, MovementAlert.
+Écart : macros de consommables (bouton qui prend le meilleur consommable en sac), masquage d'éléments Blizzard par type d'instance. MuscaUI a en plus RadialMenu, AFK, GroupFinder, MovementAlert.
 
 ### 3.14 Hors objet sur Forever
 M+ timer, keystones, teleports de donjon, Skyriding, Prey Tracker, saisons du Dungeon Journal, réglages par spé et par loadout, outillage de debug QUI.
@@ -441,7 +441,7 @@ Constats tirés du code QUI (retail 12.1), à confirmer sur Forever :
 - `C_ChatInfo.InChatMessagingLockdown` : corps de message secrets, pas de persistance, pas de traitement.
 - `C_StringUtil.WrapString` accepte les chaînes secrètes.
 - `C_NamePlate.SetNamePlateSize` unique et centré ; `SetStackingBoundsFrame` lit les régions rendues ; `SetFillStyle` réactive le pixel snapping ; `SetNamePlateHitTestInsets` refuse les arguments secrets.
-- CVars : écriture différée en combat, rejouée à `PLAYER_REGEN_ENABLED` (AeonUI le fait déjà).
+- CVars : écriture différée en combat, rejouée à `PLAYER_REGEN_ENABLED` (MuscaUI le fait déjà).
 - Ticks de canal par combat log : désactivés dans QUI (`CHANNEL_TICK_CLEU_SANCTIONED = false`) ; table statique seulement.
 - Compte secret (stacks, charges) : envoyé tel quel à une FontString, jamais comparé ni formaté. Alpha du texte piloté par `C_CurveUtil.EvaluateColorValueFromBoolean`.
 - Charges en combat : lisibles seulement si déjà connues hors combat ; QUI mémorise les charges max hors combat.
@@ -462,7 +462,7 @@ Constats tirés du code QUI (retail 12.1), à confirmer sur Forever :
 - Langue de l'interface : changement seulement après reload.
 - Charge d'un événement de cooldown vide ou secrète : rafraîchir tout, faute de savoir quel sort.
 
-## 5. Ce qu'AeonUI a et que QUI n'a pas
+## 5. Ce qu'MuscaUI a et que QUI n'a pas
 
 - Cible Forever : persistance de secours (table hôte, CVars miroir), reload par bouton macro, layout Edit Mode capturé sur 1.60.1.
 - Cession automatique à un addon tiers (`yieldsTo`) et module qui revient seul.
@@ -471,7 +471,7 @@ Constats tirés du code QUI (retail 12.1), à confirmer sur Forever :
 - Visibilité commune à tous les modules (combat, groupe, raid, instance, monture, cible, survol).
 - Règles de style des plaques.
 - Intégration du HUD Musca-Auras : import du pack de classe, placement, bordure à l'accent.
-- Modules absents de QUI : RadialMenu, AFK, CoTank, MovementAlert, GroupFinder, Loot avec jets de groupe, DataPanels multiples, chevrons de cible, `/aeon diag` orienté client.
+- Modules absents de QUI : RadialMenu, AFK, CoTank, MovementAlert, GroupFinder, Loot avec jets de groupe, DataPanels multiples, chevrons de cible, `/musca diag` orienté client.
 
 ## 6. Écarts les plus pertinents sur Forever
 
@@ -487,7 +487,7 @@ Classés par rapport gain / coût, sans engagement :
 9. Tracker / cooldownbars : ajout par recherche et réordonnancement visuels, entrées dormantes, désaturation selon les charges restantes.
 10. HUD : fondu quand la santé est sous 100 %, par courbe (API à vérifier).
 11. Chat : texte redondant compacté, coordonnées cliquables.
-12. Boss mods : bus BigWigs/DBM normalisé, si AeonUI doit réagir aux timers.
+12. Boss mods : bus BigWigs/DBM normalisé, si MuscaUI doit réagir aux timers.
 13. Pins de réglages : à décider selon l'usage des profils.
 
 À écarter : Cooldown Manager QUI (sauf idées du point 9), ResourceBars QUI, Reminders QUI, tout ce qui touche spé, loadout, M+, Assisted Combat et contenu retail.

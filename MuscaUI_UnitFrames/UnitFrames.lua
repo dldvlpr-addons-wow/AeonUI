@@ -1,5 +1,5 @@
--- AeonUI_UnitFrames/UnitFrames.lua
--- Cadres d'unité AeonUI : joueur, cible, cible de la cible, focus, cible du focus, familier,
+-- MuscaUI_UnitFrames/UnitFrames.lua
+-- Cadres d'unité MuscaUI : joueur, cible, cible de la cible, focus, cible du focus, familier,
 -- boss 1 à 5 (un bloc de réglages commun). Remplacent
 -- les cadres Blizzard (masqués, rendus au /reload après désactivation).
 --
@@ -7,7 +7,7 @@
 -- droit menu, visibilité par RegisterUnitWatch), enfant d'UIParent, créé et dimensionné hors
 -- combat. Ses éléments (NS.UnitFrameElements) sont des régions libres : mises à jour en combat.
 -- Le module se déplace par les movers (clés uf_<unité>).
-local NS = AeonUI
+local NS = MuscaUI
 local L = NS.L
 local Elements = NS.UnitFrameElements
 local Movers = NS.Movers
@@ -143,7 +143,7 @@ local function OnUnitEvent(frame, event)
 end
 
 local function Create(unit)
-    local frame = CreateFrame("Button", "AeonUI_UF_" .. unit, UIParent, "SecureUnitButtonTemplate")
+    local frame = CreateFrame("Button", "MuscaUI_UF_" .. unit, UIParent, "SecureUnitButtonTemplate")
     frame.unit = unit
     frame:SetAttribute("unit", unit)
     frame:SetAttribute("*type1", "target")
@@ -326,7 +326,7 @@ end
 --------------------------------------------------------------------------------
 -- Totems
 --------------------------------------------------------------------------------
--- Le cadre des totems Blizzard vit dans PlayerFrame, caché avec lui : barre AeonUI sur son
+-- Le cadre des totems Blizzard vit dans PlayerFrame, caché avec lui : barre MuscaUI sur son
 -- mover (uf_totems). Boutons sécurisés (clic droit : détruire le totem) créés hors combat et
 -- jamais cachés : un emplacement vide passe à alpha 0 (SetAlpha est permis en combat).
 
@@ -334,10 +334,10 @@ local MAX_TOTEMS = 4
 local totemBar
 
 local function BuildTotems()
-    totemBar = CreateFrame("Frame", "AeonUI_Totems", UIParent)
+    totemBar = CreateFrame("Frame", "MuscaUI_Totems", UIParent)
     totemBar.buttons = {}
     for slot = 1, MAX_TOTEMS do
-        local button = CreateFrame("Button", "AeonUI_Totem" .. slot, totemBar, "SecureActionButtonTemplate")
+        local button = CreateFrame("Button", "MuscaUI_Totem" .. slot, totemBar, "SecureActionButtonTemplate")
         button:RegisterForClicks("RightButtonUp")
         button:SetAttribute("type2", "destroytotem")
         button:SetAttribute("totem-slot", slot)

@@ -1,17 +1,17 @@
 -- Core/Database.lua
--- AeonUIDB (compte entier) :
+-- MuscaUIDB (compte entier) :
 --   version, locale, firstRunDone
 --   profiles[nom] = { theme, anchors, modules[module] }   -- réglages d'interface
 --   profileKeys["Perso - Royaume"] = nom du profil          -- absent = "Default"
 --   specProfiles["Perso - Royaume"][index de spé] = nom      -- prime sur profileKeys
 --   lastSpec["Perso - Royaume"] = index de spé                -- la spé n'est pas lisible dès la connexion
 --   contextProfiles["Perso - Royaume"][contexte] = nom       -- donjon, raid, pvp, world : prime sur la spé
---   cvarBackup[cvar] = valeur d'origine, avant que AeonUI ne la change
+--   cvarBackup[cvar] = valeur d'origine, avant que MuscaUI ne la change
 --   profileBackup = { reason, version, time, profiles, defaults } : profils d'avant la dernière migration,
 --     import, remise à zéro ou restauration (un seul emplacement, ni exporté ni recopié dans le miroir CVar ;
 --     réduite aux écarts aux défauts, joints en chaîne d'export, sauf celle d'une migration, complète)
 --   migrationSnapshot : table entière d'avant une migration en échec, rejouée à la session suivante
--- NS.global pointe sur AeonUIDB, NS.db sur le profil actif.
+-- NS.global pointe sur MuscaUIDB, NS.db sur le profil actif.
 -- Les défauts sont fusionnés sans jamais écraser une valeur existante ; les migrations
 -- sont numérotées et jouées une fois.
 local _, NS = ...
@@ -189,7 +189,7 @@ Database.MIGRATIONS = {
     end,
 }
 
--- Migrations en échec de la session : { "v3 : message" }, lues par /aeon diag.
+-- Migrations en échec de la session : { "v3 : message" }, lues par /musca diag.
 Database.migrationErrors = {}
 -- true si une migration a échoué et que la table a été rendue telle qu'avant (message à la connexion).
 Database.migrationRolledBack = false
@@ -200,7 +200,7 @@ Database.migrationRolledBack = false
 -- des défauts actuels, qui fausseraient le rejeu (v3, v7) : les profils d'avant sont gardés
 -- intacts dans `migrationSnapshot` et la session suivante les reprend une seule fois (le reste
 -- de la table, relevés du compte compris, reste celui de la session). Second échec : profils de
--- la session gardés, profils intacts rangés dans la sauvegarde (/aeon restore les migrera).
+-- la session gardés, profils intacts rangés dans la sauvegarde (/musca restore les migrera).
 -- En succès, les profils d'avant deviennent la sauvegarde.
 function Database.Migrate(db)
     local pending = db.migrationSnapshot
@@ -222,7 +222,7 @@ function Database.Migrate(db)
             local ok, err = pcall(migrate, db)
             if not ok then
                 Database.migrationErrors[#Database.migrationErrors + 1] = "v" .. version .. " : " .. tostring(err)
-                -- Même table (AeonUIDB, rangée par référence dans la table hôte) : vidée puis remplie.
+                -- Même table (MuscaUIDB, rangée par référence dans la table hôte) : vidée puis remplie.
                 for key in pairs(db) do db[key] = nil end
                 for key, value in pairs(snapshot) do db[key] = value end
                 db.version = from
@@ -983,7 +983,8 @@ end
 -- Au chargement : SavedVariables non vide, sinon table hôte, sinon miroir CVar.
 
 Database.HOST = "g_addonCategoriesCollapsed"
-Database.HOST_KEY = "AeonUI"
+Database.HOST_KEY = "MuscaUI"
+Database.LEGACY_HOST_KEY = "AeonUI"
 
 local function Host()
     local host = _G[Database.HOST]
@@ -996,10 +997,11 @@ function Database:HostGlobal()
     local host = Host()
     if not host or not self.global then return false end
     host[self.HOST_KEY] = self.global
+    host[self.LEGACY_HOST_KEY] = nil
     return true
 end
 
-Database.MIRROR_CVAR = "AeonUIMirror"
+Database.MIRROR_CVAR = "MuscaUIMirror"
 Database.MIRROR_SLOTS = 8
 Database.MIRROR_CHUNK = 4000
 
@@ -1102,6 +1104,8 @@ function Database:Load(saved)
     if type(saved) ~= "table" or next(saved) == nil then
         local host = Host()
         local hosted = host and host[self.HOST_KEY]
+        -- Réglages repris de l'ancien nom de l'addon (AeonUI), tant que rien n'existe sous le nouveau.
+        if (type(hosted) ~= "table" or next(hosted) == nil) and host then hosted = host[self.LEGACY_HOST_KEY] end
         if type(hosted) == "table" and next(hosted) ~= nil then saved = hosted else saved = self:ReadMirror() end
     end
     return self:Init(saved)

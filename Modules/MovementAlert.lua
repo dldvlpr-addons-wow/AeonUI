@@ -69,7 +69,7 @@ local function Icon(index)
 end
 
 local function Build()
-    holder = CreateFrame("Frame", "AeonUIMovementAlert", UIParent)
+    holder = CreateFrame("Frame", "MuscaUIMovementAlert", UIParent)
     readyText = Media:CreateText(holder, "OVERLAY", 4, "OUTLINE")
     readyText:SetPoint("BOTTOM", holder, "TOP", 0, 6)
     readyText:Hide()

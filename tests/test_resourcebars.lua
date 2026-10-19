@@ -112,7 +112,7 @@ test("barre de recharge globale : montrée pendant la recharge, cachée à la fi
     local cooldown
     C_Spell.GetSpellCooldown = function(id) if id == 61304 then return cooldown end end
     NS.Modules:SetEnabled("gcdbar", true)
-    local holder = _G.AeonUIGCDBar
+    local holder = _G.MuscaUIGCDBar
     eq(holder:IsShown(), false, "hors recharge : cachée")
     truthy(NS.Movers.registry.gcdBar, "mover enregistré")
     cooldown = { startTime = GetTime(), duration = 1.5 }

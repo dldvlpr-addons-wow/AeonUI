@@ -57,22 +57,22 @@ test("profil au groupe : découpage, envoi limité par le débit, réception, co
     -- Réception chez un autre joueur : morceaux dans le désordre, expéditeur du groupe.
     Mock.groupMembers.Alice = true
     for i = #Mock.addonMessages, 1, -1 do
-        Mock.FireEvent("CHAT_MSG_ADDON", "AeonUI", Mock.addonMessages[i][2], "PARTY", "Alice-Forever")
+        Mock.FireEvent("CHAT_MSG_ADDON", "MuscaUI", Mock.addonMessages[i][2], "PARTY", "Alice-Forever")
     end
     local profile = NS.Database.Export(NS.db)
-    truthy(Mock.popups.AEONUI_PROFILE_RECEIVED, "confirmation demandée")
-    truthy(StaticPopupDialogs.AEONUI_PROFILE_RECEIVED.text:find("Alice", 1, true))
+    truthy(Mock.popups.MUSCAUI_PROFILE_RECEIVED, "confirmation demandée")
+    truthy(StaticPopupDialogs.MUSCAUI_PROFILE_RECEIVED.text:find("Alice", 1, true))
     Mock.popups = {}
     Share.Receive("1/1:" .. NS.Database.Serialize(NS.db), "Mallory-Forever")
-    eq(Mock.popups.AEONUI_PROFILE_RECEIVED, nil, "hors groupe : ignoré")
+    eq(Mock.popups.MUSCAUI_PROFILE_RECEIVED, nil, "hors groupe : ignoré")
     Share.Receive("1/1:pas un profil", "Alice-Forever")
-    eq(Mock.popups.AEONUI_PROFILE_RECEIVED, nil, "chaîne invalide : ignorée")
+    eq(Mock.popups.MUSCAUI_PROFILE_RECEIVED, nil, "chaîne invalide : ignorée")
     -- Seconde réception pendant la question : le profil suit la fenêtre (data), rien n'est perdu.
     Share.Receive("1/1:" .. NS.Database.Serialize(NS.db), "Alice-Forever")
-    truthy(Mock.popups.AEONUI_PROFILE_RECEIVED.data, "profil passé à la fenêtre")
+    truthy(Mock.popups.MUSCAUI_PROFILE_RECEIVED.data, "profil passé à la fenêtre")
     Mock.popups = {}
     Share.Receive(Mock.SetSecret("1/1:" .. NS.Database.Serialize(NS.db)), "Alice")
-    eq(Mock.popups.AEONUI_PROFILE_RECEIVED, nil, "message secret : ignoré")
+    eq(Mock.popups.MUSCAUI_PROFILE_RECEIVED, nil, "message secret : ignoré")
     Mock.groupSize, Mock.groupMembers = 0, {}
 end)
 
@@ -89,17 +89,17 @@ test("profil au groupe : morceaux de 240, doublons, envoi incomplet oublié, tai
     Share.Receive(profile[1], "Alice-Forever")
     Share.Receive(profile[1], "Alice-Forever")
     for i = 2, #profile - 1 do Share.Receive(profile[i], "Alice-Forever") end
-    eq(Mock.popups.AEONUI_PROFILE_RECEIVED, nil, "incomplet : pas de confirmation")
+    eq(Mock.popups.MUSCAUI_PROFILE_RECEIVED, nil, "incomplet : pas de confirmation")
     -- 30 s sans morceau : l'envoi est oublié, le dernier morceau seul ne complète rien.
     Mock.Advance(31)
     Share.Receive(profile[#profile], "Alice-Forever")
-    eq(Mock.popups.AEONUI_PROFILE_RECEIVED, nil, "envoi abandonné oublié")
+    eq(Mock.popups.MUSCAUI_PROFILE_RECEIVED, nil, "envoi abandonné oublié")
     for i = 1, #profile do Share.Receive(profile[i], "Alice-Forever") end
-    truthy(Mock.popups.AEONUI_PROFILE_RECEIVED, "renvoi complet : confirmation")
+    truthy(Mock.popups.MUSCAUI_PROFILE_RECEIVED, "renvoi complet : confirmation")
     Mock.popups = {}
     Share.Receive("1/401:x", "Alice-Forever")
     Share.Receive("0/1:x", "Alice-Forever")
-    eq(Mock.popups.AEONUI_PROFILE_RECEIVED, nil, "hors bornes : ignoré")
+    eq(Mock.popups.MUSCAUI_PROFILE_RECEIVED, nil, "hors bornes : ignoré")
     Mock.groupMembers = {}
 end)
 
@@ -109,7 +109,7 @@ test("lueur : changement de style, textures réutilisées, pilote d'animation co
     frame:SetSize(40, 40)
     NS.Glow.Show(frame, "inconnu")
     eq(NS.Glow.Current(frame), "pixel", "style inconnu : pixel")
-    local pixelParts = frame.aeonGlowParts.pixel
+    local pixelParts = frame.muscaGlowParts.pixel
     truthy(pixelParts[1]:IsShown())
     truthy(NS.Glow.animated[frame], "animé")
     NS.Glow.Show(frame, "classic")
@@ -117,7 +117,7 @@ test("lueur : changement de style, textures réutilisées, pilote d'animation co
     eq(pixelParts[1]:IsShown(), false, "ancien style masqué")
     eq(NS.Glow.animated[frame], nil, "classic : hors du pilote")
     NS.Glow.Set(frame, true, "pixel")
-    eq(frame.aeonGlowParts.pixel, pixelParts, "textures réutilisées")
+    eq(frame.muscaGlowParts.pixel, pixelParts, "textures réutilisées")
     NS.Glow.Set(frame, false)
     eq(NS.Glow.Current(frame), nil)
     eq(NS.Glow.animated[frame], nil, "éteinte : hors du pilote")
@@ -131,7 +131,7 @@ end)
 
 test("movers : molette, Maj et Ctrl, coordonnées saisies", function()
     reset()
-    local frame = CreateFrame("Frame", "AeonUITestMover", UIParent)
+    local frame = CreateFrame("Frame", "MuscaUITestMover", UIParent)
     frame:SetSize(50, 20)
     Movers:Register("testWheel", frame, "Test", "CENTER", 0, 0)
     Movers:SetUnlocked(true)
@@ -217,7 +217,7 @@ test("alertes de mouvement : icône pendant la recharge, annonce au retour, sort
     end
     NS.db.modules.movementalert.extraSpells = "20252"
     NS.Modules:SetEnabled("movementalert", true)
-    local holder = _G.AeonUIMovementAlert
+    local holder = _G.MuscaUIMovementAlert
     eq(#Movement.TrackedSpells(), 1, "Intercept non appris : écarté")
     Mock.FireEvent("SPELL_UPDATE_COOLDOWN")
     truthy(holder:IsShown())
@@ -293,7 +293,7 @@ test("barres d'auras : la plus courte en tête, débuff au type, permanentes éc
     local names = {}
     for _, entry in ipairs(AuraBars.Collect()) do names[#names + 1] = entry.name end
     eq(table.concat(names, ","), "Renew,Poison,Arcane Intellect", "plus courte d'abord, permanente écartée")
-    local holder = _G.AeonUIAuraBars
+    local holder = _G.MuscaUIAuraBars
     local first, second = holder:GetChildren()
     eq(first.name.text, "Renew")
     eq(first.time.text, "10")

@@ -7,7 +7,7 @@
 --   * en combat, auras et incantations peuvent être secrètes (affichables, pas comparables) :
 --     toute valeur lue ici qui pourrait l'être passe par NS.IsSecret avant d'être testée.
 local ADDON_NAME, NS = ...
-_G.AeonUI = NS
+_G.MuscaUI = NS
 NS.addonName = ADDON_NAME
 
 local isSecret = _G.issecretvalue or function() return false end
@@ -1060,7 +1060,7 @@ end
 -- Panneau d'options (API Settings)
 --------------------------------------------------------------------------------
 
---- Enregistre la page d'Options > AddOns (un bouton vers la fenêtre AeonUI). Retourne la catégorie.
+--- Enregistre la page d'Options > AddOns (un bouton vers la fenêtre MuscaUI). Retourne la catégorie.
 function NS.RegisterOptionsPanel(panel, name)
     panel.name = name
     if Settings and Settings.RegisterCanvasLayoutCategory then
@@ -1076,7 +1076,7 @@ function NS.RegisterOptionsPanel(panel, name)
     end
 end
 
---- Fenêtre d'options AeonUI (Config/Options.lua), sur `page` si donnée.
+--- Fenêtre d'options MuscaUI (Config/Options.lua), sur `page` si donnée.
 function NS.OpenOptions(page)
     if NS.Options then NS.Options:Open(page) end
 end
@@ -1084,13 +1084,13 @@ end
 --------------------------------------------------------------------------------
 -- Dispositions : Edit Mode et Cooldown Manager
 --------------------------------------------------------------------------------
--- Les API existent sur Forever (/aeon diag) mais leurs signatures ne sont pas toutes
+-- Les API existent sur Forever (/musca diag) mais leurs signatures ne sont pas toutes
 -- vérifiées en jeu : tout est en pcall. Chaque import touche des cadres sécurisés :
 -- l'appelant passe par NS:RunOutOfCombat.
 
---- Dispositions livrées par AeonUI : chaînes exportées depuis le jeu.
+--- Dispositions livrées par MuscaUI : chaînes exportées depuis le jeu.
 -- editMode : export Edit Mode capturé sur Forever 1.60.1 (build 69913) le 2026-09-20, format v3,
--- 59 systèmes. Point de départ proche du modèle Blizzard « Moderne » : la disposition AeonUI
+-- 59 systèmes. Point de départ proche du modèle Blizzard « Moderne » : la disposition MuscaUI
 -- définitive viendra avec les cadres propres (étape 7, construite par code sur les movers).
 -- Retouche à la main : chat (système 8) posé en bas à gauche à 10, 100, symétrique du chat
 -- butin/commerce de l'installation (Config/AddonPlacements.lua).
@@ -1127,7 +1127,9 @@ function NS.ImportEditModeLayout(text, name)
     if not ok or type(layouts) ~= "table" or type(layouts.layouts) ~= "table" then return false, "absent" end
     local list = layouts.layouts
     for i = #list, 1, -1 do
-        if list[i].layoutName == name then tremove(list, i) end
+        -- La disposition « AeonUI » (ancien nom de l'addon) est remplacée par « MuscaUI ».
+        local old = list[i].layoutName
+        if old == name or (name == "MuscaUI" and old == "AeonUI") then tremove(list, i) end
     end
     if #list >= NS.MAX_EDIT_MODE_LAYOUTS then return false, "full" end
     local converted, info = pcall(C_EditMode.ConvertStringToLayoutInfo, text or "")
@@ -1154,7 +1156,7 @@ end
 -- ponytail: noms sondés, aucun confirmé en jeu ; si aucun ne répond l'assistant masque l'export.
 local COOLDOWN_EXPORT_METHODS = { "GetSerializedLayoutData", "GetSerializedData", "SerializeLayout", "ExportLayout" }
 -- En jeu (1.60.1) le gestionnaire expose GetSerializer() : les méthodes du sérialiseur sont
--- sondées par /aeon diag avant d'être branchées ici.
+-- sondées par /musca diag avant d'être branchées ici.
 
 -- Source Blizzard (CooldownViewerSettingsLayoutManager.lua) : CopyLayoutToClipboard(layout) fait
 -- GetSerializer():SerializeLayouts(layoutID) ; CreateLayoutsFromSerializedData(text) fait
@@ -1264,7 +1266,7 @@ local hiddenState = setmetatable({}, { __mode = "k" })   -- [frame] = { parent, 
 
 local function HiddenParent()
     if not hiddenParent then
-        hiddenParent = CreateFrame("Frame", "AeonUI_Hidden", UIParent)
+        hiddenParent = CreateFrame("Frame", "MuscaUI_Hidden", UIParent)
         hiddenParent:Hide()
     end
     return hiddenParent
@@ -1452,7 +1454,7 @@ local function AuraSort(sort, prioritize)
     return prioritize and methods.UnitFrameDebuff or methods.Default, directions.Normal
 end
 
---- Filtre du moteur pour un mode d'AeonUI (NS.AURA_FILTERS). « important » (boss ou dissipable)
+--- Filtre du moteur pour un mode d'MuscaUI (NS.AURA_FILTERS). « important » (boss ou dissipable)
 -- ne s'exprime pas en un filtre : tout passe, trié boss et dissipables d'abord (prioritize).
 function NS.AuraEngineFilter(kind, mode)
     if mode == "mine" then return kind .. "|PLAYER" end
@@ -1618,7 +1620,7 @@ function NS.InitAuraButton(button, opts)
 end
 
 --------------------------------------------------------------------------------
--- Diagnostic (/aeon diag)
+-- Diagnostic (/musca diag)
 --------------------------------------------------------------------------------
 -- Ce que ce client expose vraiment. Volontairement non traduit : sert à remonter un bug.
 
@@ -1936,7 +1938,7 @@ end
 --------------------------------------------------------------------------------
 -- Texte de recharge coloré (formateur natif)
 --------------------------------------------------------------------------------
--- Chaque recharge AeonUI s'enregistre ici. Avec un réglage actif (posé par le module
+-- Chaque recharge MuscaUI s'enregistre ici. Avec un réglage actif (posé par le module
 -- Interface), le moteur écrit lui-même le temps restant, coloré par palier : il ne passe
 -- jamais la durée au Lua. Sans formateur natif, seule la CVar countdownForCooldowns agit.
 
@@ -2004,7 +2006,7 @@ function NS.RefreshCooldowns()
     for cooldown in pairs(cooldowns) do NS.StyleCooldown(cooldown) end
 end
 
---- Présence des API Midnight utilisées ci-dessus (ligne de /aeon diag).
+--- Présence des API Midnight utilisées ci-dessus (ligne de /musca diag).
 local midnightProbe   -- cadre et recharge de sonde, créés une fois
 function NS.DiagnosticMidnight()
     if not midnightProbe then
@@ -2163,18 +2165,18 @@ function NS.DiagnosticUnitFrames()
         .. " ; absentes : " .. (#missing > 0 and table.concat(missing, ", ") or "-")
 end
 
---- Charge d'AeonUI : temps moyen récent par image en ms (profileur d'addons du moteur récent,
+--- Charge d'MuscaUI : temps moyen récent par image en ms (profileur d'addons du moteur récent,
 -- nil sans lui) et mémoire en Ko (nil si le client ne la donne pas). Relevé à la demande.
 function NS.AddOnUsage()
     local cpu, memory
     local profiler, metrics = _G.C_AddOnProfiler, _G.Enum and Enum.AddOnProfilerMetric
     if profiler and profiler.GetAddOnMetric and metrics and metrics.RecentAverageTime then
-        local ok, value = pcall(profiler.GetAddOnMetric, "AeonUI", metrics.RecentAverageTime)
+        local ok, value = pcall(profiler.GetAddOnMetric, "MuscaUI", metrics.RecentAverageTime)
         if ok and type(value) == "number" and not NS.IsSecret(value) then cpu = value end
     end
     if _G.UpdateAddOnMemoryUsage and _G.GetAddOnMemoryUsage then
         pcall(UpdateAddOnMemoryUsage)
-        local ok, value = pcall(GetAddOnMemoryUsage, "AeonUI")
+        local ok, value = pcall(GetAddOnMemoryUsage, "MuscaUI")
         if ok and type(value) == "number" then memory = value end
     end
     return cpu, memory

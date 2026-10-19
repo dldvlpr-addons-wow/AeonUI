@@ -19,30 +19,73 @@ test("zone de texte : la saisie remonte au setter, Refresh ne le redéclenche pa
     eq(calls, 1, "Refresh ne rappelle pas le setter")
 end)
 
-test("assistant : huit pages, Précédent/Suivant bornés, une seule page visible", function()
+test("assistant : cinq pages, Précédent/Suivant bornés, une seule page visible", function()
     reset()
     NS.FirstRun:Show()
     local frame = NS.FirstRun:GetFrame()
     eq(NS.FirstRun:GetPage(), 1)
     eq(frame.previous:IsEnabled(), false, "Précédent grisé en page 1")
     eq(frame.next:IsEnabled(), true)
-    for _ = 1, 7 do frame.next:Click() end
-    eq(NS.FirstRun:GetPage(), 8)
-    eq(frame.next:IsEnabled(), false, "Suivant grisé en page 8")
+    for _ = 1, 4 do frame.next:Click() end
+    eq(NS.FirstRun:GetPage(), 5)
+    eq(frame.next:IsEnabled(), false, "Suivant grisé en page 5")
     frame.next:Click()
-    eq(NS.FirstRun:GetPage(), 8, "borné")
+    eq(NS.FirstRun:GetPage(), 5, "borné")
     frame.previous:Click()
-    eq(NS.FirstRun:GetPage(), 7)
-    truthy(frame.progress:GetText():find("7"), "compteur")
+    eq(NS.FirstRun:GetPage(), 4)
+    truthy(frame.progress:GetText():find("4"), "compteur")
     NS.FirstRun:SetPage(0)
-    eq(NS.FirstRun:GetPage(), 7, "index hors bornes ignoré")
+    eq(NS.FirstRun:GetPage(), 4, "index hors bornes ignoré")
     NS.FirstRun:Finish()
 end)
 
-test("assistant : Placer le HUD sans HUD Musca rend nohud", function()
+test("assistant : placement du HUD sans HUD Musca rend nohud", function()
     local ok, reason = NS.Install.ApplyHud()
     eq(ok, false)
     eq(reason, "nohud")
+end)
+
+--- Case ou bouton de l'assistant par son libellé : contrôle > contenu > ScrollFrame de page > fenêtre.
+local function SetupWidget(text)
+    for _, widget in ipairs(Mock.frames) do
+        local scroll = widget.parent and widget.parent.parent
+        if scroll and scroll.parent == NS.FirstRun:GetFrame() then
+            local label = widget.frameType == "CheckButton" and _G[widget:GetName() .. "Text"].text
+                or widget.GetText and widget:GetText()
+            if label == text then return widget end
+        end
+    end
+end
+
+test("assistant : Échap pose les choix de modules, une seule fois", function()
+    reset()
+    NS.Modules:SetEnabled("cursor", true)
+    NS.FirstRun:Show()
+    NS.FirstRun:SetPage(2)
+    local check = SetupWidget(NS.Modules:Get("cursor").title)
+    truthy(check, "case du curseur")
+    check:SetChecked(false)
+    check.scripts.OnClick(check)
+    eq(NS.Modules:Get("cursor").enabled, true, "rien posé avant la fermeture")
+    NS.FirstRun:GetFrame():Hide()   -- Échap (UISpecialFrames)
+    eq(NS.Modules:Get("cursor").enabled, false, "choix posé à la fermeture")
+    eq(MuscaUIDB.firstRunDone, true)
+    NS.Modules:SetEnabled("cursor", true)
+    NS.FirstRun:Finish()
+    eq(NS.Modules:Get("cursor").enabled, true, "choix déjà posés : rien reposé")
+end)
+
+test("assistant : Terminer et recharger pose les choix et propose /reload", function()
+    reset()
+    NS.FirstRun:Show()
+    NS.FirstRun:SetPage(5)
+    local button = SetupWidget(T.L.SETUP_RELOAD)
+    truthy(button, "bouton du résumé")
+    button:Click()
+    eq(NS.FirstRun:GetFrame():IsShown(), false, "fenêtre fermée")
+    eq(MuscaUIDB.firstRunDone, true)
+    truthy(Mock.popups.MUSCAUI_RELOAD, "popup de rechargement")
+    Mock.popups.MUSCAUI_RELOAD = nil
 end)
 
 test("assistant : bouton Léger, confort seulement, cadres Blizzard conservés", function()
@@ -55,7 +98,7 @@ test("assistant : bouton Léger, confort seulement, cadres Blizzard conservés",
     end
     truthy(light, "bouton Léger en page 1")
     light:Click()
-    eq(NS.db.modules.unitframes.enabled, false, "cadres d'unité AeonUI coupés")
+    eq(NS.db.modules.unitframes.enabled, false, "cadres d'unité MuscaUI coupés")
     eq(NS.db.modules.groupframes.enabled, false)
     eq(NS.db.modules.actionbars.enabled, false)
     eq(NS.db.modules.frames.enabled, true, "habillage des cadres Blizzard")
@@ -75,22 +118,26 @@ test("assistant : la page Modules applique les choix à Terminer", function()
     NS.db.modules.cursor.enabled = false
     NS.FirstRun:Finish()
     eq(NS.Modules:Get("cursor").enabled, false, "choix conservé = coupé")
-    eq(AeonUIDB.firstRunDone, true)
+    eq(MuscaUIDB.firstRunDone, true)
 end)
 
 test("disposition Edit Mode : import idempotent, refus au-delà de 5, export", function()
     reset()
-    local ok = NS.ImportEditModeLayout("BLOB", "AeonUI")
+    local ok = NS.ImportEditModeLayout("BLOB", "MuscaUI")
     eq(ok, true)
     local list = Mock.editMode.layouts.layouts
     eq(#list, 1)
-    eq(list[1].layoutName, "AeonUI")
+    eq(list[1].layoutName, "MuscaUI")
     eq(list[1].layoutType, 0, "compte entier")
     eq(Mock.editMode.added[1], 3, "index = prédéfinies + position")
     eq(Mock.editMode.layouts.activeLayout, 3, "activée")
-    NS.ImportEditModeLayout("BLOB2", "AeonUI")
+    NS.ImportEditModeLayout("BLOB2", "MuscaUI")
     eq(#list, 1, "ré-import remplace l'homonyme")
     eq(list[1].blob, "BLOB2")
+    list[1].layoutName = "AeonUI"
+    NS.ImportEditModeLayout("BLOB2", "MuscaUI")
+    eq(#list, 1, "ancienne disposition AeonUI remplacée")
+    eq(list[1].layoutName, "MuscaUI")
     -- Export de l'active.
     eq(NS.ExportEditModeLayout(), "BLOB2")
     Mock.editMode.layouts.activeLayout = 1
@@ -124,25 +171,18 @@ end)
 test("assistant : la CVar du Cooldown Manager et les CVars recommandées sont réversibles", function()
     reset()
     NS.FirstRun:Show()
-    NS.FirstRun:SetPage(5)
-    local cdm
-    for _, frame in ipairs(Mock.frames) do
-        -- case > contenu > ScrollFrame de page > fenêtre
-        local scroll = frame.parent and frame.parent.parent
-        if frame.frameType == "CheckButton" and scroll and scroll.parent == NS.FirstRun:GetFrame()
-                and _G[frame:GetName() .. "Text"].text == T.L.SETUP_CDM_ENABLE then cdm = frame end
-    end
+    NS.FirstRun:SetPage(4)
+    local cdm = SetupWidget(T.L.SETUP_CDM_ENABLE)
     truthy(cdm, "case Cooldown Manager")
     cdm:SetChecked(true)
     cdm.scripts.OnClick(cdm)
     eq(Mock.cvars.cooldownViewerEnabled, "1")
-    eq(AeonUIDB.cvarBackup.cooldownViewerEnabled, "0", "origine gardée")
+    eq(MuscaUIDB.cvarBackup.cooldownViewerEnabled, "0", "origine gardée")
     cdm:SetChecked(false)
     cdm.scripts.OnClick(cdm)
     eq(Mock.cvars.cooldownViewerEnabled, "0", "rendue")
-    eq(AeonUIDB.cvarBackup.cooldownViewerEnabled, nil)
-    -- Page 6 : toutes appliquées puis rendues.
-    NS.FirstRun:SetPage(6)
+    eq(MuscaUIDB.cvarBackup.cooldownViewerEnabled, nil)
+    -- Même page : toutes appliquées puis rendues.
     for _, entry in ipairs(NS.FirstRun.RECOMMENDED_CVARS) do
         truthy(NS.Modules:Get("interface").CVAR_RULES[entry.name] == nil, entry.name .. " déjà gérée par Interface")
         truthy(NS.Modules:Get("nameplateframes").CVAR_RULES[entry.name] == nil, entry.name .. " déjà gérée par les plaques")
@@ -198,7 +238,7 @@ test("profil : chaîne invalide refusée sans toucher le profil, clés absentes 
     eq(NS.db.modules.automation.sellJunk, false, "réglage sensible absent : le sien gardé")
     eq(NS.Modules:Get("cursor").enabled, false, "module rebranché coupé")
     eq(NS.Modules:Get("topbar").enabled, true, "module rebranché actif")
-    eq(NS.db, AeonUIDB.profiles.Default, "profil actif remplacé")
+    eq(NS.db, MuscaUIDB.profiles.Default, "profil actif remplacé")
 end)
 
 test("déconnexion : addon désactivé => CVars rendues et modules coupés ; actif => rien", function()
@@ -219,19 +259,19 @@ test("déconnexion : addon désactivé => CVars rendues et modules coupés ; act
     end
 end)
 
-test("addons AeonUI_* : modules rattachés, décoché => seuls ses modules coupés, réglages gardés", function()
+test("addons MuscaUI_* : modules rattachés, décoché => seuls ses modules coupés, réglages gardés", function()
     reset()
-    eq(NS.Modules:Get("bags").addon, "AeonUI_Bags")
-    eq(NS.Modules:Get("clickcast").addon, "AeonUI_GroupFrames")
-    eq(NS.Modules:Get("topbar").addon, "AeonUI")
+    eq(NS.Modules:Get("bags").addon, "MuscaUI_Bags")
+    eq(NS.Modules:Get("clickcast").addon, "MuscaUI_GroupFrames")
+    eq(NS.Modules:Get("topbar").addon, "MuscaUI")
     NS.Modules:SetEnabled("chat", true)
-    Mock.childEnableStates.AeonUI_Chat = 0
+    Mock.childEnableStates.MuscaUI_Chat = 0
     Mock.FireEvent("PLAYER_LOGOUT")
     eq(NS.Modules:Get("chat").enabled, false, "chat coupé")
     eq(NS.db.modules.chat.enabled, true, "réglage gardé pour la réactivation")
-    eq(NS.Modules:Get("chatbubbles").addon, "AeonUI_Chat")
+    eq(NS.Modules:Get("chatbubbles").addon, "MuscaUI_Chat")
     eq(NS.Modules:Get("topbar").enabled, true, "cœur intact")
-    Mock.childEnableStates.AeonUI_Chat = nil
+    Mock.childEnableStates.MuscaUI_Chat = nil
     NS.Modules:SetEnabled("chat", false)
 end)
 
@@ -260,19 +300,19 @@ test("déconnexion : sans ordre d'arguments reconnu au login, l'interrupteur res
     Mock.addonEnableState, Mock.addonArgOrder = 2, 1
     Mock.FireEvent("PLAYER_LOGIN")
     NS.Modules:SetEnabled("interface", true)
-    C_AddOns.DisableAddOn("AeonUI")
+    C_AddOns.DisableAddOn("MuscaUI")
     truthy(Mock.FindPrinted(T.L.MSG_WILL_RESTORE), "prévenu")
 end)
 
 test("compartiment d'addons : clic gauche = options, clic droit = déverrouiller", function()
     reset()
     NS.OptionsWindow:Hide()
-    AeonUI_AddonCompartmentFunc(nil, "LeftButton")
+    MuscaUI_AddonCompartmentFunc(nil, "LeftButton")
     eq(NS.OptionsWindow:IsShown(), true, "fenêtre d'options")
     NS.OptionsWindow:Hide()
-    AeonUI_AddonCompartmentFunc(nil, "RightButton")
+    MuscaUI_AddonCompartmentFunc(nil, "RightButton")
     eq(NS.unlocked, true)
-    AeonUI_AddonCompartmentFunc(nil, "RightButton")
+    MuscaUI_AddonCompartmentFunc(nil, "RightButton")
     eq(NS.unlocked, false)
 end)
 
@@ -321,7 +361,7 @@ test("déconnexion en combat : les CVars sont rendues tout de suite", function()
     Mock.addonEnableState = 0
     Mock.FireEvent("PLAYER_LOGOUT")
     eq(Mock.cvars.showTutorials, "1", "rendue malgré le combat")
-    eq(next(AeonUIDB.cvarBackup), nil)
+    eq(next(MuscaUIDB.cvarBackup), nil)
     Mock.SetCombat(false)
     for _, name in ipairs({ "topbar", "automation", "reminders", "alerts", "nameplates", "gear", "skin", "interface" }) do
         NS.Modules:SetEnabled(name, true)
@@ -330,10 +370,10 @@ end)
 
 test("assistant : fermé par Échap (sans Terminer), il ne revient pas au prochain login", function()
     reset()
-    AeonUIDB.firstRunDone = false
+    MuscaUIDB.firstRunDone = false
     NS.FirstRun:Show()
     NS.FirstRun:GetFrame():Hide()
-    eq(AeonUIDB.firstRunDone, true)
+    eq(MuscaUIDB.firstRunDone, true)
 end)
 
 test("assistant : Terminer ne touche pas au réglage d'un module cédé à un addon tiers", function()
@@ -358,9 +398,9 @@ test("preset Edit Mode livré : non vide, format v3, importable par l'assistant"
     local preset = NS.PRESET_LAYOUTS.editMode
     truthy(#preset > 2000, "chaîne capturée en jeu")
     truthy(preset:match("^3 59 "), "format v3, 59 systèmes")
-    truthy(NS.ImportEditModeLayout(preset, "AeonUI"), "import accepté")
+    truthy(NS.ImportEditModeLayout(preset, "MuscaUI"), "import accepté")
     local list = Mock.editMode.layouts.layouts
-    eq(list[#list].layoutName, "AeonUI")
+    eq(list[#list].layoutName, "MuscaUI")
 end)
 
 test("export Cooldown Manager : nil + default sur une disposition Blizzard, chaîne sinon", function()

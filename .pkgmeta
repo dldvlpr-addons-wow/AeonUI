@@ -1,22 +1,22 @@
-package-as: AeonUI
+package-as: MuscaUI
 
 move-folders:
-  AeonUI/AeonUI_Bags: AeonUI_Bags
-  AeonUI/AeonUI_ActionBars: AeonUI_ActionBars
-  AeonUI/AeonUI_UnitFrames: AeonUI_UnitFrames
-  AeonUI/AeonUI_GroupFrames: AeonUI_GroupFrames
-  AeonUI/AeonUI_Nameplates: AeonUI_Nameplates
-  AeonUI/AeonUI_Chat: AeonUI_Chat
-  AeonUI/AeonUI_Minimap: AeonUI_Minimap
-  AeonUI/AeonUI_QuestTracker: AeonUI_QuestTracker
+  MuscaUI/MuscaUI_Bags: MuscaUI_Bags
+  MuscaUI/MuscaUI_ActionBars: MuscaUI_ActionBars
+  MuscaUI/MuscaUI_UnitFrames: MuscaUI_UnitFrames
+  MuscaUI/MuscaUI_GroupFrames: MuscaUI_GroupFrames
+  MuscaUI/MuscaUI_Nameplates: MuscaUI_Nameplates
+  MuscaUI/MuscaUI_Chat: MuscaUI_Chat
+  MuscaUI/MuscaUI_Minimap: MuscaUI_Minimap
+  MuscaUI/MuscaUI_QuestTracker: MuscaUI_QuestTracker
 
 ignore:
-  - AeonUI
+  - MuscaUI
   - docs
   - tests
   - "*.zip"
   - tools
-  - Media/aeonUI.png
+  - Media/muscaUI.png
 
 manual-changelog:
   filename: CHANGELOG.md

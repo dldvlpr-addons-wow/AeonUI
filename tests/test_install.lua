@@ -2,7 +2,7 @@
 local T = ...
 local NS, test, eq, truthy, reset = T.NS, T.test, T.eq, T.truthy, T.reset
 
-test("installation : préréglage complet allume les modules AeonUI, pose les ancrages, les CVars, le rôle", function()
+test("installation : préréglage complet allume les modules MuscaUI, pose les ancrages, les CVars, le rôle", function()
     reset()
     truthy(NS.Install:ApplyPreset("complete", "heal"))
     for _, name in ipairs(NS.Install.NEW_MODULES) do
@@ -52,21 +52,21 @@ test("installation : rôle tank allume le co-tank ; module cédé à un addon ti
     NS.Install:ApplyPreset("light")
 end)
 
-test("installation : /aeon install avec arguments, usage sur argument inconnu", function()
+test("installation : /musca install avec arguments, usage sur argument inconnu", function()
     reset()
-    SlashCmdList.AEONUI("install complete dps")
+    SlashCmdList.MUSCAUI("install complete dps")
     truthy(NS.Modules:Get("unitframes").enabled)
     eq(NS.db.modules.groupframes.power, false, "rôle DPS")
-    SlashCmdList.AEONUI("install nimportequoi")
+    SlashCmdList.MUSCAUI("install nimportequoi")
     truthy(Mock.FindPrinted("Usage"))
-    SlashCmdList.AEONUI("install light")
+    SlashCmdList.MUSCAUI("install light")
     eq(NS.Modules:Get("unitframes").enabled, false)
 end)
 
-test("profils de base : /aeon install heal bascule sur « Soigneur », Default intact ; dps et tank pareil", function()
+test("profils de base : /musca install heal bascule sur « Soigneur », Default intact ; dps et tank pareil", function()
     reset()
     local before = NS.db.modules.groupframes.width
-    SlashCmdList.AEONUI("install heal")
+    SlashCmdList.MUSCAUI("install heal")
     eq(NS.Database:ActiveProfileName(), NS.Install.ProfileName("heal"))
     eq(NS.db.modules.groupframes.width, 110)
     eq(NS.db.modules.groupframes.horizontal, true)
@@ -128,24 +128,24 @@ test("installation : chat réorganisé, ForeverMeter, KickAlert, DBM et BigWigs 
     eq(ForeverMeterDB.windows[1].anchor, nil, "détachée des autres fenêtres")
     local _, _, _, meterX = ForeverMeterFrame:GetPoint()
     eq(meterX, -450)
-    eq(KickAlertDB.anchors.Text.y, 130, "sous le chrono de combat AeonUI")
+    eq(KickAlertDB.anchors.Text.y, 130, "sous le chrono de combat MuscaUI")
     eq(DBM.Options.WarningY, 330) eq(DBT.Options.TimerX, -300)
     truthy(repositioned and rearranged, "DBM replacé tout de suite")
     eq(barsPlugin.db.profile.normalPosition[3], -300) eq(sent, "BigWigs_ProfileUpdate")
     eq(messagesPlugin.db.profile.emphPosition[4], 75, "clé des messages mis en avant : emphPosition")
-    truthy(Mock.popups.AEONUI_RELOAD, "rechargement proposé après le chat")
+    truthy(Mock.popups.MUSCAUI_RELOAD, "rechargement proposé après le chat")
     eq(NS.global.chatSetupDone, true)
     calls.reset = nil
     NS.Install:ApplyPreset("complete", "heal")
     eq(calls.reset, nil, "changement de rôle : onglets du joueur gardés")
     eq(NS.global.addonPlacements, true)
 
-    -- Session suivante : DBM repart de ses défauts, AeonUI le repose à la connexion.
+    -- Session suivante : DBM repart de ses défauts, MuscaUI le repose à la connexion.
     DBM.Options.WarningY = 260
     Mock.FireEvent("PLAYER_LOGIN")
     eq(DBM.Options.WarningY, 330)
 
-    NS.global.addonPlacements = nil   -- ce que fait /aeon uninstall
+    NS.global.addonPlacements = nil   -- ce que fait /musca uninstall
     DBM.Options.WarningY = 260
     Mock.FireEvent("PLAYER_LOGIN")
     eq(DBM.Options.WarningY, 260, "désinstallé : plus rien de reposé")
@@ -156,7 +156,7 @@ test("installation : chat réorganisé, ForeverMeter, KickAlert, DBM et BigWigs 
     NS.global.chatSetupDone, NS.global.addonPlacements = nil, nil
 end)
 
-test("assistant : page Style, looks AeonUI, Classic (art vanilla) et Blizzard", function()
+test("assistant : page Style, looks MuscaUI, Classic (art vanilla) et Blizzard", function()
     reset()
     local Install = NS.Install
     NS.FirstRun:Show()
@@ -187,7 +187,7 @@ test("profils de classe : druide tank, mage lanceur, chasseur distance ; style h
     Mock.units.player.class = "DRUID"
     eq(table.concat(Install.ClassStyles(), ","), "caster,melee,heal,tank")
     eq(Install:ApplyClass("ranged"), false, "pas de distance pour un druide")
-    SlashCmdList.AEONUI("install class tank")
+    SlashCmdList.MUSCAUI("install class tank")
     eq(NS.Database:ActiveProfileName(), Install.ClassProfileName("tank"))
     eq(NS.Modules:Get("cotank").enabled, true, "rôle tank posé")
     eq(NS.db.modules.reminders.expectedStance, "bear", "classe : forme d'ours")
@@ -200,7 +200,7 @@ test("profils de classe : druide tank, mage lanceur, chasseur distance ; style h
     eq(NS.db.anchors.uf_castbar_player.y, -280, "style passe après le rôle")
     NS.db.modules.swingtimer.queueColor.r = 0
     eq(Install.CLASSES.WARRIOR.all.swingtimer.queueColor.r, 1, "tables de profil copiées, pas partagées")
-    SlashCmdList.AEONUI("install class ranged")
+    SlashCmdList.MUSCAUI("install class ranged")
     truthy(Mock.FindPrinted("caster, melee, heal, tank"), "usage avec les styles de la classe")
     Mock.units.player.class = "MAGE"
     truthy(Install:ApplyClass("caster"))
@@ -265,11 +265,11 @@ test("assistant : profil de classe déjà là, réinstallé seulement après con
     NS.db.modules.swingtimer.width = 123
     NS:SwitchProfile(origin)
     Click()
-    truthy(Mock.popups.AEONUI_PROFILE_EXISTS, "profil existant : confirmation")
+    truthy(Mock.popups.MUSCAUI_PROFILE_EXISTS, "profil existant : confirmation")
     eq(NS.Database:ActiveProfileName(), origin, "rien avant la réponse")
-    StaticPopupDialogs.AEONUI_PROFILE_EXISTS.OnCancel(nil, nil, "override")
+    StaticPopupDialogs.MUSCAUI_PROFILE_EXISTS.OnCancel(nil, nil, "override")
     eq(NS.Database:ActiveProfileName(), origin, "popup annulée par le jeu : rien")
-    StaticPopupDialogs.AEONUI_PROFILE_EXISTS.OnCancel(nil, nil, "clicked")
+    StaticPopupDialogs.MUSCAUI_PROFILE_EXISTS.OnCancel(nil, nil, "clicked")
     eq(NS.Database:ActiveProfileName(), name, "refus : bascule")
     eq(NS.db.modules.swingtimer.width, 123, "réglages du joueur gardés")
     NS:SwitchProfile(origin)
@@ -281,7 +281,7 @@ test("assistant : profil de classe déjà là, réinstallé seulement après con
     NS.Database:DeleteProfile(name)
 end)
 
-test("HUD Musca importé : colonne centrale libre, joueur et cible de part et d'autre, barres AeonUI coupées", function()
+test("HUD Musca importé : colonne centrale libre, joueur et cible de part et d'autre, barres MuscaUI coupées", function()
     reset()
     local Install = NS.Install
     local origin = NS.Database:ActiveProfileName()
@@ -308,7 +308,7 @@ test("HUD Musca importé : colonne centrale libre, joueur et cible de part et d'
     eq(NS.Modules:Get("swingtimer").enabled, false)
     WeakAurasSaved.displays["Chaman (Musca)"] = nil
     truthy(Install:ApplyClassSettings("melee"))
-    eq(NS.Modules:Get("swingtimer").enabled, true, "HUD supprimé : barres AeonUI revenues")
+    eq(NS.Modules:Get("swingtimer").enabled, true, "HUD supprimé : barres MuscaUI revenues")
     eq(NS.db.anchors.resourcePower.y, -242)
     Mock.loadedAddons.WeakAuras = nil
     _G.WeakAurasSaved = nil
@@ -410,6 +410,66 @@ test("HUD Musca : bordure à l'accent, repeinte après un réimport, une passe p
     Mock.Advance(1)
     NS.global.hudBorder = nil
     NS.Media.Accent = Accent
+    Mock.loadedAddons.WeakAuras = nil
+    _G.WeakAurasSaved, _G.WeakAuras = nil, nil
+end)
+
+test("HUD Musca importé par l'assistant : placé à la confirmation, hors combat, assistant resynchronisé", function()
+    reset()
+    local Install = NS.Install
+    _G.WeakAuras = { Add = function() end }
+    eq(Install.ImportHud(), false, "Musca sans import de pack")
+    Mock.loadedAddons.WeakAuras = true
+    Mock.units.player.class = "MAGE"
+    _G.WeakAurasSaved = { displays = {} }
+    WeakAuras.ImportClassPack = function() return true end   -- ouvre la fenêtre de Musca
+    local function Confirm()
+        local root = { id = "Mage (Musca)", load = { class = { single = "MAGE" } } }
+        WeakAurasSaved.displays[root.id] = root
+        WeakAuras.Add({ id = "Icône", parent = root.id })
+        WeakAuras.Add(root)
+    end
+    NS.global.firstRunDone = true   -- pas d'assistant ouvert par LOGIN
+    NS:Fire("LOGIN")   -- crochet sur WeakAuras.Add
+    Mock.Advance(1)
+    local origin = NS.Database:ActiveProfileName()
+    truthy(Install:ApplyClass("caster"))   -- barre d'incantation détachée
+    truthy(NS.Movers.registry.uf_castbar_player, "mover de la barre détachée")
+    NS.Modules:SetEnabled("resourcebars", true)
+
+    NS.FirstRun:Show()
+    truthy(Install.ImportHud())   -- annulé dans Musca : aucun Add
+    NS:Fire("THEME_CHANGED")
+    Mock.Advance(1)
+    NS.FirstRun:Finish()
+    local root = { id = "Mage (Musca)", load = { class = { single = "MAGE" } } }
+    WeakAurasSaved.displays[root.id] = root
+    WeakAuras.Add(root)   -- réglage d'une aura du HUD après coup
+    Mock.Advance(1)
+    eq(NS.Modules:Get("resourcebars").enabled, true, "import annulé : rien placé ensuite")
+    WeakAurasSaved.displays[root.id] = nil
+
+    NS.FirstRun:Show()
+    truthy(Install.ImportHud())
+    Mock.SetCombat(true)
+    Confirm()
+    Mock.Advance(1)
+    eq(NS.Modules:Get("resourcebars").enabled, true, "rien en combat")
+    Mock.SetCombat(false)
+    Mock.Advance(1)
+    eq(NS.Modules:Get("resourcebars").enabled, false, "barres MuscaUI coupées après le combat")
+    eq(NS.db.anchors.uf_player.x, -300, "joueur contre le HUD")
+    eq(NS.Movers.registry.uf_castbar_player, nil, "barre d'incantation rattachée au joueur")
+    NS.FirstRun:Finish()
+    eq(NS.Modules:Get("resourcebars").enabled, false, "Terminer ne rallume pas les barres")
+
+    NS.Modules:SetEnabled("resourcebars", true)
+    WeakAuras.Add(WeakAurasSaved.displays["Mage (Musca)"])   -- réimport hors assistant
+    Mock.Advance(1)
+    eq(NS.Modules:Get("resourcebars").enabled, true, "sans import par l'assistant : repeint seul")
+    NS:SwitchProfile(origin)
+    NS.Database:DeleteProfile(Install.ClassProfileName("caster"))
+    Mock.Advance(1)   -- repeint lancé par la bascule de profil
     Mock.loadedAddons.WeakAuras = nil
     _G.WeakAurasSaved, _G.WeakAuras = nil, nil
 end)

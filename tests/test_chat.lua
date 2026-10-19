@@ -1,4 +1,4 @@
--- tests/test_chat.lua : chat AeonUI (étape 6).
+-- tests/test_chat.lua : chat MuscaUI (étape 6).
 local T = ...
 local NS, test, eq, truthy, reset = T.NS, T.test, T.eq, T.truthy, T.reset
 local Chat = NS.Modules:Get("chat")
@@ -81,10 +81,10 @@ test("chat : copie de la fenêtre, clic sur une URL, horodatage par CVar", funct
     ChatFrame1:AddMessage("|cff00ff00[Guilde]|r Alice: bonjour")
     ChatFrame1:AddMessage("Bob: ok")
     Chat:CopyWindow(ChatFrame1)
-    truthy(AeonUI_ChatCopy:IsShown())
-    eq(AeonUI_ChatCopy.edit:GetText(), "[Guilde] Alice: bonjour\nBob: ok")
+    truthy(MuscaUI_ChatCopy:IsShown())
+    eq(MuscaUI_ChatCopy.edit:GetText(), "[Guilde] Alice: bonjour\nBob: ok")
     SetItemRef("url:https://forever.gg")
-    eq(AeonUI_ChatCopy.edit:GetText(), "https://forever.gg")
+    eq(MuscaUI_ChatCopy.edit:GetText(), "https://forever.gg")
     NS.db.modules.chat.timestamps = "%H:%M "
     NS.Modules:Refresh("chat")
     eq(C_CVar.GetCVar("showTimestamps"), "%H:%M ")
@@ -132,8 +132,8 @@ test("chat : onglet actif coloré et souligné, barre de raccourcis dans l'ordre
     eq(sidebar.buttons[2].action, "copy")
     eq(sidebar.buttons[3], nil, "inconnus et doublons écartés")
     sidebar.buttons[2]:GetScript("OnClick")(sidebar.buttons[2])
-    truthy(AeonUI_ChatCopy:IsShown(), "copie de la fenêtre active")
-    AeonUI_ChatCopy:Hide()
+    truthy(MuscaUI_ChatCopy:IsShown(), "copie de la fenêtre active")
+    MuscaUI_ChatCopy:Hide()
     Disable()
     eq(sidebar:IsShown(), false, "cachée au disable")
     db.sidebar, db.sidebarButtons = "none", "copy, friends, channels, options"

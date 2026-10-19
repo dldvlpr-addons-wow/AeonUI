@@ -82,12 +82,12 @@ function Frames:ColorHealth(bar, unit)
     if r then
         if bar.SetStatusBarDesaturated then bar:SetStatusBarDesaturated(true) end
         bar:SetStatusBarColor(r, g, b)
-        bar.aeonUIColored = true
-    elseif bar.aeonUIColored then
+        bar.muscaUIColored = true
+    elseif bar.muscaUIColored then
         -- Rendre la couleur Blizzard : vert désaturé -> vert d'origine.
         if bar.SetStatusBarDesaturated then bar:SetStatusBarDesaturated(false) end
         bar:SetStatusBarColor(0, 1, 0)
-        bar.aeonUIColored = nil
+        bar.muscaUIColored = nil
     end
 end
 
@@ -160,12 +160,12 @@ local function ColorRaidName(frame)
         end
     end
     if r then
-        if not name.aeonUIOriginal then name.aeonUIOriginal = { name:GetTextColor() } end
+        if not name.muscaUIOriginal then name.muscaUIOriginal = { name:GetTextColor() } end
         name:SetTextColor(r, g, b)
-        name.aeonUIColored = true
-    elseif name.aeonUIColored then
-        name:SetTextColor(unpack(name.aeonUIOriginal))
-        name.aeonUIColored = nil
+        name.muscaUIColored = true
+    elseif name.muscaUIColored then
+        name:SetTextColor(unpack(name.muscaUIOriginal))
+        name.muscaUIColored = nil
     end
 end
 
@@ -176,7 +176,7 @@ end
 local function BuildCombatIcon()
     local target = _G.TargetFrame
     if not target then return end
-    combatIcon = CreateFrame("Frame", "AeonUITargetCombat", target)
+    combatIcon = CreateFrame("Frame", "MuscaUITargetCombat", target)
     combatIcon:SetSize(22, 22)
     combatIcon:SetPoint("LEFT", target, "RIGHT", -8, 8)
     combatIcon.texture = combatIcon:CreateTexture(nil, "OVERLAY")

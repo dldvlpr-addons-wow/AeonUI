@@ -1,9 +1,9 @@
 -- Config/AddonPlacements.lua
 -- Installation : chat réorganisé et addons tiers posés dans les zones libres de la
--- disposition AeonUI (Install.BASE_ANCHORS). Rien n'est une dépendance : un addon absent est
+-- disposition MuscaUI (Install.BASE_ANCHORS). Rien n'est une dépendance : un addon absent est
 -- ignoré.
 --
--- ForeverMeter et KickAlert gardent leurs réglages (même Mirror.lua que AeonUI) : posés une
+-- ForeverMeter et KickAlert gardent leurs réglages (même Mirror.lua que MuscaUI) : posés une
 -- fois. DBM et BigWigs perdent les leurs à chaque session (le client ne relit pas leurs
 -- SavedVariables) : reposés à chaque connexion tant que l'installation l'a demandé.
 local _, NS = ...
@@ -12,12 +12,12 @@ local AddonPlacements = {}
 NS.AddonPlacements = AddonPlacements
 
 -- { point, x, y } relatifs à UIParent, mêmes unités que BASE_ANCHORS (1920×1080), vérifiés contre
--- les tailles par défaut des cadres AeonUI. Chat principal en bas à gauche (Edit Mode), chat
+-- les tailles par défaut des cadres MuscaUI. Chat principal en bas à gauche (Edit Mode), chat
 -- butin/commerce en bas à droite sous la cible du soigneur, compteur entre les barres d'action et
 -- la cible de la cible. Barres de boss à gauche de la colonne centrale (à droite : cadres boss1-5),
--- barres agrandies et alertes au-dessus du personnage, sous les annonces AeonUI, cadre d'infos
+-- barres agrandies et alertes au-dessus du personnage, sous les annonces MuscaUI, cadre d'infos
 -- en haut à gauche, au-dessus du groupe.
--- ponytail: positions pensées pour 1920×1080 ; en 4K ou ultra-large, /aeon unlock et chaque addon.
+-- ponytail: positions pensées pour 1920×1080 ; en 4K ou ultra-large, /musca unlock et chaque addon.
 local POINTS = {
     chatRight = { "BOTTOMRIGHT", -10, 100, 320, 160 },
     foreverMeter = { "BOTTOMRIGHT", -450, 20 },

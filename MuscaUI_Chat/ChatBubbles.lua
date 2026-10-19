@@ -1,10 +1,10 @@
--- AeonUI_Chat/ChatBubbles.lua
+-- MuscaUI_Chat/ChatBubbles.lua
 -- Bulles de dialogue au thème : fond, police, bordure à la couleur du canal, et choix des canaux
 -- affichés (dire, crier, groupe, PNJ). Le canal d'une bulle se lit en rapprochant son texte des
 -- derniers messages reçus : les bulles n'en portent pas la trace.
 --
 -- Midnight : une bulle interdite (instance) ou un texte secret est laissé tel quel.
-local NS = AeonUI
+local NS = MuscaUI
 local L = NS.L
 local Media = NS.Media
 

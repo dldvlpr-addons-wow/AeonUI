@@ -1088,7 +1088,7 @@ function _G.GetCursorPosition() return Mock.cursorX or 500, Mock.cursorY or 400 
 function FrameMeta:GetEffectiveScale() return 1 end
 
 -- Mémoire des addons
-Mock.addons = { { name = "AeonUI", kb = 300 }, { name = "Gros", kb = 4096 }, { name = "Petit", kb = 10 } }
+Mock.addons = { { name = "MuscaUI", kb = 300 }, { name = "Gros", kb = 4096 }, { name = "Petit", kb = 10 } }
 function _G.UpdateAddOnMemoryUsage() end
 function _G.GetAddOnMemoryUsage(i) return Mock.addons[i] and Mock.addons[i].kb end
 _G.C_AddOns = {
@@ -1273,8 +1273,8 @@ C_AddOns.GetAddOnEnableState = function(a, b)
     local expectAddonFirst = Mock.addonArgOrder == 1
     if Mock.addonArgOrder == 0 then return nil end
     local name = expectAddonFirst and a or b
-    if name == "AeonUI" then return Mock.addonEnableState end
-    return Mock.childEnableStates[name]   -- addons AeonUI_* : nil = pas de réponse
+    if name == "MuscaUI" then return Mock.addonEnableState end
+    return Mock.childEnableStates[name]   -- addons MuscaUI_* : nil = pas de réponse
 end
 C_AddOns.DisableAddOn = function() end
 

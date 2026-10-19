@@ -1,9 +1,8 @@
 -- Config/FirstRun.lua
--- Assistant d'installation en huit pages : Installation un clic, Modules, Style (AeonUI, Classic,
--- Blizzard), Disposition (Edit Mode), Cooldown Manager, CVars recommandées, HUD de classe (Musca
--- Auras), Résumé. Les pages agissent au
--- clic (rien à mémoriser), sauf les choix module par module (pages Modules et Style), qui attendent
--- « Terminer ». Réouvrable par /aeon setup ou depuis les options.
+-- Assistant d'installation en cinq pages : Installation un clic (et HUD Musca Auras), Modules, Style
+-- (MuscaUI, Classic, Blizzard), Avancé (Edit Mode, Cooldown Manager, CVars recommandées), Résumé.
+-- Les pages agissent au clic (rien à mémoriser), sauf les choix module par module (pages Modules et
+-- Style), posés à « Terminer » ou à la fermeture. Réouvrable par /musca setup ou depuis les options.
 local _, NS = ...
 local L = NS.L
 
@@ -13,7 +12,7 @@ NS.FirstRun = FirstRun
 local SIDEBAR_WIDTH = 180
 local CONTENT_WIDTH = 720
 
--- CVars proposées à la page 6. Aucune n'est déjà gérée par Modules/Interface.lua ni par les
+-- CVars proposées à la page Avancé. Aucune n'est déjà gérée par Modules/Interface.lua ni par les
 -- barres de nom (portée, PNJ, familiers) : un seul propriétaire par CVar. Toutes passent par NS.CVars, donc réversibles.
 local RECOMMENDED_CVARS = {
     { name = "nameplateShowEnemies",        value = "1",   label = "SETUP_CVAR_NP_ENEMIES" },
@@ -27,7 +26,7 @@ FirstRun.RECOMMENDED_CVARS = RECOMMENDED_CVARS
 local frame
 local pages = {}          -- { key, title, build(layout), frame, layout }
 local current = 1
-local choices = {}        -- [nom du module] = bool, appliqué seulement à « Terminer »
+local choices = {}        -- [nom du module] = bool, appliqué à « Terminer » ou à la fermeture
 local scratch = { editMode = "", cooldown = "", preset = "complete", role = "none" }   -- zones de texte et choix
 
 local function Report(ok, reason)
@@ -43,7 +42,7 @@ local function CVarCheck(layout, name, value, label)
         return current == value or (tonumber(current) ~= nil and tonumber(current) == tonumber(value))
     end
     layout:Check(label,
-        -- Cochée = « AeonUI pose cette valeur » ; une CVar déjà à cette valeur reste décochée.
+        -- Cochée = « MuscaUI pose cette valeur » ; une CVar déjà à cette valeur reste décochée.
         function() return NS.CVars:IsChanged(name) and same(NS.CVars:Get(name)) end,
         function(checked)
             if checked then NS.CVars:Set(name, value) else NS.CVars:Restore(name) end
@@ -53,13 +52,13 @@ end
 --- Trio Appliquer la disposition livrée / zone de texte / Importer / Exporter.
 local function LayoutTools(layout, key, preset, import, export, canExport, noneMessages)
     local apply = layout:Button(L.SETUP_PRESET_APPLY, function()
-        NS:RunOutOfCombat(function() Report(import(preset, "AeonUI")) end)
+        NS:RunOutOfCombat(function() Report(import(preset, "MuscaUI")) end)
     end)
     if preset == "" then apply:Disable() end
     local box = layout:EditBox(L.SETUP_LAYOUT_STRING,
         function() return scratch[key] end, function(value) scratch[key] = value end, 10)
     layout:Button(L.SETUP_IMPORT, function()
-        NS:RunOutOfCombat(function() Report(import(scratch[key], "AeonUI")) end)
+        NS:RunOutOfCombat(function() Report(import(scratch[key], "MuscaUI")) end)
     end)
     if canExport then
         layout:Button(L.SETUP_EXPORT, function()
@@ -75,6 +74,15 @@ local function LayoutTools(layout, key, preset, import, export, canExport, noneM
     end
 end
 
+--- Pose les choix en attente, une seule fois : Terminer cache la fenêtre, et son OnHide repasse ici.
+local function ApplyChoices()
+    for name, enabled in pairs(choices) do
+        -- Un module cédé garde le réglage de l'utilisateur pour le jour où l'addon tiers part.
+        if not NS.Modules:IsYielded(name) then NS.Modules:SetEnabled(name, enabled) end
+    end
+    wipe(choices)
+end
+
 local function SyncChoices()
     for _, module in ipairs(NS.Modules:List()) do choices[module.name] = NS.db.modules[module.name].enabled end
 end
@@ -86,7 +94,7 @@ local function InstallProfile(name, install)
         NS:RunOutOfCombat(function() install() SyncChoices() end)
         return
     end
-    StaticPopupDialogs.AEONUI_PROFILE_EXISTS = {
+    StaticPopupDialogs.MUSCAUI_PROFILE_EXISTS = {
         text = "%s", button1 = L.INSTALL_PROFILE_RESET, button2 = L.INSTALL_PROFILE_KEEP,
         OnAccept = function() NS:RunOutOfCombat(function() install() SyncChoices() end) end,
         -- Seulement sur un vrai refus (bouton 2, Échap) : pas quand /camp ou une autre popup l'annule.
@@ -96,7 +104,7 @@ local function InstallProfile(name, install)
         end,
         timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
     }
-    StaticPopup_Show("AEONUI_PROFILE_EXISTS", string.format(L.MSG_PROFILE_EXISTS, name))
+    StaticPopup_Show("MUSCAUI_PROFILE_EXISTS", string.format(L.MSG_PROFILE_EXISTS, name))
 end
 FirstRun.InstallProfile = InstallProfile
 
@@ -129,6 +137,16 @@ pages[1] = { key = "install", titleKey = "SETUP_PAGE_INSTALL", build = function(
         end)
     end)
     layout:Note(L.INSTALL_NOTE)
+    -- HUD Musca Auras à la place des barres de combat MuscaUI ; placé de lui-même après confirmation.
+    if _G.WeakAuras and _G.WeakAuras.ImportClassPack then
+        layout:Header(L.SETUP_PAGE_HUD)
+        layout:Note(L.SETUP_HUD_HINT)
+        layout:Button(L.SETUP_HUD_IMPORT, function()
+            NS:RunOutOfCombat(function()
+                if not NS.Install.ImportHud() then NS.Print(L.SETUP_HUD_FAILED) end
+            end)
+        end)
+    end
     return { layout }
 end }
 
@@ -173,7 +191,7 @@ pages[3] = { key = "style", titleKey = "SETUP_PAGE_STYLE", build = function(page
         end)
         layout:Note(L["STYLE_" .. name:upper() .. "_DESC"], 28)
     end
-    -- Module par module : AeonUI (module actif) ou Blizzard (module coupé), posé à « Terminer ».
+    -- Module par module : MuscaUI (module actif) ou Blizzard (module coupé), posé à « Terminer ».
     layout:Header(L.SETUP_STYLE_PER_MODULE)
     local styles = { { name = L.STYLE_AEON, value = "aeon" }, { name = L.STYLE_BLIZZARD, value = "blizzard" } }
     for _, name in ipairs(NS.Install.STYLE_MODULES) do
@@ -187,17 +205,13 @@ pages[3] = { key = "style", titleKey = "SETUP_PAGE_STYLE", build = function(page
     return { layout }
 end }
 
-pages[4] = { key = "layout", titleKey = "SETUP_PAGE_LAYOUT", build = function(page)
+-- Réglages déjà posés par les profils de la page 1 : regroupés ici, pour qui veut les retoucher.
+pages[4] = { key = "advanced", titleKey = "SETUP_PAGE_ADVANCED", build = function(page)
     local layout = NS.Widgets.NewLayout(page, 20, CONTENT_WIDTH)
     layout:Header(L.SETUP_PAGE_LAYOUT)
     layout:Note(L.SETUP_EDITMODE_HINT)
     LayoutTools(layout, "editMode", NS.PRESET_LAYOUTS.editMode,
         NS.ImportEditModeLayout, NS.ExportEditModeLayout, true)
-    return { layout }
-end }
-
-pages[5] = { key = "cooldown", titleKey = "SETUP_PAGE_CDM", build = function(page)
-    local layout = NS.Widgets.NewLayout(page, 20, CONTENT_WIDTH)
     layout:Header(L.SETUP_PAGE_CDM)
     layout:Note(L.SETUP_CDM_HINT)
     CVarCheck(layout, "cooldownViewerEnabled", "1", L.SETUP_CDM_ENABLE)
@@ -205,11 +219,6 @@ pages[5] = { key = "cooldown", titleKey = "SETUP_PAGE_CDM", build = function(pag
         NS.ImportCooldownLayout, NS.ExportCooldownLayout, NS.CanExportCooldownLayout(),
         { default = L.SETUP_CDM_EXPORT_DEFAULT, absent = L.SETUP_CDM_EXPORT_FAILED })
     if not NS.CanExportCooldownLayout() then layout:Note(L.SETUP_CDM_NO_EXPORT) end
-    return { layout }
-end }
-
-pages[6] = { key = "cvars", titleKey = "SETUP_PAGE_CVARS", build = function(page)
-    local layout = NS.Widgets.NewLayout(page, 20, CONTENT_WIDTH)
     layout:Header(L.SETUP_PAGE_CVARS)
     layout:Note(L.SETUP_CVARS_HINT)
     for _, entry in ipairs(RECOMMENDED_CVARS) do
@@ -218,34 +227,18 @@ pages[6] = { key = "cvars", titleKey = "SETUP_PAGE_CVARS", build = function(page
     return { layout }
 end }
 
-pages[7] = { key = "hud", titleKey = "SETUP_PAGE_HUD", build = function(page)
-    local layout = NS.Widgets.NewLayout(page, 20, CONTENT_WIDTH)
-    layout:Header(L.SETUP_PAGE_HUD)
-    layout:Note(L.SETUP_HUD_HINT)
-    -- Musca Auras ouvre sa fenêtre d'import : le joueur confirme, une mise à jour garde la position.
-    local import = _G.WeakAuras and _G.WeakAuras.ImportClassPack
-    local button = layout:Button(L.SETUP_HUD_IMPORT, function()
-        NS:RunOutOfCombat(function()
-            if not import() then NS.Print(L.SETUP_HUD_FAILED) end
-        end)
-    end)
-    if not import then
-        button:Disable()
-        layout:Note(L.SETUP_HUD_NONE)
-    end
-    layout:Button(L.SETUP_HUD_PLACE, function()
-        NS:RunOutOfCombat(function() Report(NS.Install.ApplyHud()) end)
-    end)
-    return { layout }
-end }
-
-pages[8] = { key = "summary", titleKey = "SETUP_PAGE_SUMMARY", build = function(page)
+pages[5] = { key = "summary", titleKey = "SETUP_PAGE_SUMMARY", build = function(page)
     local layout = NS.Widgets.NewLayout(page, 20, CONTENT_WIDTH)
     layout:Header(L.SETUP_PAGE_SUMMARY)
     local profile = layout:Note(" ")
     local modules = layout:Note(" ")
     local hud = layout:Note(" ")
     layout:Note(L.SETUP_SUMMARY_FINISH)
+    -- Forever bloque ReloadUI() : la popup pose la macro /reload sur son bouton.
+    layout:Button(L.SETUP_RELOAD, function()
+        FirstRun:Finish()
+        NS.Options.AskReload(L.SETUP_RELOAD_ASK)
+    end)
     -- Choix encore en attente de « Terminer » : le compte suit la table choices, pas la base.
     layout.refreshers[#layout.refreshers + 1] = function()
         local enabled, total = 0, 0
@@ -266,7 +259,7 @@ end }
 --------------------------------------------------------------------------------
 
 local function Build()
-    frame = CreateFrame("Frame", "AeonUIFirstRun", UIParent, "BackdropTemplate")
+    frame = CreateFrame("Frame", "MuscaUIFirstRun", UIParent, "BackdropTemplate")
     frame:Hide()   -- avant le script OnHide : construire ne doit pas marquer l'assistant terminé
     frame:SetSize(SIDEBAR_WIDTH + CONTENT_WIDTH + 60, 520)
     frame:SetPoint("CENTER")
@@ -285,9 +278,15 @@ local function Build()
     frame.edge:SetPoint("TOPLEFT")
     frame.edge:SetPoint("TOPRIGHT")
     frame.edge:SetHeight(2)
-    tinsert(UISpecialFrames, "AeonUIFirstRun")   -- Échap ferme la fenêtre
-    -- Fermée par Échap ou autrement : ne plus la rouvrir à chaque connexion (/aeon setup reste là).
-    frame:SetScript("OnHide", function() NS.global.firstRunDone = true end)
+    tinsert(UISpecialFrames, "MuscaUIFirstRun")   -- Échap ferme la fenêtre
+    -- Fermée par Échap ou autrement : choix posés comme à « Terminer », plus rouverte à chaque
+    -- connexion (/musca setup reste là). Interface masquée (Alt+Z) : la fenêtre reste ouverte, rien à faire.
+    frame:SetScript("OnHide", function(self)
+        if self:IsShown() then return end
+        ApplyChoices()
+        NS.Install.ForgetHudImport()
+        NS.global.firstRunDone = true
+    end)
 
     -- Colonne latérale : un titre par page, la page courante en couleur d'accent.
     frame.sidebar = frame:CreateTexture(nil, "BORDER")
@@ -401,16 +400,22 @@ function FirstRun:Show()
 end
 
 function FirstRun:Finish()
-    for name, enabled in pairs(choices) do
-        -- Un module cédé garde le réglage de l'utilisateur pour le jour où l'addon tiers part.
-        if not NS.Modules:IsYielded(name) then NS.Modules:SetEnabled(name, enabled) end
-    end
+    ApplyChoices()
     NS.global.firstRunDone = true
     frame:Hide()
     NS.Print(L.FIRST_RUN_FINISHED)
 end
 
 function FirstRun:GetFrame() return frame end
+
+-- HUD placé assistant ouvert : il a coupé des barres, la fermeture ne doit pas les rallumer.
+NS:On("HUD_PLACED", function()
+    if not (frame and frame:IsShown()) then return end
+    for name, values in pairs(NS.Install.HUD_OVERRIDES) do
+        if type(values) == "table" and values.enabled ~= nil then choices[name] = NS.db.modules[name].enabled end
+    end
+    FirstRun:SetPage(current)
+end)
 
 NS:On("LOGIN", function()
     if NS.global.firstRunDone then return end

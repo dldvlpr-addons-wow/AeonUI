@@ -167,7 +167,7 @@ end)
 
 function Tracker:OnEnable()
     if not holder then
-        holder = CreateFrame("Frame", "AeonUITracker", UIParent)
+        holder = CreateFrame("Frame", "MuscaUITracker", UIParent)
         holder:SetSize(1, 1)
     end
     NS.Movers:Register("tracker", holder, L.MOVER_TRACKER, "CENTER", 0, -120)

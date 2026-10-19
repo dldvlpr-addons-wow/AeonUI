@@ -1,4 +1,4 @@
--- AeonUI_Bags/Bags.lua
+-- MuscaUI_Bags/Bags.lua
 -- Sacs tout-en-un léger : une seule fenêtre pour le sac à dos et les sacs équipés, sur son mover.
 -- Recherche par nom, tri par l'API du client, niveau d'objet sur l'équipement, objets gris
 -- signalés (pièce), bordure de qualité, recharges, emplacements libres et or.
@@ -8,7 +8,7 @@
 -- par l'addon marque la case et bloque UseContainerItem). Les fenêtres de sacs Blizzard restent
 -- ouvertes, invisibles et hors écran : leurs ouvertures et fermetures (touche B, marchand,
 -- courrier) pilotent la nôtre, et fermer la nôtre les ferme. Banque : fenêtre Blizzard.
-local NS = AeonUI
+local NS = MuscaUI
 local L = NS.L
 local Media = NS.Media
 
@@ -175,12 +175,12 @@ end
 --- Rend un bouton décoré à son état Blizzard (taille, fond, ajouts, alpha).
 local function RestoreButton(button)
     if button.SetIgnoreParentAlpha then button:SetIgnoreParentAlpha(false) end
-    button.aeonLevel:Hide()
-    button.aeonJunk:Hide()
-    button.aeonBg:Hide()
-    for _, edge in pairs(button.aeonBorder) do edge:Hide() end
+    button.muscaLevel:Hide()
+    button.muscaJunk:Hide()
+    button.muscaBg:Hide()
+    for _, edge in pairs(button.muscaBorder) do edge:Hide() end
     button:SetAlpha(1)
-    if button.aeonSize then button:SetSize(unpack(button.aeonSize)) end
+    if button.muscaSize then button:SetSize(unpack(button.muscaSize)) end
 end
 
 local function RestoreBlizzard()
@@ -205,28 +205,28 @@ end
 
 --- Nos ajouts sur un bouton Blizzard : champs préfixés, jamais lus par le code Blizzard.
 local function Decorate(button)
-    if button.aeonLevel then
-        button.aeonBg:Show()
-        for _, edge in pairs(button.aeonBorder) do edge:Show() end
+    if button.muscaLevel then
+        button.muscaBg:Show()
+        for _, edge in pairs(button.muscaBorder) do edge:Show() end
         return
     end
-    button.aeonSize = { button:GetWidth(), button:GetHeight() }   -- taille Blizzard, rendue par RestoreButton
+    button.muscaSize = { button:GetWidth(), button:GetHeight() }   -- taille Blizzard, rendue par RestoreButton
     local bg, edges = Media:CreateBackdrop(button)
-    button.aeonBg = bg
-    button.aeonBorder = edges
-    button.aeonLevel = Media:CreateText(button, "OVERLAY", -1, "OUTLINE")
-    button.aeonLevel:SetPoint("TOPLEFT", button, "TOPLEFT", 1, -1)
-    button.aeonJunk = button:CreateTexture(nil, "OVERLAY")
-    button.aeonJunk:SetTexture(COIN)
-    button.aeonJunk:SetSize(S(12), S(12))
-    button.aeonJunk:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 1, 1)
-    button.aeonUpgrade = button:CreateTexture(nil, "OVERLAY")
-    button.aeonUpgrade:SetSize(S(12), S(12))
-    button.aeonUpgrade:SetPoint("TOPRIGHT", button, "TOPRIGHT", -1, -1)
-    if not button.aeonUpgrade:SetAtlas("bags-greenarrow") then NS.SetSolidColor(button.aeonUpgrade, 0.2, 0.9, 0.3, 1) end
+    button.muscaBg = bg
+    button.muscaBorder = edges
+    button.muscaLevel = Media:CreateText(button, "OVERLAY", -1, "OUTLINE")
+    button.muscaLevel:SetPoint("TOPLEFT", button, "TOPLEFT", 1, -1)
+    button.muscaJunk = button:CreateTexture(nil, "OVERLAY")
+    button.muscaJunk:SetTexture(COIN)
+    button.muscaJunk:SetSize(S(12), S(12))
+    button.muscaJunk:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 1, 1)
+    button.muscaUpgrade = button:CreateTexture(nil, "OVERLAY")
+    button.muscaUpgrade:SetSize(S(12), S(12))
+    button.muscaUpgrade:SetPoint("TOPRIGHT", button, "TOPRIGHT", -1, -1)
+    if not button.muscaUpgrade:SetAtlas("bags-greenarrow") then NS.SetSolidColor(button.muscaUpgrade, 0.2, 0.9, 0.3, 1) end
 end
 
-Bags.Decorate = Decorate   -- repris par la banque (AeonUI_Bags/Bank.lua)
+Bags.Decorate = Decorate   -- repris par la banque (MuscaUI_Bags/Bank.lua)
 
 --- Boutons des sacs Blizzard ouverts, dans l'ordre sac puis case.
 local function BlizzardButtons()
@@ -381,27 +381,27 @@ end
 function Bags.UpdateButton(button, bag, slot)
     local db = Bags.db
     local item = BagItem(bag, slot)
-    button.aeonItem = item
+    button.muscaItem = item
     local r, g, b
     if not item then
-        button.aeonLevel:Hide()
-        button.aeonJunk:Hide()
-        button.aeonUpgrade:Hide()
+        button.muscaLevel:Hide()
+        button.muscaJunk:Hide()
+        button.muscaUpgrade:Hide()
         local c = NS.db.theme.border
         r, g, b = c.r, c.g, c.b
     else
         local level = db.itemLevel and not NO_LEVEL[EquipLocation(item)] and item.link
             and NS.GetItemLevel(item.link)
-        button.aeonLevel:SetText(level and tostring(level) or "")
-        button.aeonLevel:SetTextColor(NS.QualityColor(item.quality))
-        button.aeonLevel:SetShown(level and true or false)
-        button.aeonJunk:SetShown(db.junk and item.quality == 0 and not item.hasNoValue)
+        button.muscaLevel:SetText(level and tostring(level) or "")
+        button.muscaLevel:SetTextColor(NS.QualityColor(item.quality))
+        button.muscaLevel:SetShown(level and true or false)
+        button.muscaJunk:SetShown(db.junk and item.quality == 0 and not item.hasNoValue)
         local itemLevel = db.upgrade and item.link and NS.GetItemLevel(item.link)
-        button.aeonUpgrade:SetShown(itemLevel and Bags.IsUpgrade(item, itemLevel) or false)
+        button.muscaUpgrade:SetShown(itemLevel and Bags.IsUpgrade(item, itemLevel) or false)
         if item.quality and item.quality >= 2 then r, g, b = NS.QualityColor(item.quality)
         else local c = NS.db.theme.border r, g, b = c.r, c.g, c.b end
     end
-    for _, edge in pairs(button.aeonBorder) do NS.SetSolidColor(edge, r, g, b, 1) end
+    for _, edge in pairs(button.muscaBorder) do NS.SetSolidColor(edge, r, g, b, 1) end
     Bags.ApplySearch(button)
 end
 
@@ -409,7 +409,7 @@ end
 function Bags.ApplySearch(button)
     local query = window and window.search and window.search:GetText() or ""
     query = NS.Modules.SortKey(query):match("^%s*(.-)%s*$")
-    local match = query == "" or (button.aeonItem and ItemName(button.aeonItem):find(query, 1, true) ~= nil)
+    local match = query == "" or (button.muscaItem and ItemName(button.muscaItem):find(query, 1, true) ~= nil)
     button:SetAlpha(match and 1 or 0.25)
 end
 
@@ -418,20 +418,20 @@ end
 --------------------------------------------------------------------------------
 
 local function Build()
-    window = CreateFrame("Frame", "AeonUIBags", UIParent)
+    window = CreateFrame("Frame", "MuscaUIBags", UIParent)
     window:SetFrameStrata("HIGH")
     window:SetClampedToScreen(true)
     window:EnableMouse(true)
     Media:CreateBackdrop(window)
     window:Hide()
-    tinsert(UISpecialFrames, "AeonUIBags")
+    tinsert(UISpecialFrames, "MuscaUIBags")
     -- Fermer la nôtre (Échap, croix) ferme les sacs Blizzard, pour que B rouvre ensuite.
     window:SetScript("OnHide", function()
         reagentWindow:Hide()
         if not syncing and BlizzardOpen() and _G.CloseAllBags then CloseAllBags() end
     end)
 
-    reagentWindow = CreateFrame("Frame", "AeonUIBagsReagents", UIParent)
+    reagentWindow = CreateFrame("Frame", "MuscaUIBagsReagents", UIParent)
     reagentWindow:SetFrameStrata("HIGH")
     reagentWindow:SetClampedToScreen(true)
     reagentWindow:EnableMouse(true)
@@ -577,7 +577,7 @@ function Bags:UpdatePass()
                         -top - row * (size + S(SPACING)))
                 end
                 Bags.UpdateButton(button, bag, slot)
-                if not button.aeonItem then free = free + 1 end
+                if not button.muscaItem then free = free + 1 end
             end
             top = top + math.max(1, math.ceil(#section.buttons / columns)) * (size + S(SPACING))
         end

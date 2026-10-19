@@ -198,27 +198,27 @@ function CooldownManager.StyleItem(item, def)
     local bar, icon, name, duration
     if def.bars then bar, icon, name, duration = BarParts(item) end
     local holder = (def.bars and type(icon) == "table" and icon.CreateTexture and icon) or item
-    if on and cfg.border and not holder.aeonBorder then holder.aeonBorder = NS.Media:CreateBorder(holder) end
-    for _, edge in pairs(holder.aeonBorder or {}) do edge:SetShown(on and cfg.border and true or false) end
+    if on and cfg.border and not holder.muscaBorder then holder.muscaBorder = NS.Media:CreateBorder(holder) end
+    for _, edge in pairs(holder.muscaBorder or {}) do edge:SetShown(on and cfg.border and true or false) end
     for _, text in ipairs(Counters(item)) do StyleFont(text, on and (cfg.fontSize or 0) or 0) end
     if not (bar and bar.SetStatusBarTexture) then return end
     local styled = on and cfg.barTexture
     if styled then
-        if not bar.aeonOriginal then
+        if not bar.muscaOriginal then
             local texture = bar.GetStatusBarTexture and bar:GetStatusBarTexture()
-            bar.aeonOriginal = { texture = texture and texture.GetTexture and texture:GetTexture(),
+            bar.muscaOriginal = { texture = texture and texture.GetTexture and texture:GetTexture(),
                                  color = { bar:GetStatusBarColor() } }
         end
         bar:SetStatusBarTexture(NS.Media:StatusBarTexture())
         local color = cfg.barColor
         bar:SetStatusBarColor(color.r, color.g, color.b)
         if bar.BarBG then bar.BarBG:SetAlpha(0) end
-    elseif bar.aeonOriginal then
-        if bar.aeonOriginal.texture then bar:SetStatusBarTexture(bar.aeonOriginal.texture) end
-        local color = bar.aeonOriginal.color
+    elseif bar.muscaOriginal then
+        if bar.muscaOriginal.texture then bar:SetStatusBarTexture(bar.muscaOriginal.texture) end
+        local color = bar.muscaOriginal.color
         if color[1] then bar:SetStatusBarColor(color[1], color[2], color[3]) end
         if bar.BarBG then bar.BarBG:SetAlpha(1) end
-        bar.aeonOriginal = nil
+        bar.muscaOriginal = nil
     end
     if name and name.SetAlpha then name:SetAlpha((on and not cfg.showName) and 0 or 1) end
     if duration and duration.SetAlpha then duration:SetAlpha((on and not cfg.showDuration) and 0 or 1) end

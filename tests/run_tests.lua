@@ -89,7 +89,7 @@ function T.reset()
     Mock.inRaid = false
     Mock.overrideBindings, Mock.attributeDrivers = {}, {}
     Mock.actionCooldown, _G.C_ActionBar = { start = 0, duration = 0 }, nil
-    -- /aeon uninstall rend l'échelle dans tous les profils : l'état par défaut (pixel perfect) revient.
+    -- /musca uninstall rend l'échelle dans tous les profils : l'état par défaut (pixel perfect) revient.
     if NS.db and NS.db.theme and (NS.db.theme.pixelPerfect ~= true or NS.db.theme.uiScale ~= 1) then
         NS.db.theme.pixelPerfect, NS.db.theme.uiScale = true, 1
         NS.Pixel.queued = false

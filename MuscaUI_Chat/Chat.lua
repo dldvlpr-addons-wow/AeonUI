@@ -1,5 +1,5 @@
--- AeonUI_Chat/Chat.lua
--- Chat AeonUI : fenêtres de chat habillées (fond au thème, police du thème, onglets plats,
+-- MuscaUI_Chat/Chat.lua
+-- Chat MuscaUI : fenêtres de chat habillées (fond au thème, police du thème, onglets plats,
 -- boutons latéraux cachés, sans fondu), URL cliquables, copie du chat, noms de canaux courts,
 -- couleur de classe partout, horodatage, zone de saisie en haut ou en bas. Historique rejoué au
 -- /reload, mots-clés surlignés avec son, anti-spam tolérant (texte normalisé).
@@ -9,11 +9,11 @@
 -- Midnight : un message secret (rencontre) passe tel quel, sans transformation ni mémoire.
 --
 -- Fenêtres : ChatFrame1 à gauche et la première fenêtre détachée à droite, chacune adoptée sur
--- un mover (/aeon unlock) avec sa taille dans les options ; Edit Mode et le glissé d'onglet ne les
+-- un mover (/musca unlock) avec sa taille dans les options ; Edit Mode et le glissé d'onglet ne les
 -- déplacent plus tant que l'option est active.
 -- Les textes passent par un enrobage d'AddMessage par fenêtre (URL, canaux courts) : hors
 -- combat ou pas, rien de protégé ici. Cède aux addons de la liste yieldsTo.
-local NS = AeonUI
+local NS = MuscaUI
 local L = NS.L
 local Media = NS.Media
 
@@ -78,7 +78,7 @@ local frames = {}          -- [ChatFrame] = { backdrop, original = { font = {…
 local hooked = false
 local copyFrame
 -- Couleurs de classe d'origine du personnage, gardées dans la base : un /reload relirait
--- sinon les valeurs déjà forcées par AeonUI et l'origine serait perdue.
+-- sinon les valeurs déjà forcées par MuscaUI et l'origine serait perdue.
 local function ClassColorBackup()
     return NS.global.chatClassColors[NS.Database.CharacterKey()]
 end
@@ -350,7 +350,7 @@ local function Windows()
 end
 
 --------------------------------------------------------------------------------
--- Fenêtres gauche et droite : posées sur des movers (/aeon unlock), tailles des options
+-- Fenêtres gauche et droite : posées sur des movers (/musca unlock), tailles des options
 --------------------------------------------------------------------------------
 
 local CHAT_MIN_WIDTH, CHAT_MIN_HEIGHT = 296, 120   -- bornes de redimensionnement du client
@@ -406,7 +406,7 @@ function Chat.ApplyWindows()
 end
 
 -- Redimensionnement à la main (bouton du chat, Edit Mode) : la taille devient celle des options.
--- Glisser l'onglet d'une fenêtre gérée la ramène sur son mover : la place vient de /aeon unlock.
+-- Glisser l'onglet d'une fenêtre gérée la ramène sur son mover : la place vient de /musca unlock.
 local function OnWindowResized(frame)
     if not (active and Chat.db.windows) then return end
     local db = Chat.db
@@ -613,7 +613,7 @@ local function ApplySidebar()
         if sidebar then sidebar:Hide() end
         return
     end
-    if not sidebar then sidebar = CreateFrame("Frame", "AeonUIChatSidebar", UIParent) end
+    if not sidebar then sidebar = CreateFrame("Frame", "MuscaUIChatSidebar", UIParent) end
     local actions = Chat.SidebarActions(Chat.db.sidebarButtons)
     sidebar:SetSize(SIDEBAR_SIZE, math.max(1, #actions * (SIDEBAR_SIZE + 2) - 2))
     sidebar:ClearAllPoints()
@@ -672,7 +672,7 @@ end
 
 local function CopyFrame()
     if copyFrame then return copyFrame end
-    copyFrame = CreateFrame("Frame", "AeonUI_ChatCopy", UIParent)
+    copyFrame = CreateFrame("Frame", "MuscaUI_ChatCopy", UIParent)
     copyFrame:SetSize(560, 380)
     copyFrame:SetPoint("CENTER")
     copyFrame:SetFrameStrata("DIALOG")
@@ -688,7 +688,7 @@ local function CopyFrame()
     local close = CreateFrame("Button", nil, copyFrame, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", 2, 2)
     close:SetScript("OnClick", function() copyFrame:Hide() end)
-    local scroll = CreateFrame("ScrollFrame", "AeonUI_ChatCopyScroll", copyFrame, "UIPanelScrollFrameTemplate")
+    local scroll = CreateFrame("ScrollFrame", "MuscaUI_ChatCopyScroll", copyFrame, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 10, -30)
     scroll:SetPoint("BOTTOMRIGHT", -30, 10)
     local edit = CreateFrame("EditBox", nil, scroll)
@@ -700,7 +700,7 @@ local function CopyFrame()
     edit:SetScript("OnEscapePressed", function() copyFrame:Hide() end)
     scroll:SetScrollChild(edit)
     copyFrame.edit = edit
-    tinsert(UISpecialFrames, "AeonUI_ChatCopy")
+    tinsert(UISpecialFrames, "MuscaUI_ChatCopy")
     return copyFrame
 end
 
@@ -725,7 +725,7 @@ end
 local function CopyButton(frame)
     local entry = Entry(frame)
     if entry.copyButton then return entry.copyButton end
-    local button = CreateFrame("Button", frame:GetName() .. "AeonUICopy", frame)
+    local button = CreateFrame("Button", frame:GetName() .. "MuscaUICopy", frame)
     button:SetSize(20, 20)
     button:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, -2)
     button:SetAlpha(0)
@@ -916,7 +916,7 @@ function Chat:BuildOptions(o)
     o:Button(L.OPT_UF_UNLOCK, function() NS:SetUnlocked(not NS.unlocked) end, 36)
     -- Remet toutes les fenêtres à zéro : général à gauche, butin / commerce détaché à droite.
     o:Button(L.OPT_CHAT_SETUP_WINDOWS, function()
-        NS.Options.Confirm("AEONUI_CHAT_SETUP", L.MSG_CHAT_SETUP_CONFIRM, function()
+        NS.Options.Confirm("MUSCAUI_CHAT_SETUP", L.MSG_CHAT_SETUP_CONFIRM, function()
             NS:RunOutOfCombat(function()
                 if NS.AddonPlacements.Chat() then
                     Chat:OnRefresh()

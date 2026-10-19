@@ -1,7 +1,7 @@
 -- Core/Modules.lua
 -- Registre des modules. Chaque module est une table :
 --   name, title, description   identifiant et libellés
---   defaults                   fusionnés dans AeonUIDB.modules[name] (doit contenir enabled)
+--   defaults                   fusionnés dans MuscaUIDB.modules[name] (doit contenir enabled)
 --   secure                     true si le module possède une frame sécurisée : ses
 --                              activations/désactivations en combat sont différées
 --   reloadOnDisable            true si les cadres Blizzard ne reviennent qu'au /reload : les
@@ -173,14 +173,14 @@ function Modules:EnableAll()
     end
 end
 
---- Coupe tous les modules, ou seulement ceux de l'addon `addon` (AeonUI_* décoché).
+--- Coupe tous les modules, ou seulement ceux de l'addon `addon` (MuscaUI_* décoché).
 function Modules:DisableAll(addon)
     for _, module in ipairs(order) do
         if not addon or module.addon == addon then Apply(module, false) end
     end
 end
 
--- Addon d'origine de chaque module (AeonUI ou un AeonUI_*) : son ADDON_LOADED suit
+-- Addon d'origine de chaque module (MuscaUI ou un MuscaUI_*) : son ADDON_LOADED suit
 -- l'enregistrement de ses modules, avant tout autre addon.
 local owner = CreateFrame("Frame")
 owner:RegisterEvent("ADDON_LOADED")

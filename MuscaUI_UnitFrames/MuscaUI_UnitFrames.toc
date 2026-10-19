@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: |cff3fa9f5Musca|rUI Unit Frames
+## Title-frFR: |cff3fa9f5Musca|rUI Cadres d'unité
+## Notes: MuscaUI unit frames and resource bars.
+## Notes-frFR: Cadres d'unité et barres de ressources MuscaUI.
+## Version: @project-version@
+## Dependencies: MuscaUI
+## Group: MuscaUI
+## IconTexture: Interface\AddOns\MuscaUI\Media\Logo
+## Category: User Interface
+## Category-frFR: Interface utilisateur
+## X-License: All Rights Reserved
+
+UnitFrames.lua
+ResourceBars.lua

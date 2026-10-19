@@ -1,5 +1,5 @@
 -- tools/generate_bar_textures.lua
--- Textures de barre d'AeonUI (Media/Bars/*.tga), dessinées ici pixel par pixel : aucun média tiers.
+-- Textures de barre d'MuscaUI (Media/Bars/*.tga), dessinées ici pixel par pixel : aucun média tiers.
 -- Niveaux de gris sur fond blanc, teintés en jeu par SetStatusBarColor. TGA 32 bits non compressé,
 -- origine en haut à gauche, 256 x 32 (puissances de deux, exigées par le client).
 -- Usage, depuis la racine du dépôt : lua tools/generate_bar_textures.lua

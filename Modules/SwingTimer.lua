@@ -110,7 +110,7 @@ local function Tick()
 end
 
 local function Build()
-    container = CreateFrame("Frame", "AeonUISwingTimer", UIParent)
+    container = CreateFrame("Frame", "MuscaUISwingTimer", UIParent)
     for _, hand in ipairs(HANDS) do
         local bar = Media:CreateStatusBar(container)
         Media:CreateBackdrop(bar)

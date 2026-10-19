@@ -1,5 +1,5 @@
 -- Modules/CooldownBars.lua
--- Barres de recharges personnalisées : jusqu'à trois rangées d'icônes AeonUI, une liste de sorts
+-- Barres de recharges personnalisées : jusqu'à trois rangées d'icônes MuscaUI, une liste de sorts
 -- chacune (identifiants, ramenés au rang appris), recharge et charges du moteur, sur leur
 -- mover. En complément des viewers Blizzard, pour les sorts qu'ils ne proposent pas.
 local _, NS = ...
@@ -61,7 +61,7 @@ end
 
 local function Frame(index)
     if frames[index] then return frames[index] end
-    local bar = { holder = CreateFrame("Frame", "AeonUICooldownBar" .. index, UIParent), icons = {} }
+    local bar = { holder = CreateFrame("Frame", "MuscaUICooldownBar" .. index, UIParent), icons = {} }
     frames[index] = bar
     return bar
 end

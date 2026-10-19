@@ -4,7 +4,7 @@ local ADDON_NAME, NS = ...
 local L = NS.L
 
 function NS.Print(...)
-    print("|cff3fa9f5AeonUI|r: " .. strjoin(" ", tostringall(...)))
+    print("|cff3fa9f5MuscaUI|r: " .. strjoin(" ", tostringall(...)))
 end
 
 --------------------------------------------------------------------------------
@@ -97,8 +97,8 @@ end
 local function BindSaved()
     -- Ce client ne relit pas la SavedVariables de compte : Database:Load fournit les replis
     -- (table hôte Blizzard, puis miroir CVar).
-    AeonUIDB = NS.Database:Attach(NS.Database:Load(AeonUIDB))
-    NS.global = AeonUIDB
+    MuscaUIDB = NS.Database:Attach(NS.Database:Load(MuscaUIDB))
+    NS.global = MuscaUIDB
     NS.Database:HostGlobal()
     NS.SetLocale(NS.global.locale)
 end
@@ -116,8 +116,8 @@ loader:SetScript("OnEvent", function(self, event, name)
         -- Le nom du personnage (clé du profil) n'est fiable qu'à PLAYER_LOGIN.
         self:UnregisterEvent("PLAYER_LOGIN")
         -- Garde-fou : la globale remplacée entre ADDON_LOADED et PLAYER_LOGIN (NS.global orphelin).
-        if AeonUIDB ~= NS.global then BindSaved() end
-        -- Les addons AeonUI_* enregistrent leurs modules après ADDON_LOADED du cœur : leurs défauts ici.
+        if MuscaUIDB ~= NS.global then BindSaved() end
+        -- Les addons MuscaUI_* enregistrent leurs modules après ADDON_LOADED du cœur : leurs défauts ici.
         for _, profile in pairs(NS.global.profiles) do NS.Database.FillProfile(profile) end
         NS.db = NS.Database:ActiveProfile()
         NS:Fire("PROFILE_READY")
@@ -226,7 +226,7 @@ end
 
 -- Raccourci par profil : une touche liée au bouton caché, le bouton de souris transmis ("P1",
 -- "P2"…) désigne le profil (un nom peut contenir espaces et deux-points, pas ce paramètre).
-local hotkeyButton = CreateFrame("Button", "AeonUIProfileHotkey", UIParent)
+local hotkeyButton = CreateFrame("Button", "MuscaUIProfileHotkey", UIParent)
 hotkeyButton:Hide()
 local hotkeyTargets = {}
 hotkeyButton:SetScript("OnClick", function(_, button)
@@ -287,7 +287,7 @@ function NS:Uninstall(silent)
         -- restent, l'addon ne se charge plus de toute façon.
         if not silent then
             for _, profile in pairs(NS.global.profiles) do
-                -- Toutes les entrées, y compris celles d'un AeonUI_* décoché (module non chargé).
+                -- Toutes les entrées, y compris celles d'un MuscaUI_* décoché (module non chargé).
                 for _, settings in pairs(profile.modules or {}) do
                     if type(settings) == "table" then settings.enabled = false end
                 end
@@ -296,7 +296,7 @@ function NS:Uninstall(silent)
         end
         if not silent then NS.Pixel:Apply() end   -- rend l'échelle d'UIParent (inutile à la déconnexion)
         NS.CVars:RestoreAll(silent)
-        -- Compte entier : pas à la déconnexion, un autre personnage peut encore utiliser AeonUI.
+        -- Compte entier : pas à la déconnexion, un autre personnage peut encore utiliser MuscaUI.
         if not silent then NS.global.addonPlacements = nil end   -- DBM et BigWigs plus reposés
         if not silent then NS.Print(L.MSG_UNINSTALLED) end
     end
@@ -307,7 +307,7 @@ function NS:Uninstall(silent)
     end
 end
 
-StaticPopupDialogs["AEONUI_UNINSTALL"] = {
+StaticPopupDialogs["MUSCAUI_UNINSTALL"] = {
     text = "",   -- posé à l'ouverture : la langue peut changer après le chargement
     button1 = YES,
     button2 = NO,
@@ -353,7 +353,7 @@ watch:SetScript("OnEvent", function(_, event)
     elseif argumentOrder and NS.db and EnableState(argumentOrder) == ENABLED_STATE_NONE then
         NS:Uninstall(true)
     elseif argumentOrder and NS.db then
-        -- AeonUI_* décoché : ses modules rendent ce qu'ils ont changé, leurs réglages restent.
+        -- MuscaUI_* décoché : ses modules rendent ce qu'ils ont changé, leurs réglages restent.
         local checked = {}
         for _, module in ipairs(NS.Modules:List()) do
             local addon = module.addon
@@ -367,7 +367,7 @@ watch:SetScript("OnEvent", function(_, event)
 end)
 
 --- Icône du compartiment d'addons (minimap) : clic gauche = options, clic droit = déverrouiller.
-function _G.AeonUI_AddonCompartmentFunc(_, button)
+function _G.MuscaUI_AddonCompartmentFunc(_, button)
     if button == "RightButton" then NS:SetUnlocked(not NS.unlocked) else NS.OpenOptions() end
 end
 
@@ -380,7 +380,7 @@ local commands = {}
 function commands.unlock() NS:SetUnlocked(true) end
 function commands.lock() NS:SetUnlocked(false) end
 
---- /aeon kb : mode raccourcis des barres d'action AeonUI.
+--- /musca kb : mode raccourcis des barres d'action MuscaUI.
 function commands.kb()
     local bars = NS.Modules:Get("actionbars")
     if bars and bars.ToggleKeyBind then bars:ToggleKeyBind() end
@@ -390,8 +390,8 @@ function commands.setup()
     if NS.FirstRun then NS.FirstRun:Show() end
 end
 
---- /aeon install [complete|light] [dps|heal|tank]
--- /aeon install dps|heal|tank : profil de base du rôle. /aeon install complete|light [rôle] : préréglage
+--- /musca install [complete|light] [dps|heal|tank]
+-- /musca install dps|heal|tank : profil de base du rôle. /musca install complete|light [rôle] : préréglage
 -- sur le profil actif.
 function commands.install(args)
     local first, second = (args or ""):match("^(%S*)%s*(%S*)")
@@ -426,7 +426,7 @@ end
 
 function commands.restore() NS:RestoreBackup() end
 
---- /aeon pull [secondes] : compte à rebours, le premier réglé par défaut ; 0 l'annule.
+--- /musca pull [secondes] : compte à rebours, le premier réglé par défaut ; 0 l'annule.
 function commands.pull(args)
     local raid = NS.Modules:Get("raidutility")
     if not (raid and raid.Countdown) then return end
@@ -441,13 +441,12 @@ function commands.diag()
 end
 
 function commands.uninstall()
-    StaticPopupDialogs.AEONUI_UNINSTALL.text = L.MSG_UNINSTALL_CONFIRM
-    StaticPopup_Show("AEONUI_UNINSTALL")
+    StaticPopupDialogs.MUSCAUI_UNINSTALL.text = L.MSG_UNINSTALL_CONFIRM
+    StaticPopup_Show("MUSCAUI_UNINSTALL")
 end
 
-SLASH_AEONUI1 = "/aeon"
-SLASH_AEONUI2 = "/aeonui"
-SlashCmdList.AEONUI = function(msg)
+SLASH_MUSCAUI1 = "/musca"
+SlashCmdList.MUSCAUI = function(msg)
     local command, rest = (msg or ""):lower():match("^%s*(%S*)%s*(.-)%s*$")
     local handler = commands[command]
     if handler then

@@ -216,7 +216,7 @@ Movers.adopted = Movers.adopted or {}   -- [key] = { holder, frame, anchoring }
 function Movers:Adopt(key, frame, label, defaultPoint, defaultX, defaultY, anchor)
     local entry = self.adopted[key]
     if not entry then
-        entry = { holder = CreateFrame("Frame", "AeonUI_Holder_" .. key, UIParent), hooked = {} }
+        entry = { holder = CreateFrame("Frame", "MuscaUI_Holder_" .. key, UIParent), hooked = {} }
         entry.holder:SetFrameStrata("LOW")
         self.adopted[key] = entry
     end
@@ -692,7 +692,7 @@ local function PointChoices()
 end
 
 local function BuildCoordsPanel()
-    coordsPanel = CreateFrame("Frame", "AeonUIMoverCoords", UIParent)
+    coordsPanel = CreateFrame("Frame", "MuscaUIMoverCoords", UIParent)
     coordsPanel:SetFrameStrata("FULLSCREEN_DIALOG")
     coordsPanel:SetSize(640, 94)
     coordsPanel:SetPoint("TOP", UIParent, "TOP", 0, -60)
@@ -1111,7 +1111,7 @@ local function FilterChoices()
 end
 
 local function BuildToolbar()
-    toolbar = CreateFrame("Frame", "AeonUIMoverToolbar", UIParent)
+    toolbar = CreateFrame("Frame", "MuscaUIMoverToolbar", UIParent)
     toolbar:SetFrameStrata("FULLSCREEN_DIALOG")
     toolbar:SetSize(1000, 34)
     toolbar:SetPoint("TOP", UIParent, "TOP", 0, -16)
@@ -1145,8 +1145,8 @@ local function BuildToolbar()
     resetAll:SetText(L.MOVER_RESET_ALL)
     NS.Widgets.FitText(resetAll, 130)
     resetAll:SetScript("OnClick", function()
-        StaticPopupDialogs.AEONUI_RESET_POSITIONS.text = L.MSG_RESET_POSITIONS_CONFIRM
-        StaticPopup_Show("AEONUI_RESET_POSITIONS")
+        StaticPopupDialogs.MUSCAUI_RESET_POSITIONS.text = L.MSG_RESET_POSITIONS_CONFIRM
+        StaticPopup_Show("MUSCAUI_RESET_POSITIONS")
     end)
     -- Enregistrer : les positions sont déjà sauvées au fil des glisser, on verrouille.
     local save = CreateFrame("Button", nil, toolbar, "UIPanelButtonTemplate")
@@ -1161,7 +1161,7 @@ local function BuildToolbar()
     cancel:SetText(L.MOVER_CANCEL)
     NS.Widgets.FitText(cancel, 110)
     cancel:SetScript("OnClick", function()
-        NS.Options.Confirm("AEONUI_MOVERS_CANCEL", L.MSG_MOVERS_CANCEL_CONFIRM, function() Movers:CancelSession() end)
+        NS.Options.Confirm("MUSCAUI_MOVERS_CANCEL", L.MSG_MOVERS_CANCEL_CONFIRM, function() Movers:CancelSession() end)
     end)
     toolbar.grid, toolbar.filter, toolbar.snap, toolbar.save, toolbar.cancel = grid, filter, snap, save, cancel
     toolbar:Hide()
@@ -1222,7 +1222,7 @@ combat:SetScript("OnEvent", function(_, event)
         end
     elseif Movers.suspended then
         Movers.suspended = nil
-        -- Verrouillé pendant le combat (/aeon lock) : rien à reprendre, session close.
+        -- Verrouillé pendant le combat (/musca lock) : rien à reprendre, session close.
         if NS.unlocked then
             Movers:SetUnlocked(true)
             NS:Fire("PREVIEW", true)

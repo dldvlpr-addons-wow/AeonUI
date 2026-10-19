@@ -65,8 +65,8 @@ test("profils : renommer, dupliquer, raccourci par profil", function()
     -- Raccourci : la touche bascule sur son profil.
     NS:SwitchProfile(Database.DEFAULT_PROFILE)
     NS:BindProfileHotkeys()
-    local button = _G.AeonUIProfileHotkey
-    eq(Mock.overrideBindings[button]["CTRL-1"], "AeonUIProfileHotkey")
+    local button = _G.MuscaUIProfileHotkey
+    eq(Mock.overrideBindings[button]["CTRL-1"], "MuscaUIProfileHotkey")
     button:GetScript("OnClick")(button, "P1")
     eq(Database:ActiveProfileName(), "Nouveau", "touche : profil rebranché")
     -- Dupliquer = profil neuf copié de l'actif.

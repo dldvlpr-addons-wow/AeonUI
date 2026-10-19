@@ -1,5 +1,5 @@
--- AeonUI_GroupFrames/GroupFrames.lua
--- Cadres de groupe et de raid AeonUI : en-têtes SecureGroupHeaderTemplate (groupe, raid, tanks
+-- MuscaUI_GroupFrames/GroupFrames.lua
+-- Cadres de groupe et de raid MuscaUI : en-têtes SecureGroupHeaderTemplate (groupe, raid, tanks
 -- et assistants principaux) dont chaque bouton (SecureUnitButtonTemplate : clic gauche cible, clic
 -- droit menu) reçoit les éléments de NS.UnitFrameElements plus : rôle, chef, menace, dispel, portée,
 -- icône d'état (appel, invocation, résurrection), et des sorts suivis par coin (Renouveau,
@@ -11,7 +11,7 @@
 -- snippet restreint ici), une fois par bouton. Les événements d'unité sont reçus
 -- par un seul écouteur et routés par jeton (byUnit) : le jeton d'un bouton change avec le tri, et
 -- une unité peut avoir deux boutons (raid et tanks principaux).
-local NS = AeonUI
+local NS = MuscaUI
 local L = NS.L
 local Elements = NS.UnitFrameElements
 local Movers = NS.Movers
@@ -774,7 +774,7 @@ end
 local headerHooked = false
 
 local function NewHeader(key)
-    local header = CreateFrame("Frame", "AeonUI_Group_" .. key, UIParent, "SecureGroupHeaderTemplate")
+    local header = CreateFrame("Frame", "MuscaUI_Group_" .. key, UIParent, "SecureGroupHeaderTemplate")
     header.key = key
     header.buttons = {}
     header:SetAttribute("template", "SecureUnitButtonTemplate")
@@ -915,10 +915,10 @@ local function ApplyFriendlyBoss(on)
     local db = GroupFrames.db
     local S = function(n) return NS.Pixel:Scale(n) end
     if not holder then
-        holder = CreateFrame("Frame", "AeonUI_FriendlyBoss", UIParent)
+        holder = CreateFrame("Frame", "MuscaUI_FriendlyBoss", UIParent)
         bossHeader.holder = holder
         for index = 1, BOSS_COUNT do
-            local button = CreateFrame("Button", "AeonUI_FriendlyBossButton" .. index, holder, "SecureUnitButtonTemplate")
+            local button = CreateFrame("Button", "MuscaUI_FriendlyBossButton" .. index, holder, "SecureUnitButtonTemplate")
             button:SetSize(S(db.width), S(db.height))
             button:SetAttribute("unit", "boss" .. index)
             button:SetAttribute("*type1", "target")
@@ -1193,7 +1193,7 @@ local function HealerManaWanted()
 end
 
 local function BuildHealerMana()
-    manaFrame = CreateFrame("Frame", "AeonUI_HealerMana", UIParent)
+    manaFrame = CreateFrame("Frame", "MuscaUI_HealerMana", UIParent)
     manaFrame:SetSize(NS.Pixel:Scale(140), HEALER_ROWS * NS.Pixel:Scale(ROW_HEIGHT))
     manaFrame.rows = {}
     for index = 1, HEALER_ROWS do
@@ -1458,7 +1458,7 @@ end)
 -- Aperçu gardé pour placer les en-têtes en mode déplacement, oublié quand options et mode
 -- déplacement sont tous deux fermés.
 local function DropPreview()
-    local window = _G.AeonUIOptionsWindow
+    local window = _G.MuscaUIOptionsWindow
     if GroupFrames.previewSize and not NS.unlocked and not (window and window:IsShown()) then GroupFrames:SetPreview(nil) end
 end
 NS:On("OPTIONS_HIDDEN", DropPreview)

@@ -377,7 +377,7 @@ end
 local function TravelButton(index)
     local button = travelButtons[index]
     if button then return button end
-    button = CreateFrame("Button", "AeonUITravelButton" .. index, travelMenu, "SecureActionButtonTemplate")
+    button = CreateFrame("Button", "MuscaUITravelButton" .. index, travelMenu, "SecureActionButtonTemplate")
     button:SetSize(TRAVEL_SIZE, TRAVEL_SIZE)
     button:RegisterForClicks("AnyUp", "AnyDown")
     button.icon = button:CreateTexture(nil, "ARTWORK")
@@ -463,7 +463,7 @@ local function CreateElement(key)
 end
 
 local function Build()
-    bar = CreateFrame("Frame", "AeonUITopBar", UIParent)
+    bar = CreateFrame("Frame", "MuscaUITopBar", UIParent)
     bar:SetHeight(BAR_HEIGHT)
     bar:SetFrameStrata("LOW")
     bar.bg = bar:CreateTexture(nil, "BACKGROUND")
@@ -474,7 +474,7 @@ local function Build()
     for _, key in ipairs(TEXT_KEYS) do CreateElement(key) end
 
     -- Foyer : bouton sécurisé, taille fixe, ancré au bord de la barre et à rien d'autre.
-    hearth = CreateFrame("Button", "AeonUITopBarHearth", bar, "SecureActionButtonTemplate")
+    hearth = CreateFrame("Button", "MuscaUITopBarHearth", bar, "SecureActionButtonTemplate")
     hearth.key = "hearth"
     hearth:SetSize(HEARTH_WIDTH, BAR_HEIGHT)
     hearth:RegisterForClicks("AnyUp", "AnyDown")
@@ -486,14 +486,14 @@ local function Build()
     hearth:SetScript("OnLeave", HideTooltip)
 
     -- Menu Voyage : fermé d'office en combat par un state driver (OnEnable).
-    travelMenu = CreateFrame("Frame", "AeonUITravel", bar)
+    travelMenu = CreateFrame("Frame", "MuscaUITravel", bar)
     travelMenu:SetFrameStrata("DIALOG")
     travelMenu.bg = travelMenu:CreateTexture(nil, "BACKGROUND")
     travelMenu.bg:SetAllPoints()
     NS.SetSolidColor(travelMenu.bg, 0.04, 0.05, 0.07, 0.92)
     travelMenu:SetScript("OnShow", RefreshTravelCooldowns)
     travelMenu:Hide()
-    tinsert(UISpecialFrames, "AeonUITravel")   -- Échap ferme le menu
+    tinsert(UISpecialFrames, "MuscaUITravel")   -- Échap ferme le menu
 end
 
 --------------------------------------------------------------------------------

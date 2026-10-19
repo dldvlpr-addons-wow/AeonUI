@@ -1,12 +1,12 @@
--- AeonUI_Bags/Bank.lua
--- Banque AeonUI : une fenêtre au thème à la place de la banque Blizzard, un onglet par coffre
+-- MuscaUI_Bags/Bank.lua
+-- Banque MuscaUI : une fenêtre au thème à la place de la banque Blizzard, un onglet par coffre
 -- acheté (moteur retail : CharacterBankTab_1..6), sinon la banque classique et ses sacs. Cases
 -- décorées comme celles des sacs (niveau, camelote, bordure, recherche des sacs).
 --
 -- Cases créées par l'addon (ContainerFrameItemButtonTemplate, sac porté par le parent) : pas de
 -- combat au guichet, le marquage des SetID ne gêne pas. La banque Blizzard est reparentée sur un
 -- cadre caché (jamais Hide ni SetScript, qui couperaient ses événements), rendue au disable.
-local NS = AeonUI
+local NS = MuscaUI
 local L = NS.L
 local Media = NS.Media
 
@@ -66,7 +66,7 @@ end
 local function Slot(index)
     local button = slots[index]
     if button then return button end
-    button = CreateFrame("ItemButton", "AeonUIBankSlot" .. index, window, "ContainerFrameItemButtonTemplate")
+    button = CreateFrame("ItemButton", "MuscaUIBankSlot" .. index, window, "ContainerFrameItemButtonTemplate")
     if not button.GetBagID then function button:GetBagID() return self:GetParent():GetID() end end
     button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     button:RegisterForDrag("LeftButton")
@@ -132,13 +132,13 @@ function Bank:Update()
 end
 
 local function Build()
-    window = CreateFrame("Frame", "AeonUIBank", UIParent)
+    window = CreateFrame("Frame", "MuscaUIBank", UIParent)
     window:SetFrameStrata("HIGH")
     window:SetClampedToScreen(true)
     window:EnableMouse(true)
     Media:CreateBackdrop(window)
     window:Hide()
-    tinsert(UISpecialFrames, "AeonUIBank")
+    tinsert(UISpecialFrames, "MuscaUIBank")
     window.close = CreateFrame("Button", nil, window, "UIPanelCloseButton")
     window.close:SetSize(S(20), S(20))
     window.close:SetPoint("TOPRIGHT", window, "TOPRIGHT", 0, 0)
