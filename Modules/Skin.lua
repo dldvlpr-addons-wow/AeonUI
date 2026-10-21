@@ -244,6 +244,14 @@ local function Crop(icon, force)
     end
 end
 
+-- Parcours en varargs : évite la table temporaire de { viewer:GetChildren() }.
+local function AppendChildIcons(icons, ...)
+    for i = 1, select("#", ...) do
+        local child = select(i, ...)
+        icons[#icons + 1] = child.Icon or child.icon
+    end
+end
+
 --- Icônes de toutes les frames connues : auras du joueur et gestionnaire de recharges.
 function Skin.CollectIcons()
     local icons = {}
@@ -256,9 +264,7 @@ function Skin.CollectIcons()
     for _, name in ipairs(COOLDOWN_VIEWERS) do
         local viewer = _G[name]
         if viewer and viewer.GetChildren then
-            for _, child in ipairs({ viewer:GetChildren() }) do
-                icons[#icons + 1] = child.Icon or child.icon
-            end
+            AppendChildIcons(icons, viewer:GetChildren())
         end
     end
     return icons

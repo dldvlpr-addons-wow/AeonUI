@@ -250,6 +250,16 @@ test("barres : clignotement demandé hors dispatch, rafale regroupée à la fram
     eq(count, 1, "première traitée aussitôt")
     Mock.Advance(0.05)
     eq(count, 2, "suivantes regroupées en un passage")
+    local auraCount = 0
+    button.OnEvent = function(self, event, ...)
+        if event == "UNIT_AURA" then auraCount = auraCount + 1 end
+        return original(self, event, ...)
+    end
+    for _ = 1, 5 do Mock.FireEvent("UNIT_AURA", "player") end
+    eq(auraCount, 1, "rafale UNIT_AURA : premier traité aussitôt")
+    Mock.Advance(0.05)
+    eq(auraCount, 2, "rafale UNIT_AURA : un seul passage par frame")
+    button.OnEvent = original
     for _, event in ipairs({ "PLAYER_ENTER_COMBAT", "START_AUTOREPEAT_SPELL" }) do
         Mock.FireEvent(event)
         eq(button.lastEvent, event, "clignotement de l'attaque auto : " .. event)

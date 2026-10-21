@@ -318,6 +318,30 @@ test("HUD Musca importé : colonne centrale libre, joueur et cible de part et d'
     NS.Database:DeleteProfile(Install.ClassProfileName("melee"))
 end)
 
+test("choix HUD Musca de l'assistant : profil installé sans barres de combat MuscaUI, sans pack importé", function()
+    reset()
+    local Install = NS.Install
+    local origin = NS.Database:ActiveProfileName()
+    Mock.units.player.class = "SHAMAN"
+    truthy(Install:ApplyClass("melee"))
+    eq(NS.Modules:Get("swingtimer").enabled, true, "choix barres : coups blancs actifs")
+    NS:SwitchProfile(origin)
+    NS.Database:DeleteProfile(Install.ClassProfileName("melee"))
+    truthy(Install:ApplyClass("melee", true))
+    eq(NS.Modules:Get("swingtimer").enabled, false, "choix HUD : pas de coups blancs")
+    eq(NS.Modules:Get("resourcebars").enabled, false, "choix HUD : pas de ressource")
+    eq(NS.db.anchors.uf_player.x, -300, "choix HUD : joueur contre le HUD")
+    eq(NS.db.anchors.uf_totems.y, -270, "choix HUD : totems sous le HUD")
+    eq(NS.db.modules.unitframes.units.player.castbarDetached, false)
+    NS:SwitchProfile(origin)
+    NS.Database:DeleteProfile(Install.ClassProfileName("melee"))
+    truthy(Install:Apply("dps", true))
+    eq(NS.Modules:Get("gcdbar").enabled, false, "rôle seul, choix HUD")
+    eq(NS.db.anchors.uf_target.x, 300)
+    NS:SwitchProfile(origin)
+    NS.Database:DeleteProfile(Install.ProfileName("dps"))
+end)
+
 test("HUD Musca : bordure à l'accent, repeinte après un réimport, une passe par rafale, rien en combat", function()
     reset()
     local Install = NS.Install
@@ -502,4 +526,27 @@ test("HUD Musca : une icône rechargée par image, icône remplacée entre-temps
     NS.global.hudBorder = nil
     Mock.loadedAddons.WeakAuras = nil
     _G.WeakAurasSaved, _G.WeakAuras = nil, nil
+end)
+
+test("choix barres de l'assistant avec le pack Musca importé : HUD non posé, barres gardées", function()
+    reset()
+    local Install = NS.Install
+    local origin = NS.Database:ActiveProfileName()
+    Mock.loadedAddons.WeakAuras = true
+    _G.WeakAurasSaved = { displays = { ["Chaman (Musca)"] = { load = { class = { single = "SHAMAN" } } } } }
+    Mock.units.player.class = "SHAMAN"
+    truthy(Install.HasMuscaHud())
+    truthy(Install:ApplyClass("melee", false))
+    eq(NS.Modules:Get("swingtimer").enabled, true, "classe : coups blancs gardés")
+    eq(NS.Modules:Get("resourcebars").enabled, true, "classe : ressource gardée")
+    truthy(NS.db.anchors.uf_player.x ~= -300, "classe : joueur hors disposition HUD")
+    NS:SwitchProfile(origin)
+    NS.Database:DeleteProfile(Install.ClassProfileName("melee"))
+    truthy(Install:Apply("dps", false))
+    eq(NS.db.modules.unitframes.units.player.castbarDetached, true, "rôle : incantation détachée gardée")
+    truthy(NS.db.anchors.uf_player.x ~= -300, "rôle : joueur hors disposition HUD")
+    NS:SwitchProfile(origin)
+    NS.Database:DeleteProfile(Install.ProfileName("dps"))
+    Mock.loadedAddons.WeakAuras = nil
+    _G.WeakAurasSaved = nil
 end)

@@ -251,3 +251,58 @@ test("plaques : couleur par type, hors combat assombri, portée d'attaque, icôn
     Disable()
     Mock.namePlates = {}
 end)
+
+test("plaques : menace et combat ne relisent pas la vie, surbrillance sans réécriture inutile", function()
+    reset()
+    Enable()
+    Enemy("nameplate1", { threat = 3 })
+    Mock.AddNamePlate("nameplate1")
+    local frame = NPF:GetFrame("nameplate1")
+    local reads, setValue = 0, frame.health.SetValue
+    frame.health.SetValue = function(bar, ...) reads = reads + 1 return setValue(bar, ...) end
+    Mock.units.nameplate1.threat = 2
+    Mock.FireEvent("UNIT_THREAT_SITUATION_UPDATE", "nameplate1")
+    eq(frame.health.barColor[1], 0.95, "menace 2 : orange")
+    Mock.FireEvent("UNIT_FLAGS", "nameplate1")
+    Mock.FireEvent("PLAYER_REGEN_DISABLED")
+    eq(reads, 0, "menace, drapeaux et combat : vie non relue")
+    Mock.units.nameplate1.threat = 0
+    Mock.FireEvent("UNIT_THREAT_SITUATION_UPDATE", "nameplate1")
+    eq(frame.health.barColor[1], 0.85, "menace perdue : couleur de base rendue")
+    Mock.FireEvent("UNIT_HEALTH", "nameplate1")
+    truthy(reads > 0, "UNIT_HEALTH relit la vie")
+    -- Surbrillance : bords réécrits au changement seulement.
+    local writes, setSolid = 0, NS.SetSolidColor
+    NS.SetSolidColor = function(...) writes = writes + 1 return setSolid(...) end
+    NPF:UpdateHighlight(frame)
+    NPF:UpdateHighlight(frame)
+    eq(writes, 0, "aucun changement : bords intacts")
+    Mock.units.target = Mock.units.nameplate1
+    NPF:UpdateHighlight(frame)
+    eq(writes, 4, "cible : quatre bords réécrits une fois")
+    NPF:UpdateHighlight(frame)
+    eq(writes, 4, "toujours la cible : rien de plus")
+    NS.SetSolidColor = setSolid
+    Mock.units.target = nil
+    Disable()
+    Mock.namePlates = {}
+end)
+
+test("plaques : UNIT_FACTION neutre devenu hostile recolore la barre (réaction en cache relue)", function()
+    reset()
+    Enable()
+    Enemy("nameplate2", { reaction = 2, guid = "Creature-2" })
+    Mock.AddNamePlate("nameplate2")
+    local hostile = NPF:GetFrame("nameplate2").health.barColor[1]
+    Enemy("nameplate1", { reaction = 4, hostile = false, guid = "Creature-1" })
+    Mock.AddNamePlate("nameplate1")
+    local frame = NPF:GetFrame("nameplate1")
+    truthy(frame.health.barColor[1] ~= hostile, "neutre : autre couleur")
+    Mock.units.nameplate1.reaction = 2
+    Mock.FireEvent("UNIT_FACTION", "nameplate1")
+    eq(frame.health.barColor[1], hostile, "hostile après UNIT_FACTION")
+    Mock.RemoveNamePlate("nameplate1")
+    Mock.RemoveNamePlate("nameplate2")
+    Disable()
+    Mock.namePlates = {}
+end)

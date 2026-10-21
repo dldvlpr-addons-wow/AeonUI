@@ -27,7 +27,7 @@ local frame
 local pages = {}          -- { key, title, build(layout), frame, layout }
 local current = 1
 local choices = {}        -- [nom du module] = bool, appliqué à « Terminer » ou à la fermeture
-local scratch = { editMode = "", cooldown = "", preset = "complete", role = "none" }   -- zones de texte et choix
+local scratch = { editMode = "", cooldown = "", preset = "complete", role = "none", combatDisplay = "bars" }   -- zones de texte et choix
 
 local function Report(ok, reason)
     if ok then NS.Print(L.SETUP_APPLIED) return end
@@ -119,11 +119,18 @@ pages[1] = { key = "install", titleKey = "SETUP_PAGE_INSTALL", build = function(
     local classFile = NS.Install.PlayerClass()
     local styles = classFile and NS.Install.ClassStyles() or { "dps", "heal", "tank" }
     layout:Note(classFile and L.INSTALL_CLASS_HINT or L.INSTALL_HINT)
+    if _G.WeakAuras and _G.WeakAuras.ImportClassPack then
+        -- Lu au clic d'un profil : le profil s'installe sans barres de combat MuscaUI si le HUD est choisi.
+        layout:Dropdown(L.SETUP_COMBAT_DISPLAY, {
+            { name = L.SETUP_COMBAT_BARS, value = "bars" }, { name = L.SETUP_COMBAT_HUD, value = "hud" } },
+            function() return scratch.combatDisplay end, function(value) scratch.combatDisplay = value end)
+    end
     for _, style in ipairs(styles) do
         local name = classFile and NS.Install.ClassProfileName(style) or NS.Install.ProfileName(style)
         layout:Button(string.format(L.INSTALL_ROLE_BUTTON, name), function()
             InstallProfile(name, function()
-                if classFile then NS.Install:ApplyClass(style) else NS.Install:Apply(style) end
+                local hud = scratch.combatDisplay == "hud"
+                if classFile then NS.Install:ApplyClass(style, hud) else NS.Install:Apply(style, hud) end
             end)
         end)
         layout:Note(classFile and L["INSTALL_CLASS_" .. classFile .. "_" .. style:upper()]

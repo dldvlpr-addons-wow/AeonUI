@@ -382,11 +382,23 @@ local function ApplyHud()
 end
 Install.ApplyHud = ApplyHud
 
+-- Choix « HUD Musca Auras » de l'assistant : la disposition du HUD part avec le profil, en dernière
+-- couche, sans attendre l'import du pack (ApplyHud ne la pose qu'une fois le pack là).
+local function HudLayers()
+    return { HUD_OVERRIDES, { anchors = Install.PlayerClass() == "SHAMAN" and HUD_TOTEMS or {} } }
+end
+
+-- Choix « Barres de combat » de l'assistant : pas de HUD posé même si le pack est déjà importé.
+local barsChosen = false
+local function ApplyHudUnlessBars()
+    if not barsChosen then ApplyHud() end
+end
+
 function Install:ApplyRole(role)
     local overrides = self.ROLES[role]
     if not overrides then return false end
     ApplyOverrides(overrides)
-    ApplyHud()
+    ApplyHudUnlessBars()
     return true
 end
 
@@ -399,7 +411,7 @@ function Install:ApplyPreset(presetName, role, extra, label)
     SetAnchors(preset.anchors)
     if role and role ~= "none" then self:ApplyRole(role) end
     for _, overrides in ipairs(extra or {}) do ApplyOverrides(overrides) end
-    if preset.anchors then ApplyHud() end
+    if preset.anchors then ApplyHudUnlessBars() end
     for name, enabled in pairs(preset.modules) do
         -- Un module cédé garde le réglage : il s'allumera le jour où l'addon tiers part.
         if NS.Modules:Get(name) then
@@ -475,10 +487,13 @@ function Install.ProfileName(role) return L["INSTALL_ROLE_" .. role:upper()] end
 
 --- Installation en un clic : bascule sur le profil de base du rôle (créé depuis les défauts s'il
 -- n'existe pas), puis y pose l'interface complète et la disposition du rôle.
-function Install:Apply(role)
+function Install:Apply(role, hud)
     if not self.ROLES[role] then return false, "role" end
     NS:SwitchProfile(self.ProfileName(role))
-    return self:ApplyPreset("complete", role)
+    barsChosen = hud == false
+    local ok, reason = self:ApplyPreset("complete", role, hud and HudLayers() or nil)
+    barsChosen = false
+    return ok, reason
 end
 
 --- Classe du joueur (« WARRIOR »…) et son nom affiché ; nil si illisible ou non gérée.
@@ -544,10 +559,14 @@ end
 
 --- Profil de classe : bascule sur le profil « Classe - Style » du joueur, puis pose l'interface
 -- complète, la disposition du rôle, les réglages du style et ceux de la classe.
-function Install:ApplyClass(style)
+function Install:ApplyClass(style, hud)
     if not self.CanPlay(style) then return false, "style" end
     NS:SwitchProfile(self.ClassProfileName(style))
-    local ok = self:ApplyPreset("complete", self.PLAYSTYLES[style].role, ClassOverrides(style), self.ClassProfileName(style))
+    local layers = ClassOverrides(style)
+    for _, layer in ipairs(hud and HudLayers() or {}) do layers[#layers + 1] = layer end
+    barsChosen = hud == false
+    local ok = self:ApplyPreset("complete", self.PLAYSTYLES[style].role, layers, self.ClassProfileName(style))
+    barsChosen = false
     ApplyHealPresets(style)
     return ok
 end

@@ -427,11 +427,13 @@ local function PlateLayout(frame)
 end
 
 --- Couleur de vie d'un ennemi : type (boss, élite…), puis menace par-dessus, assombrie hors combat.
-function NamePlateFrames:UpdateHealth(frame)
-    Elements.UpdateHealth(frame)
+-- `baseFresh` : Elements.UpdateHealth vient de poser la couleur de base. Sinon (menace, drapeaux,
+-- combat), la vie n'est pas relue : la base n'est refaite que si une teinte (type, menace, règle de
+-- style) était posée, `frame.tinted` (booléen, jamais une valeur secrète).
+function NamePlateFrames:ApplyHealthColor(frame, baseFresh)
     local db, unit = self.db, frame.unit
+    local r, g, b
     if not IsFriendly(unit) then
-        local r, g, b
         if db.classificationColors then r, g, b = NamePlateFrames.ClassificationColor(unit) end
         if db.threatColor then
             local tr, tg, tb = NamePlateFrames.ThreatColor(unit)
@@ -441,9 +443,22 @@ function NamePlateFrames:UpdateHealth(frame)
             if not r then r, g, b = Elements.HealthColor(unit, db.classColor) end
             r, g, b = r * 0.5, g * 0.5, b * 0.5
         end
-        if r then NS.Media:SetHealthColor(frame.health, r, g, b) end
     end
+    if r then NS.Media:SetHealthColor(frame.health, r, g, b)
+    elseif not baseFresh and frame.tinted then Elements.UpdateHealth(frame) end
     self:UpdateHighlight(frame)   -- opacité, puis filtres de style
+    frame.tinted = r ~= nil or (frame.styleRule ~= nil and frame.styleRule.color == true)
+end
+
+--- Vie, couleur et textes : UNIT_HEALTH, changement de réaction, montage.
+function NamePlateFrames:UpdateHealth(frame)
+    Elements.UpdateHealth(frame)
+    self:ApplyHealthColor(frame, true)
+end
+
+--- Couleur seule (menace, drapeaux, classification, combat) : la vie n'est pas relue.
+function NamePlateFrames:UpdateHealthColor(frame)
+    self:ApplyHealthColor(frame, false)
 end
 
 --- Icône de quête : unité liée à une quête en cours (nil si illisible : rien).
@@ -460,13 +475,16 @@ end
 
 function NamePlateFrames:UpdateHighlight(frame)
     frame.isTarget = NS.IsTarget(frame.unit) ~= false   -- secret : peut-être la cible, refaite au changement
-    local highlighted = self.db.targetHighlight and IsTarget(frame.unit)
-    if highlighted then
-        local r, g, b = NS.Media:Accent()
-        for _, edge in pairs(frame.border) do NS.SetSolidColor(edge, r, g, b, 1) end
-    else
-        local c = NS.db.theme.border
-        for _, edge in pairs(frame.border) do NS.SetSolidColor(edge, c.r, c.g, c.b, c.a or 1) end
+    local highlighted = self.db.targetHighlight and IsTarget(frame.unit) and true or false
+    if frame.highlighted ~= highlighted then   -- bords réécrits au changement seulement (Mount remet à nil)
+        frame.highlighted = highlighted
+        if highlighted then
+            local r, g, b = NS.Media:Accent()
+            for _, edge in pairs(frame.border) do NS.SetSolidColor(edge, r, g, b, 1) end
+        else
+            local c = NS.db.theme.border
+            for _, edge in pairs(frame.border) do NS.SetSolidColor(edge, c.r, c.g, c.b, c.a or 1) end
+        end
     end
     -- Opacité gardée en Lua : relire GetAlpha après SetAlphaFromBoolean (portée) rendrait un secret.
     local alpha = (not highlighted and self.db.targetHighlight and UnitExists("target")) and 0.7 or 1
@@ -475,12 +493,13 @@ function NamePlateFrames:UpdateHighlight(frame)
     self:ApplyRange(frame)
 end
 
-function NamePlateFrames:UpdateAll(frame)
+--- `refreshAuras` : montage ou changement de réglage ; sans lui, le conteneur ne relit que si l'unité change.
+function NamePlateFrames:UpdateAll(frame, refreshAuras)
     Elements.UpdateName(frame, true)
     Elements.UpdateLevel(frame, true)   -- textes de vie : refaits par UpdateHealth, en dernier
     Elements.UpdateRaidIcon(frame)
     Elements.StartCast(frame)
-    Elements.UpdateAuras(frame, true)
+    Elements.UpdateAuras(frame, refreshAuras)
     self:UpdateQuestIcon(frame)
     self:UpdateCombo(frame)
     self:UpdateHealth(frame)      -- en dernier : couleur, opacité, filtres de style
@@ -524,7 +543,8 @@ function NamePlateFrames:Mount(unit)
     Elements.LayoutAuras(frame)
     byUnit[unit] = frame
     HideBlizzard(plate)
-    self:UpdateAll(frame)
+    frame.highlighted = nil   -- réglages ou thème changés : bords à réécrire
+    self:UpdateAll(frame, true)
     frame:Show()
     -- Chevrons : leur barre d'ancrage devient la nôtre (l'événement a pu leur parvenir avant).
     local chevrons = NS.Modules:Get("nameplates")
@@ -619,7 +639,7 @@ events:SetScript("OnEvent", function(_, event, unit)
             if event == "PLAYER_REGEN_ENABLED" and frame.auras and not frame.auras.engine then
                 Elements.UpdateAuras(frame, true)
             end
-            NamePlateFrames:UpdateHealth(frame)
+            NamePlateFrames:UpdateHealthColor(frame)
         end
     else
         local frame = unit and byUnit[unit]
@@ -630,11 +650,15 @@ events:SetScript("OnEvent", function(_, event, unit)
             -- Allié devenu hostile (duel, JcJ) : réglages de la plaque (nom seul, auras) à refaire.
             -- Sinon neutre devenu hostile, ou mob marqué : couleur du nom et de la barre.
             if IsFriendly(unit) ~= frame.friendly then NamePlateFrames:Mount(unit)
-            else Elements.UpdateName(frame, true) NamePlateFrames:UpdateHealth(frame) end
-        elseif event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH"
-            or event == "UNIT_THREAT_LIST_UPDATE" or event == "UNIT_THREAT_SITUATION_UPDATE"
-            or event == "UNIT_FLAGS" or event == "UNIT_CLASSIFICATION_CHANGED" then
+            else
+                frame.reactionGUID = nil   -- réaction en cache par GUID (FrameHealthColor) à relire
+                Elements.UpdateName(frame, true) NamePlateFrames:UpdateHealth(frame)
+            end
+        elseif event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
             NamePlateFrames:UpdateHealth(frame)
+        elseif event == "UNIT_THREAT_LIST_UPDATE" or event == "UNIT_THREAT_SITUATION_UPDATE"
+            or event == "UNIT_FLAGS" or event == "UNIT_CLASSIFICATION_CHANGED" then
+            NamePlateFrames:UpdateHealthColor(frame)   -- sans relire la vie
         elseif not Elements.OnEvent(frame, event) then
             NamePlateFrames:UpdateAll(frame)
         elseif event ~= "UNIT_AURA" then

@@ -146,3 +146,15 @@ test("formatage : or et classe localisée", function()
     eq(NS.ClassTokenFromLocalized("Guerrière"), "WARRIOR")
     eq(NS.ClassTokenFromLocalized("Inconnu"), nil)
 end)
+
+test("barre : texte du foyer en cache, relu sur BAG_UPDATE_COOLDOWN seulement", function()
+    reset()
+    local original, calls = NS.GetItemCooldownRemaining, 0
+    NS.GetItemCooldownRemaining = function(...) calls = calls + 1 return original(...) end
+    TopBar:Update({ "clock" })
+    TopBar:Update({ "clock" })
+    eq(calls, 0, "ticker 1 Hz : aucune relecture du foyer")
+    Mock.FireEvent("BAG_UPDATE_COOLDOWN")
+    eq(calls, 1, "événement de recharge : relu une fois")
+    NS.GetItemCooldownRemaining = original
+end)

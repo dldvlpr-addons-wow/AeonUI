@@ -64,15 +64,28 @@ local function PlayerClass(unit)
     return Known(classFile)
 end
 
-function Elements.HealthColor(unit, classColor)
+--- Réaction lisible de l'unité, sinon nil.
+local function ReadableReaction(unit)
+    return _G.UnitReaction and Known(UnitReaction(unit, "player")) or nil
+end
+
+--- `reactionCache` : table { reaction } d'un cadre (FrameHealthColor), sinon la réaction est relue.
+function Elements.HealthColor(unit, classColor, reactionCache)
     local classFile = classColor and PlayerClass(unit)
     if classFile then return NS.ClassColor(classFile) end
     local unitFrames = NS.db.modules.unitframes
     local colors = unitFrames and unitFrames.reactionColors or Elements.REACTION_COLORS
+    -- Engagé par un autre : relu à chaque appel, aucun événement écouté ne le signale.
     if _G.UnitIsTapDenied and Known(UnitIsTapDenied(unit)) then
         return colors.tapped.r, colors.tapped.g, colors.tapped.b
     end
-    local reaction = _G.UnitReaction and Known(UnitReaction(unit, "player")) or nil
+    local reaction
+    if reactionCache then
+        reaction = reactionCache.reaction
+        if reaction == nil then reaction = ReadableReaction(unit) or false reactionCache.reaction = reaction end
+    else
+        reaction = ReadableReaction(unit)
+    end
     if reaction then
         local c = reaction >= 5 and colors.friendly or reaction == 4 and colors.neutral or colors.hostile
         return c.r, c.g, c.b
@@ -602,12 +615,15 @@ end
 
 --- Classe en cache par cadre, clé = GUID lisible (la classe d'un GUID ne change pas) ; la couleur
 -- est relue (CUSTOM_CLASS_COLORS peut changer). GUID secret ou absent : rien en cache.
+-- Réaction en cache par cadre, même clé GUID, vidée par UpdateFaction (UNIT_FACTION).
 local function FrameHealthColor(frame, unit, classColor)
-    local guid = classColor and Known(UnitGUID(unit)) or nil
-    if not guid then return Elements.HealthColor(unit, classColor) end
+    local guid = Known(UnitGUID(unit))
+    if not guid then frame.reactionGUID = nil return Elements.HealthColor(unit, classColor) end
+    if frame.reactionGUID ~= guid then frame.reactionGUID, frame.reactionCache = guid, {} end
+    if not classColor then return Elements.HealthColor(unit, false, frame.reactionCache) end
     if frame.classGUID ~= guid then
         local classFile = PlayerClass(unit)
-        if not classFile then return Elements.HealthColor(unit, false) end
+        if not classFile then return Elements.HealthColor(unit, false, frame.reactionCache) end
         frame.classGUID, frame.classFile = guid, classFile
     end
     return NS.ClassColor(frame.classFile)
@@ -1398,7 +1414,8 @@ function Elements.UpdateAuras(frame, refresh)
     if not frame.cfg.auras then container:Hide() return end
     container:Show()
     if container.engine then
-        if refresh then   -- boutons de l'aperçu
+        if container.previewing then   -- sortie de l'aperçu : ses boutons manuels, une seule fois
+            container.previewing = nil
             for _, button in ipairs(container.buttons) do button:Hide() end
         end
         container.engine:Show()
@@ -1445,6 +1462,7 @@ function Elements.PreviewAuras(frame, entries)
     if not container then return end
     if not frame.cfg.auras then container:Hide() return end
     container:Show()
+    container.previewing = true
     if container.engine then container.engine:Hide() end
     local perRow = container.perRow or MAX_AURAS
     local max = math.min(MAX_AURAS, frame.cfg.auraMax or MAX_AURAS)
@@ -1483,6 +1501,7 @@ end
 
 --- Réaction ou marquage JcJ changé : couleur de vie et écusson.
 function Elements.UpdateFaction(frame)
+    frame.reactionGUID = nil   -- réaction à relire
     Elements.UpdateHealth(frame)
     Elements.UpdatePvP(frame)
 end
@@ -1494,8 +1513,7 @@ Elements.UNIT_EVENTS = {
     UNIT_THREAT_SITUATION_UPDATE = "UpdateThreatBorder", UNIT_HAPPINESS = "UpdateHappiness",
     UNIT_CLASSIFICATION_CHANGED = "UpdateClassification",
     UNIT_CONNECTION = "UpdateHealthAndPrediction",
-    UNIT_POWER_UPDATE = "UpdatePower", UNIT_MAXPOWER = "UpdatePower", UNIT_DISPLAYPOWER = "UpdatePower",
-    UNIT_POWER_FREQUENT = "UpdatePower",
+    UNIT_MAXPOWER = "UpdatePower", UNIT_DISPLAYPOWER = "UpdatePower", UNIT_POWER_FREQUENT = "UpdatePower",
     UNIT_NAME_UPDATE = "UpdateName", UNIT_LEVEL = "UpdateLevel", UNIT_FLAGS = "UpdateIndicators",
     UNIT_AURA = "UpdateAuras",
     UNIT_HEAL_PREDICTION = "UpdateHealPrediction", UNIT_ABSORB_AMOUNT_CHANGED = "UpdateHealPrediction",
@@ -1508,7 +1526,7 @@ function Elements.OnEvent(frame, event)
     local method = Elements.UNIT_EVENTS[event]
     if method then
         Elements[method](frame)
-        if event == "UNIT_POWER_FREQUENT" or event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER" then
+        if event == "UNIT_POWER_FREQUENT" or event == "UNIT_MAXPOWER" then
             Elements.UpdateCombo(frame)
         end
         return true

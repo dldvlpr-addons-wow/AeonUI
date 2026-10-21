@@ -1267,7 +1267,7 @@ end
 --------------------------------------------------------------------------------
 
 local UNIT_EVENTS = { "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_POWER_UPDATE", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER",
-                      "UNIT_NAME_UPDATE", "UNIT_CONNECTION", "UNIT_AURA", "UNIT_THREAT_SITUATION_UPDATE",
+                      "UNIT_NAME_UPDATE", "UNIT_CONNECTION", "UNIT_AURA", "UNIT_FACTION", "UNIT_THREAT_SITUATION_UPDATE",
                       "UNIT_HEAL_PREDICTION", "UNIT_ABSORB_AMOUNT_CHANGED", "UNIT_HEAL_ABSORB_AMOUNT_CHANGED",
                       "INCOMING_RESURRECT_CHANGED",
                       "INCOMING_SUMMON_CHANGED", "READY_CHECK_CONFIRM", "UNIT_PORTRAIT_UPDATE", "UNIT_MODEL_CHANGED" }
@@ -1372,6 +1372,8 @@ events:SetScript("OnEvent", function(_, event, unit)
                     or event == "READY_CHECK_CONFIRM" then
                 GroupFrames:UpdateStatus(button)
                 GroupFrames:UpdateState(button)
+            elseif event == "UNIT_POWER_UPDATE" then
+                Elements.UpdatePower(button)   -- Elements route UNIT_POWER_FREQUENT, pas celui-ci
             elseif not Elements.OnEvent(button, event) then
                 GroupFrames:UpdateAll(button)
             elseif event == "UNIT_HEALTH" or event == "UNIT_CONNECTION" then

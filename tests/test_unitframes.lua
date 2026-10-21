@@ -717,3 +717,39 @@ test("unitframes : mode déplacement, faux cadres des unités absentes, cachés 
     Mock.units.target = nil
     Disable()
 end)
+
+test("unitframes : réaction en cache par cadre, vidée sur UNIT_FACTION et changement de GUID", function()
+    reset()
+    Enable()
+    Target({ reaction = 2, guid = "Creature-1" })
+    Mock.FireEvent("PLAYER_TARGET_CHANGED")
+    local health = Frame("target").health
+    local original, reads = _G.UnitReaction, 0
+    _G.UnitReaction = function(unit, ...) if unit == "target" then reads = reads + 1 end return original(unit, ...) end
+    local r0 = health:GetStatusBarColor()
+    Mock.FireEvent("UNIT_HEALTH", "target")
+    eq(r0, UF.db.reactionColors.hostile.r, "hostile")
+    Mock.FireEvent("UNIT_HEALTH", "target")
+    eq(reads <= 1, true, "UNIT_HEALTH ne relit pas la réaction")
+    Mock.units.target.reaction = 5
+    Mock.FireEvent("UNIT_FACTION", "target")
+    eq(health:GetStatusBarColor(), UF.db.reactionColors.friendly.r, "UNIT_FACTION vide le cache")
+    Mock.units.target.reaction, Mock.units.target.guid = 2, "Creature-2"
+    Mock.FireEvent("UNIT_HEALTH", "target")
+    eq(health:GetStatusBarColor(), UF.db.reactionColors.hostile.r, "autre GUID : réaction relue")
+    _G.UnitReaction = original
+    Disable()
+end)
+
+test("unitframes : UNIT_POWER_FREQUENT seul rafraîchit la puissance (pas de doublon UNIT_POWER_UPDATE)", function()
+    reset()
+    Enable()
+    eq(Elements.UNIT_EVENTS.UNIT_POWER_UPDATE, nil)
+    local original, calls = Elements.UpdatePower, 0
+    Elements.UpdatePower = function(frame, ...) if frame.unit == "player" then calls = calls + 1 end return original(frame, ...) end
+    Mock.FireEvent("UNIT_POWER_UPDATE", "player")
+    Mock.FireEvent("UNIT_POWER_FREQUENT", "player")
+    Elements.UpdatePower = original
+    eq(calls, 1)
+    Disable()
+end)

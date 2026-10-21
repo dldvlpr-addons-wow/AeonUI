@@ -117,10 +117,14 @@ local function Animate(frame, style, now)
     for _, part in ipairs(frame.muscaGlowParts[style]) do
         local p = ((now / part.period + part.phase) % 1) * perimeter
         local x, y, horizontal = Glow.PerimeterPoint(p, width, height)
-        part:ClearAllPoints()
-        part:SetPoint("CENTER", frame, "TOPLEFT", x - offset, y + offset)
-        if style == "pixel" then
-            if horizontal then part:SetSize(length, thickness) else part:SetSize(thickness, length) end
+        -- Rien à refaire si la position n'a pas bougé depuis le dernier tick.
+        if part.lastX ~= x or part.lastY ~= y then
+            part.lastX, part.lastY = x, y
+            part:ClearAllPoints()
+            part:SetPoint("CENTER", frame, "TOPLEFT", x - offset, y + offset)
+            if style == "pixel" then
+                if horizontal then part:SetSize(length, thickness) else part:SetSize(thickness, length) end
+            end
         end
     end
 end

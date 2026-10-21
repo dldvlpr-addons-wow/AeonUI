@@ -378,18 +378,24 @@ local function ApplyUnlock(unlocked)
     frame.hint:SetShown(unlocked)   -- le calque de déverrouillage colore déjà le cadre
 end
 
+local combatHidden = false
+
 function Reminders:Evaluate()
     if not active then return end
     if NS.InCombat() or (_G.UnitAffectingCombat and UnitAffectingCombat("player")) then
-        -- En combat rien n'est évalué : lignes cachées, sortie immédiate.
-        for i = 1, MAX_LINES do
-            lines[i]:SetText(nil)
-            lines[i]:Hide()
+        -- En combat rien n'est évalué : lignes cachées une seule fois, sortie immédiate.
+        if not combatHidden then
+            combatHidden = true
+            for i = 1, MAX_LINES do
+                lines[i]:SetText(nil)
+                lines[i]:Hide()
+            end
+            shown = {}
+            self:UpdateRepeat()
         end
-        shown = {}
-        self:UpdateRepeat()
         return {}
     end
+    combatHidden = false
     local list = self:Collect()
     local now, fresh = {}, false
     for i = 1, MAX_LINES do

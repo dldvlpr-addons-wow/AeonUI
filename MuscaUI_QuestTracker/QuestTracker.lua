@@ -222,11 +222,14 @@ local function SkinHeaders()
         local text = header.Text
         if text and text.SetFont then
             if not header.foreverOriginalFont then header.foreverOriginalFont = { text:GetFont() } end
+            local path, size, flags
             if db.skinHeaders then
-                text:SetFont(Media:Font(), db.headerFontSize, Media:Outline())
+                path, size, flags = Media:Font(), db.headerFontSize, Media:Outline()
             else
-                text:SetFont(unpack(header.foreverOriginalFont))
+                path, size, flags = unpack(header.foreverOriginalFont)
             end
+            local curPath, curSize, curFlags = text:GetFont()   -- SetFont relance une mise en page : seulement si ça change
+            if curPath ~= path or curSize ~= size or curFlags ~= flags then text:SetFont(path, size, flags) end
         end
     end
 end
@@ -318,7 +321,10 @@ events:SetScript("OnEvent", function(_, event)
             QuestTracker:UpdateCollapse(event)
         end
     end
-    if event ~= "PLAYER_REGEN_DISABLED" and event ~= "PLAYER_REGEN_ENABLED" then SkinHeaders() end
+    -- Les en-têtes ne changent pas avec le journal de quêtes : QUEST_LOG_UPDATE (fréquent) ne les reprend pas.
+    if event ~= "PLAYER_REGEN_DISABLED" and event ~= "PLAYER_REGEN_ENABLED" and event ~= "QUEST_LOG_UPDATE" then
+        SkinHeaders()
+    end
 end)
 
 function QuestTracker:OnEnable()

@@ -495,6 +495,7 @@ local frameSeen, trailing = {}, {}   -- événements groupables : déjà traité
 local COALESCED = {
     ACTIONBAR_UPDATE_COOLDOWN = true, ACTIONBAR_UPDATE_STATE = true, ACTIONBAR_UPDATE_USABLE = true,
     SPELL_UPDATE_USABLE = true, SPELL_UPDATE_CHARGES = true, BAG_UPDATE_COOLDOWN = true,
+    UNIT_AURA = true,   -- le modèle Blizzard n'en lit aucun argument (drapeaux sales seulement)
 }
 local updaterArmed = false
 local OnUpdateTick

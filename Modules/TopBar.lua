@@ -171,14 +171,31 @@ for _, slot in ipairs({ "extraLeft", "extraRight" }) do
     end
 end
 
+-- Texte du foyer gardé : relu seulement sur hearthDirty (Update complet, sacs, recharge) ; pendant
+-- la recharge, seul le décompte est recalculé, depuis l'échéance hearthExpires.
+local hearthText, hearthExpires, hearthDirty = "", nil, true
+
 local function HearthText()
-    if NS.GetItemCount(HEARTHSTONE) == 0 then return Dim(L.TOPBAR_HEARTH) .. " -" end
-    local remaining = NS.GetItemCooldownRemaining(HEARTHSTONE)
-    if remaining > 0 then
+    if hearthDirty then
+        hearthDirty, hearthExpires = false, nil
+        if NS.GetItemCount(HEARTHSTONE) == 0 then
+            hearthText = Dim(L.TOPBAR_HEARTH) .. " -"
+        else
+            local remaining = NS.GetItemCooldownRemaining(HEARTHSTONE)
+            if remaining > 0 then
+                hearthExpires = GetTime() + remaining
+            else
+                local location = _G.GetBindLocation and GetBindLocation() or ""
+                hearthText = Dim(L.TOPBAR_HEARTH) .. " " .. Accent(location)
+            end
+        end
+    end
+    if hearthExpires then
+        local remaining = hearthExpires - GetTime()
+        if remaining <= 0 then hearthDirty = true return HearthText() end
         return Dim(L.TOPBAR_HEARTH) .. " " .. NS.FormatDuration(remaining)
     end
-    local location = _G.GetBindLocation and GetBindLocation() or ""
-    return Dim(L.TOPBAR_HEARTH) .. " " .. Accent(location)
+    return hearthText
 end
 
 --------------------------------------------------------------------------------
@@ -627,6 +644,7 @@ local layoutQueued = false
 function TopBar:Update(keys)
     if not active then return end
     local resized = false
+    if not keys then hearthDirty = true end
     for _, key in ipairs(keys or TEXT_KEYS) do
         if SetElementText(key, TEXT[key]()) then resized = true end
     end
@@ -658,6 +676,7 @@ local EVENT_KEYS = {
     BAG_UPDATE_DELAYED = { "bags" },
     PLAYER_UPDATE_RESTING = { "clock" },
     BAG_UPDATE_COOLDOWN = {},
+    HEARTHSTONE_BOUND = {},
 }
 
 -- Inscription au registre partagé : les panneaux de données réutilisent ces textes.
@@ -685,6 +704,7 @@ eventFrame:SetScript("OnEvent", function(_, event)
         NS:RunOutOfCombat(Layout)   -- un nouveau sort de voyage appris
         return
     end
+    hearthDirty = true   -- sacs, recharge, entrée en jeu : le foyer est relu
     TopBar:Update(EVENT_KEYS[event])
 end)
 

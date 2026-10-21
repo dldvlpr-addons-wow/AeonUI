@@ -442,3 +442,17 @@ test("groupe : migration v6, anciens défauts remplacés, réglages modifiés ga
     eq(group.raidSortBy, nil)
     eq(group.aggroStyle, nil)
 end)
+
+test("groupe : UNIT_POWER_UPDATE rafraîchit la puissance seule, sans repeindre le cadre", function()
+    reset()
+    Enable()
+    Mock.SetGroup(2, false)
+    local updatePower, updateAll, powers, alls = Elements.UpdatePower, GF.UpdateAll, 0, 0
+    Elements.UpdatePower = function(button, ...) if button.unit == "party1" then powers = powers + 1 end return updatePower(button, ...) end
+    GF.UpdateAll = function(self, button, ...) if button.unit == "party1" then alls = alls + 1 end return updateAll(self, button, ...) end
+    Mock.FireEvent("UNIT_POWER_UPDATE", "party1")
+    Elements.UpdatePower, GF.UpdateAll = updatePower, updateAll
+    truthy(powers > 0, "puissance relue")
+    eq(alls, 0, "pas de repeinture complète")
+    Disable()
+end)

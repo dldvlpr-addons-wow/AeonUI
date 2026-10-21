@@ -45,6 +45,7 @@ local function Build()
     arrows.right = arrows:CreateTexture(nil, "OVERLAY")
     arrows.right:SetTexture(CHEVRON)
     arrows.right:SetTexCoord(CHEVRON_RIGHT, CHEVRON_LEFT, 0, 1)   -- miroir : pointe à gauche
+    arrows.textures = { arrows.left, arrows.right }   -- réutilisée par Update
     arrows:Hide()
 end
 
@@ -109,7 +110,7 @@ function Nameplates:Update()
     local bar = HealthBar(plate)
     arrows:ClearAllPoints()
     arrows:SetAllPoints(plate)
-    for _, texture in ipairs({ arrows.left, arrows.right }) do
+    for _, texture in ipairs(arrows.textures) do
         texture:SetSize(db.size * (CHEVRON_RIGHT - CHEVRON_LEFT), db.size)
         texture:SetVertexColor(c.r, c.g, c.b, 1)
         texture:ClearAllPoints()
