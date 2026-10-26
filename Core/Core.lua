@@ -117,6 +117,8 @@ loader:SetScript("OnEvent", function(self, event, name)
         self:UnregisterEvent("PLAYER_LOGIN")
         -- Garde-fou : la globale remplacée entre ADDON_LOADED et PLAYER_LOGIN (NS.global orphelin).
         if MuscaUIDB ~= NS.global then BindSaved() end
+        -- Après le garde-fou : une globale remplacée peut porter une autre langue.
+        NS.ReleaseLocales()
         -- Les addons MuscaUI_* enregistrent leurs modules après ADDON_LOADED du cœur : leurs défauts ici.
         for _, profile in pairs(NS.global.profiles) do NS.Database.FillProfile(profile) end
         NS.Database:SyncVariants(nil)   -- variantes refaites de leur parent plus leur écart

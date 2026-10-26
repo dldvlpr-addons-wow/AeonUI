@@ -47,5 +47,14 @@ function NS.SetLocale(code)
     return code
 end
 
+--- Ne garde que enUS (base) et la langue active : les autres tables (~0,9 Mo) partent au
+-- ramasse-miettes. Changer de langue demande déjà un /reload, qui les recharge ; d'ici là,
+-- une langue libérée retombe sur enUS.
+function NS.ReleaseLocales()
+    for code in pairs(NS.locales) do
+        if code ~= "enUS" and code ~= NS.activeLocale then NS.locales[code] = nil end
+    end
+end
+
 -- Langue du client au chargement ; Core.lua réapplique le choix sauvegardé à ADDON_LOADED.
 NS.SetLocale("auto")

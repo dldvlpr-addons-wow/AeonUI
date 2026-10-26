@@ -48,7 +48,30 @@ test("profils : copie pour le personnage, isolée de Default, suppression", func
     eq(NS.Database:DeleteProfile("Default"), false, "Default indélébile")
 end)
 
+-- Langues libérées à la connexion : relues depuis les fichiers par les tests qui les lisent.
+local function LoadAllLocales()
+    for _, entry in ipairs(NS.LOCALE_ORDER) do
+        assert(loadfile("Locale/" .. entry.code .. ".lua"))("MuscaUI", NS)
+    end
+end
+
+test("langues inutiles libérées à la connexion : seules enUS et la langue active restent", function()
+    for code in pairs(NS.locales) do
+        truthy(code == "enUS" or code == NS.activeLocale, "langue gardée : " .. code)
+    end
+    truthy(NS.locales.enUS and NS.locales[NS.activeLocale], "base et langue active présentes")
+    LoadAllLocales()
+    NS.SetLocale("frFR")
+    NS.ReleaseLocales()
+    local kept = {}
+    for code in pairs(NS.locales) do kept[#kept + 1] = code end
+    table.sort(kept)
+    eq(table.concat(kept, ","), "enUS,frFR", "langue active autre que enUS gardée")
+    NS.SetLocale("enUS")
+end)
+
 test("chaque langue traduit toutes les clés de enUS, sans clé en trop ni format perdu", function()
+    LoadAllLocales()
     local function formats(text)
         local list = {}
         for spec in text:gmatch("%%[%d%.%-]*[sdfgx%%]") do list[#list + 1] = spec end
@@ -69,6 +92,7 @@ test("chaque langue traduit toutes les clés de enUS, sans clé en trop ni forma
 end)
 
 test("langue changée après l'enregistrement : titres des modules retraduits", function()
+    LoadAllLocales()
     NS.SetLocale("frFR")
     eq(NS.Modules:Get("topbar").title, NS.locales.frFR.TOPBAR_TITLE)
     eq(NS.Modules:Get("cursor").description, NS.locales.frFR.CURSOR_DESC)
