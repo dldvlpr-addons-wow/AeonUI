@@ -11,8 +11,8 @@
 -- Fenêtres : ChatFrame1 à gauche et la première fenêtre détachée à droite, chacune adoptée sur
 -- un mover (/musca unlock) avec sa taille dans les options ; Edit Mode et le glissé d'onglet ne les
 -- déplacent plus tant que l'option est active.
--- Les textes passent par un enrobage d'AddMessage par fenêtre (URL, canaux courts) : hors
--- combat ou pas, rien de protégé ici. Cède aux addons de la liste yieldsTo.
+-- Les lignes affichées sont réécrites après coup (URL, canaux courts) par un post-hook
+-- d'AddMessage et TransformMessages : hors combat ou pas, rien de protégé ici. Cède aux addons de la liste yieldsTo.
 local NS = MuscaUI
 local L = NS.L
 local Media = NS.Media
@@ -74,7 +74,7 @@ local SPAM_EVENTS = { CHAT_MSG_SAY = true, CHAT_MSG_YELL = true, CHAT_MSG_CHANNE
 
 local active = false
 local replaying = false     -- rejeu de l'historique : ces lignes ne sont pas remémorisées
-local frames = {}          -- [ChatFrame] = { backdrop, original = { font = {…}, addMessage } }
+local frames = {}          -- [ChatFrame] = { backdrop, original = { font = {…} } }
 local hooked = false
 local copyFrame
 -- Couleurs de classe d'origine du personnage, gardées dans la base : un /reload relirait
@@ -433,14 +433,21 @@ local function Entry(frame)
                            clampInsets = frame.GetClampRectInsets and { frame:GetClampRectInsets() } } }
     local bg, edges = Media:CreateBackdrop(frame)
     entry.backdrop = { bg = bg, edges = edges }
-    entry.original.addMessage = frame.AddMessage
-    frame.AddMessage = function(self, text, ...)
-        if active then
-            text = Chat.Transform(text)
-            if not replaying then Chat.Remember(self, text, ...) end
+    -- Post-hook : la ligne d'origine s'ajoute d'abord, par l'appel sain de Blizzard, puis elle est
+    -- réécrite par TransformMessages, délégué sécurisé de Blizzard. Remplacer AddMessage (ou poser
+    -- addMessageObserver) faisait passer le gestionnaire de messages par notre code, contaminant
+    -- la suite (dernier chuchoteur, /r) en contenu restreint.
+    hooksecurefunc(frame, "AddMessage", function(self, text, ...)
+        if not active or NS.IsSecret(text) then return end
+        local shown = Chat.Transform(text)
+        -- ponytail: parcourt tout l'historique de la fenêtre à chaque ligne réécrite ; viser la
+        -- dernière entrée si le coût se voit.
+        if shown ~= text and self.TransformMessages then
+            self:TransformMessages(function(message) return not NS.IsSecret(message) and message == text end,
+                function(_, ...) return shown, ... end)
         end
-        return entry.original.addMessage(self, text, ...)
-    end
+        if not replaying then Chat.Remember(self, shown, ...) end
+    end)
     frames[frame] = entry
     return entry
 end

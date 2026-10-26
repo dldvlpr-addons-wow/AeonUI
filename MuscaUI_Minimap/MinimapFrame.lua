@@ -5,8 +5,8 @@
 -- `Minimap` est reparentée sur notre support : laissée dans MinimapCluster, son rendu reste
 -- découpé par le conteneur Blizzard et la carte ne s'affiche qu'après un ping (vérifié en jeu).
 -- Reparentage différé d'une image et hors combat ; des hooks de SetParent et SetPoint reprennent
--- la main si Blizzard la replace. Le décor Blizzard (bordure, boussole, horloge, zoom) est caché ;
--- tout revient au /reload après désactivation.
+-- la main si Blizzard la replace. Le décor Blizzard (bordure, boussole) est caché ; suivi, courrier,
+-- difficulté, horloge et zoom s'affichent ou se cachent un par un. Tout revient au /reload après désactivation.
 local NS = MuscaUI
 local L = NS.L
 local Media = NS.Media
@@ -28,6 +28,11 @@ local MinimapFrame = NS.Modules:Register("minimap", {
         coordsPrecision = 1,      -- décimales des coordonnées (0-2)
         performance = false,      -- images par seconde et latence sous la carte
         compactDifficulty = false, -- difficulté d'instance en texte court (« 5 », « 10H ») à la place du drapeau
+        showTracking = true,
+        showMail = true,
+        showDifficulty = true,
+        showClock = false,
+        showZoom = false,
         wheelZoom = true,
         buttonBar = "button",     -- "hover" | "always" | "button" | "off"
         buttonSize = 24,
@@ -42,8 +47,17 @@ local COORDS_INTERVAL = 0.5
 local DECOR_HIDE = {
     "MinimapCluster.BorderTop", "MinimapCluster.Tracking.Background", "MinimapBackdrop",
     "MinimapCompassTexture", "MinimapBorder", "MinimapBorderTop", "MinimapNorthTag",
-    "TimeManagerClockButton", "Minimap.ZoomIn", "Minimap.ZoomOut", "MinimapZoomIn", "MinimapZoomOut",
     "AddonCompartmentFrame", "ExpansionLandingPageMinimapButton", "MinimapToggleButton",
+}
+-- Éléments réglés un par un. `shown` : état voulu par Blizzard quand on les rend (courrier selon
+-- le courrier en attente, zoom au survol seulement) ; sans lui, réaffiché.
+local ELEMENTS = {
+    { key = "showTracking", paths = { "MinimapCluster.Tracking", "MiniMapTracking" } },
+    { key = "showMail", paths = { "MinimapCluster.IndicatorFrame.MailFrame", "MiniMapMailFrame" },
+      shown = function() return _G.HasNewMail and HasNewMail() and true or false end },
+    { key = "showClock", paths = { "TimeManagerClockButton" } },
+    { key = "showZoom", paths = { "Minimap.ZoomIn", "Minimap.ZoomOut", "MinimapZoomIn", "MinimapZoomOut" },
+      shown = function() return false end },
 }
 -- Boutons utiles réancrés aux coins de la carte : { chemin, point, x, y }.
 local DECOR_PLACE = {
@@ -53,6 +67,7 @@ local DECOR_PLACE = {
     { "MinimapCluster.IndicatorFrame", "BOTTOMRIGHT", -2, 2 }, { "MiniMapMailFrame", "BOTTOMRIGHT", -2, 2 },
     { "QueueStatusButton", "BOTTOMLEFT", 2, 2 }, { "MiniMapBattlefieldFrame", "BOTTOMLEFT", 2, 2 },
     { "MiniMapLFGFrame", "BOTTOMLEFT", 2, 2 },
+    { "TimeManagerClockButton", "BOTTOM", 0, 2 },   -- sinon ancrée au bandeau Blizzard caché
 }
 local PVP_COLORS = {
     sanctuary = { 0.41, 0.8, 0.94 }, arena = { 1, 0.1, 0.1 }, hostile = { 1, 0.1, 0.1 },
@@ -81,6 +96,26 @@ local function Lookup(path)
 end
 
 local function S(n) return NS.Pixel:Scale(n) end
+
+--- Rend un objet caché par nous ; un élément piloté par Blizzard reprend l'état qu'il lui donne.
+local function Reveal(object, element)
+    if NS.ShowRegion(object) and type(element) == "table" and element.shown and not element.shown() then
+        object:Hide()
+    end
+end
+
+-- Boutons utiles aux coins de la carte, décor caché seulement. Blizzard replace l'indicateur de
+-- courrier (MiniMapIndicatorFrame_UpdatePosition, SetHeaderUnderneath) : rappelé après lui.
+local function PlaceDecor()
+    if not active or not MinimapFrame.db.hideDecor then return end
+    for _, entry in ipairs(DECOR_PLACE) do
+        local object = Lookup(entry[1])
+        if object and object.ClearAllPoints then
+            object:ClearAllPoints()
+            object:SetPoint(entry[2], Minimap, entry[2], entry[3], entry[4])
+        end
+    end
+end
 
 --------------------------------------------------------------------------------
 -- Support, carte, décor
@@ -174,6 +209,10 @@ local function Build()
         -- Coordonnées au survol : visibles tant que le curseur est sur la carte.
         Minimap:HookScript("OnEnter", function() hovering = true MinimapFrame.UpdateCoordsAlpha() end)
         Minimap:HookScript("OnLeave", function() hovering = false MinimapFrame.UpdateCoordsAlpha() end)
+        if _G.MiniMapIndicatorFrame_UpdatePosition then hooksecurefunc("MiniMapIndicatorFrame_UpdatePosition", PlaceDecor) end
+        if _G.MinimapCluster and MinimapCluster.SetHeaderUnderneath then
+            hooksecurefunc(MinimapCluster, "SetHeaderUnderneath", PlaceDecor)
+        end
     end
 end
 
@@ -191,14 +230,16 @@ local function ApplyDecor()
         decor[zoneButton] = true
         if db.zoneText then NS.HideRegion(zoneButton) else NS.ShowRegion(zoneButton) end
     end
-    if not db.hideDecor then return end
-    for _, entry in ipairs(DECOR_PLACE) do
-        local object = Lookup(entry[1])
-        if object and object.ClearAllPoints then
-            object:ClearAllPoints()
-            object:SetPoint(entry[2], Minimap, entry[2], entry[3], entry[4])
+    for _, element in ipairs(ELEMENTS) do
+        for _, path in ipairs(element.paths) do
+            local object = Lookup(path)
+            if object then
+                decor[object] = element
+                if db[element.key] then Reveal(object, element) else NS.HideRegion(object) end
+            end
         end
     end
+    PlaceDecor()
 end
 
 -- Toujours notre gestionnaire tant que le module est actif : celui de Blizzard appelle un zoom
@@ -325,11 +366,12 @@ function MinimapFrame.DifficultyText()
 end
 
 local function ApplyDifficulty()
-    local compact = MinimapFrame.db.compactDifficulty
+    local db = MinimapFrame.db
+    local compact = db.showDifficulty and db.compactDifficulty
     for _, path in ipairs(DIFFICULTY_FRAMES) do
         local object = Lookup(path)
         -- Alpha plutôt que Hide : Blizzard gère seul l'affichage de ce drapeau selon l'instance.
-        if object and object.SetAlpha then object:SetAlpha(compact and 0 or 1) end
+        if object and object.SetAlpha then object:SetAlpha((db.showDifficulty and not compact) and 1 or 0) end
     end
     holder.difficulty:SetShown(compact)
     if compact then holder.difficulty:SetText(MinimapFrame.DifficultyText()) end
@@ -453,6 +495,7 @@ events:SetScript("OnEvent", function(_, event)
         return
     end
     if event == "PLAYER_ENTERING_WORLD" then
+        ApplyDecor()   -- horloge créée par Blizzard_TimeManager à PLAYER_LOGIN, après notre activation
         Redraw()
         Collect()
         C_Timer.After(2, function() if active then Collect() end end)   -- LibDBIcon crée ses boutons tard
@@ -487,7 +530,7 @@ function MinimapFrame:OnDisable()
     events:UnregisterAllEvents()
     if coordsTicker then coordsTicker:Cancel() coordsTicker = nil end
     Release()
-    for object in pairs(decor) do NS.ShowRegion(object) end
+    for object, element in pairs(decor) do Reveal(object, element) end
     for _, path in ipairs(DIFFICULTY_FRAMES) do
         local object = Lookup(path)
         if object and object.SetAlpha then object:SetAlpha(1) end
@@ -532,7 +575,12 @@ function MinimapFrame:BuildOptions(o)
     o:Slider("coordsPrecision", L.OPT_MINIMAP_COORDS_PRECISION, 0, 2, 1, 36)
     o:EndAdvanced()
     o:Check("performance", L.OPT_MINIMAP_PERFORMANCE)
-    o:Check("compactDifficulty", L.OPT_MINIMAP_COMPACT_DIFFICULTY)
+    o:Check("showTracking", L.OPT_MINIMAP_SHOW_TRACKING)
+    o:Check("showMail", L.OPT_MINIMAP_SHOW_MAIL)
+    o:Check("showDifficulty", L.OPT_MINIMAP_SHOW_DIFFICULTY)
+    o:Check("compactDifficulty", L.OPT_MINIMAP_COMPACT_DIFFICULTY, 36)
+    o:Check("showClock", L.OPT_MINIMAP_SHOW_CLOCK)
+    o:Check("showZoom", L.OPT_MINIMAP_SHOW_ZOOM)
     o:Check("wheelZoom", L.OPT_MINIMAP_WHEEL)
     o:Dropdown("buttonBar", L.OPT_MINIMAP_BUTTONS, {
         { name = L.MINIMAP_BUTTONS_HOVER, value = "hover" },

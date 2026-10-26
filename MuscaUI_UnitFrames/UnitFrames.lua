@@ -30,6 +30,9 @@ local function Unit(width, height, overrides)
         classification = false,   -- icône élite ou rare
         pvp = false,              -- écusson de faction si marqué JcJ
         threatBorder = false,     -- bordure à la couleur de la menace de l'unité
+        threatPercent = false,    -- % de menace du joueur sur l'unité, au-dessus du cadre (cible, focus)
+        manaSpark = false,        -- règle des 5 secondes sur la barre de mana (joueur)
+        manaCostPrediction = true, -- coût en mana de l'incantation en cours (joueur)
         visibility = NS.Visibility.Spec(),   -- conditions communes (Core/Visibility), en plus de l'existence de l'unité
     }
     for k, v in pairs(overrides or {}) do cfg[k] = v end
@@ -149,6 +152,8 @@ local function Create(unit)
     frame:SetAttribute("*type1", "target")
     frame:SetAttribute("*type2", "togglemenu")
     frame:RegisterForClicks("AnyUp")
+    local clickCast = NS.Modules:Get("clickcast")   -- absent sans MuscaUI_GroupFrames
+    if clickCast then clickCast:Apply(frame) end
     frame:SetFrameStrata("LOW")
     local _, edges = NS.Media:CreateBackdrop(frame)
     frame.border = edges   -- bordure de menace (cfg.threatBorder)
@@ -461,6 +466,8 @@ events:SetScript("OnEvent", function(_, event, unit)
         UnitFrames:Refresh("target")
         UnitFrames:Refresh("targettarget")
         UnitFrames:Refresh("player")   -- points de combo
+    elseif event == "COMBO_TARGET_CHANGED" then
+        UnitFrames:Refresh("player")   -- points déplacés vers une autre cible, sans événement de puissance
     elseif event == "PLAYER_FOCUS_CHANGED" then
         UnitFrames:Refresh("focus")
         UnitFrames:Refresh("focustarget")
@@ -482,7 +489,8 @@ function UnitFrames:OnEnable()
     active = true
     self:Reconcile()
     for _, event in ipairs({ "PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED", "PLAYER_ENTERING_WORLD",
-                             "INSTANCE_ENCOUNTER_ENGAGE_UNIT", "PLAYER_TOTEM_UPDATE" }) do
+                             "INSTANCE_ENCOUNTER_ENGAGE_UNIT", "PLAYER_TOTEM_UPDATE",
+                             "COMBO_TARGET_CHANGED" }) do
         NS.RegisterEventSafe(events, event)
     end
     NS.RegisterEventSafe(events, "UNIT_PET", "player")
@@ -612,6 +620,7 @@ function UnitFrames:BuildOptions(o)
         o:Check(key .. "classification", L.OPT_UF_UNIT_CLASSIFICATION, 36)
         o:Check(key .. "pvp", L.OPT_UF_UNIT_PVP, 36)
         o:Check(key .. "threatBorder", L.OPT_UF_UNIT_THREAT_BORDER, 36)
+        if unit == "target" or unit == "focus" then o:Check(key .. "threatPercent", L.OPT_UF_UNIT_THREAT_PERCENT, 36) end
         if unit == "pet" then o:Check(key .. "happiness", L.OPT_UF_UNIT_HAPPINESS, 36) end
         o:EndAdvanced()
         if unit == "player" then
@@ -628,6 +637,10 @@ function UnitFrames:BuildOptions(o)
         end
         o:Check(key .. "power", L.OPT_UF_UNIT_POWER, 36)
         o:Slider(key .. "powerHeight", L.OPT_UF_POWER_HEIGHT, 0, 16, 1, 52)
+        if unit == "player" then
+            o:Check(key .. "manaSpark", L.OPT_MANA_SPARK, 52)
+            o:Check(key .. "manaCostPrediction", L.OPT_MANA_COST_PREDICTION, 52)
+        end
         o:Check(key .. "castbar", L.OPT_UF_UNIT_CASTBAR, 36)
         o:Slider(key .. "castbarHeight", L.OPT_UF_CASTBAR_HEIGHT, 8, 30, 1, 52)
         o:Advanced()

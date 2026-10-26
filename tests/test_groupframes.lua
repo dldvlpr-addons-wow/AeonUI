@@ -240,10 +240,61 @@ test("groupe : membre qui rejoint en combat, habillé et lié à la sortie du co
     Disable()
 end)
 
+test("groupe : clic-sort macro, bijou, touche au survol et cadres d'unité", function()
+    reset()
+    Enable()
+    Mock.SetGroup(2, false)
+    local clickCast = NS.Modules:Get("clickcast")
+    local bindings = clickCast.db.bindings
+    bindings.b1.kind, bindings.b1.spell, bindings.b1.mouse, bindings.b1.modifier = "macro", "Soin souris", "1", "alt"
+    bindings.b2.kind, bindings.b2.spell, bindings.b2.mouse, bindings.b2.key = "trinket1", "", "0", "SHIFT-F"
+    NS.Modules:SetEnabled("clickcast", true)
+    local ami = GF:GetButton("party1")
+    eq(ami:GetAttribute("alt-type1"), "macro")
+    eq(ami:GetAttribute("alt-macro1"), "Soin souris", "macro par nom, sans copie du corps")
+    eq(ami:GetAttribute("*type-muscacast2"), "item")
+    eq(ami:GetAttribute("*item-muscacast2"), "13", "bijou 1 : emplacement équipé")
+    eq(ami:GetAttribute("muscacast-key2"), "SHIFT-F")
+    eq(ami:GetAttribute("type0"), nil, "souris « aucun » : pas de clic")
+    truthy(ami.wrapped.OnEnter:find("SetBindingClick"), "touche liée au survol")
+    eq(ami.wrapped.OnLeave, "self:ClearBindings()")
+    eq(ami.wrapped.OnHide, "self:ClearBindings()", "bouton caché : touche déliée")
+    -- Avertissement d'option, sans bloquer l'attribut.
+    truthy(clickCast.Warning(bindings.b1), "macro absente signalée")
+    Mock.macros["Soin souris"] = 1
+    eq(clickCast.Warning(bindings.b1), nil)
+    Mock.macros["Soin souris"] = nil
+    -- Saisie : touche déjà prise par un raccourci du joueur refusée.
+    eq(clickCast.CaptureKey("1"), nil, "1 = ACTIONBUTTON1")
+    truthy(Mock.FindPrinted("ACTIONBUTTON1"))
+    Mock.shift = true
+    eq(clickCast.CaptureKey("G"), "SHIFT-G")
+    eq(clickCast.CaptureKey("LSHIFT"), nil, "modificateur seul ignoré")
+    Mock.shift = false
+    eq(clickCast.CaptureKey("ESCAPE"), "", "Échap efface")
+    -- Cadres d'unité MuscaUI_UF_* : liés, sauf case décochée.
+    NS.Modules:SetEnabled("unitframes", true)
+    local target = NS.Modules:Get("unitframes").frames.target
+    eq(target:GetAttribute("alt-macro1"), "Soin souris", "cible liée")
+    eq(target:GetAttribute("*type1"), "target", "clic simple gardé")
+    clickCast.db.unitFrames = false
+    NS.Modules:Refresh("clickcast")
+    eq(target:GetAttribute("alt-macro1"), nil, "case décochée : cadres d'unité sans liaison")
+    eq(ami:GetAttribute("alt-macro1"), "Soin souris", "groupe toujours lié")
+    clickCast.db.unitFrames = true
+    NS.Modules:SetEnabled("unitframes", false)
+    NS.Modules:SetEnabled("clickcast", false)
+    eq(ami:GetAttribute("muscacast-key2"), nil, "désactivé : touche retirée")
+    bindings.b1.kind, bindings.b1.spell, bindings.b1.mouse, bindings.b1.modifier = "spell", "", "1", "shift"
+    bindings.b2.kind, bindings.b2.mouse, bindings.b2.key = "spell", "1", ""
+    Mock.SetGroup(0, false)
+    Disable()
+end)
+
 test("groupe : moteur, coins suivis et dissipation par emplacements, sans lecture d'aura", function()
     reset()
     Mock.spells[139] = "Renew"
-    GF.db.indicators.BOTTOMRIGHT, GF.db.dispelMode = "139", "all"
+    GF.db.indicators[4].spells, GF.db.dispelMode = "139", "all"
     Enable()
     Mock.SetGroup(2, false)
     local ami = GF:GetButton("party1")
@@ -252,11 +303,12 @@ test("groupe : moteur, coins suivis et dissipation par emplacements, sans lectur
     NS.Modules:Refresh("groupframes")
     local engine = ami.auraSlots
     truthy(engine, "conteneur du moteur")
-    eq(engine.slots.BOTTOMRIGHT.filter, "HELPFUL|PLAYER", "les miens (réglage par défaut)")
-    eq(engine.slots.BOTTOMRIGHT.candidates.includeSpellIDs[139], true, "sort suivi par identifiant")
-    eq(engine.slots.TOPLEFT, nil, "coin vide : pas d'emplacement")
-    eq(engine.slots.BOTTOMRIGHT.button.points[1][2], ami.cornerAnchors.BOTTOMRIGHT, "collé au cadre d'ancrage")
-    eq(ami.cornerAnchors.BOTTOMRIGHT.points[1][2], ami.health, "ancrage au coin de la vie")
+    eq(engine.slots.indicator4.filter, "HELPFUL|PLAYER", "les miens (réglage par défaut)")
+    eq(engine.slots.indicator4.candidates.includeSpellIDs[139], true, "sort suivi par identifiant")
+    eq(engine.slots.indicator1, nil, "indicateur vide : pas d'emplacement")
+    eq(engine.slots.indicator4.button.points[1][2], ami.indicatorAnchors[4], "collé au cadre d'ancrage")
+    eq(ami.indicatorAnchors[4].points[1][2], ami.health, "ancrage au point de la vie")
+    eq(ami.indicatorAnchors[4].points[1][1], "BOTTOMRIGHT", "point de l'indicateur 4")
     eq(engine.slots.dispel.filter, "HARMFUL", "dissipation de tout type")
     eq(engine.slots.dispel.candidates.includeDispelTypes.Magic, true)
     eq(ami.dispelParts.fill:IsShown(), true, "voile réglé")
@@ -268,9 +320,9 @@ test("groupe : moteur, coins suivis et dissipation par emplacements, sans lectur
     local refreshes = #engine.calls
     Mock.FireEvent("UNIT_AURA", "party1")
     eq(#engine.calls, refreshes, "UNIT_AURA : le moteur s'en charge")
-    GF.db.indicators.BOTTOMRIGHT, GF.db.dispel = "", false
+    GF.db.indicators[4].spells, GF.db.dispel = "", false
     NS.Modules:Refresh("groupframes")
-    eq(engine.slots.BOTTOMRIGHT.enabled, false, "coin vidé : emplacement coupé")
+    eq(engine.slots.indicator4.enabled, false, "indicateur vidé : emplacement coupé")
     eq(engine.slots.dispel.enabled, false)
     ami.auraSlots, ami.dispelParts = nil, nil
     Mock.debuffs.party1 = nil
@@ -280,12 +332,12 @@ end)
 test("groupe : sorts suivis par coin (tous rangs), préréglage de classe, cadres extra et boss alliés", function()
     reset()
     Mock.spells[139], Mock.spells[6074] = "Renew", "Renew"
-    GF.db.indicators.BOTTOMRIGHT = "139"
+    GF.db.indicators[4].spells = "139"
     Enable()
     Mock.SetGroup(2, false)
     local ami = GF:GetButton("party1")
-    local indicator = ami.indicators.BOTTOMRIGHT
-    truthy(indicator and not ami.indicators.TOPLEFT, "coin configuré seulement")
+    local indicator = ami.indicators[4]
+    truthy(indicator and not ami.indicators[1], "indicateur configuré seulement")
     eq(indicator:IsShown(), false)
     Mock.units.party1.buffs = { "Mark of the Wild", "Renew" }   -- rang 2 : identifiant 6074 ou 139, même nom
     Mock.FireEvent("UNIT_AURA", "party1")
@@ -295,8 +347,14 @@ test("groupe : sorts suivis par coin (tous rangs), préréglage de classe, cadre
     eq(indicator:IsShown(), false)
     Mock.units.player.class = "DRUID"
     truthy(GF:ApplyIndicatorPreset())
-    eq(GF.db.indicators.BOTTOMRIGHT, "774")
-    truthy(ami.indicators.BOTTOMLEFT, "coin du préréglage créé")
+    local hots = GF.db.indicators[1]
+    truthy(hots.spells:find("774", 1, true) and hots.spells:find("139", 1, true), "soins sur la durée, tous rangs")
+    eq(hots.point, "BOTTOMRIGHT", "premier indicateur libre : point du préréglage")
+    eq(GF.db.indicators[4].spells, "139", "indicateur rempli gardé")
+    truthy(ami.indicators[2], "indicateur du préréglage créé")
+    eq(GF:ApplyIndicatorPreset("hots"), false, "même préréglage : rien en double")
+    truthy(GF:ApplyIndicatorPreset("defensives"))
+    eq(GF.db.indicators[3].point, "TOP", "ajouté au suivant libre")
     Mock.units.player.class = "WARRIOR"
     eq(GF:ApplyIndicatorPreset(), false)
     Mock.units.player.class = "MAGE"
@@ -320,7 +378,7 @@ test("groupe : sorts suivis par coin (tous rangs), préréglage de classe, cadre
     eq(Mock.stateDrivers[boss].visibility, nil)
     eq(GF.bossHeader.holder:IsShown(), false)
     GF.db.extraFrames, GF.db.extraNames = false, ""
-    for _, corner in ipairs(GF.CORNERS) do GF.db.indicators[corner] = "" end
+    for index = 1, GF.MAX_INDICATORS do GF.db.indicators[index].spells = "" end
     Mock.spells[139], Mock.spells[6074] = nil, nil
     Disable()
 end)
@@ -360,12 +418,13 @@ end)
 test("groupe : tailles du raid séparées, aperçu groupe et raid", function()
     reset()
     Enable()
-    eq(GF.headers.raid:GetAttribute("initial-width"), NS.Pixel:Scale(GF.db.raidWidth))
+    eq(GF.headers.raid:GetAttribute("initial-width"), NS.Pixel:Scale(GF.db.raidTiers[1].width), "seul : palier 10")
     eq(GF.headers.party:GetAttribute("initial-width"), NS.Pixel:Scale(GF.db.width))
     GF:SetPreview(5)
     eq(GF.preview, "party")
     GF:SetPreview(20)
     eq(GF.preview, "raid")
+    eq(GF:GetPreview().buttons[1]:GetWidth(), NS.Pixel:Scale(GF.db.raidTiers[2].width), "aperçu de 20 : palier 25")
     Mock.SetCombat(true)
     Mock.FireEvent("PLAYER_REGEN_DISABLED")
     eq(GF.preview, nil, "combat : aperçu caché")
@@ -373,6 +432,48 @@ test("groupe : tailles du raid séparées, aperçu groupe et raid", function()
     Mock.FireEvent("PLAYER_REGEN_ENABLED")
     eq(GF.preview, "raid", "repris après le combat")
     GF:SetPreview(nil)
+    Disable()
+end)
+
+test("groupe : paliers du raid comptés sur les groupes affichés, rejoués après le combat", function()
+    reset()
+    Enable()
+    local raid, tiers = GF.headers.raid, GF.db.raidTiers
+    Mock.SetGroup(30, true)
+    Mock.Advance(0.05)
+    eq(raid:GetAttribute("initial-width"), NS.Pixel:Scale(GF.db.raidWidth), "30 membres : au-delà de 25")
+    eq(raid:GetAttribute("maxColumns"), GF.db.raidColumns)
+    GF.db.raidGroups = 4
+    NS.Modules:Refresh("groupframes")
+    eq(raid:GetAttribute("initial-width"), NS.Pixel:Scale(tiers[2].width), "4 groupes affichés : 20 membres")
+    eq(raid:GetAttribute("maxColumns"), tiers[2].columns)
+    local button = GF:GetButton("raid1")
+    eq(button:GetWidth(), NS.Pixel:Scale(tiers[2].width), "bouton existant retaillé")
+    Mock.SetCombat(true)
+    Mock.SetGroup(8, true)
+    Mock.Advance(0.05)
+    eq(raid:GetAttribute("initial-width"), NS.Pixel:Scale(tiers[2].width), "combat : rien ne bouge")
+    Mock.SetCombat(false)
+    Mock.FireEvent("PLAYER_REGEN_ENABLED")
+    eq(raid:GetAttribute("initial-width"), NS.Pixel:Scale(tiers[1].width), "rejoué à la sortie du combat")
+    GF.db.raidGroups = 8
+    Mock.SetGroup(0, false)
+    Disable()
+end)
+
+test("groupe : joueur en dernier par sortDir, sans effet avec le tri par rôle", function()
+    reset()
+    Enable()
+    local party = GF.headers.party
+    eq(party:GetAttribute("sortDir"), "ASC")
+    GF.db.playerPosition = "last"
+    NS.Modules:Refresh("groupframes")
+    eq(party:GetAttribute("sortDir"), "ASC", "tri par rôle : le joueur reste dans son bloc")
+    GF.db.partySortRole = false
+    NS.Modules:Refresh("groupframes")
+    eq(party:GetAttribute("sortDir"), "DESC")
+    eq(GF.headers.raid:GetAttribute("sortDir"), nil, "raid : inchangé")
+    GF.db.playerPosition, GF.db.partySortRole = "first", true
     Disable()
 end)
 
@@ -454,5 +555,150 @@ test("groupe : UNIT_POWER_UPDATE rafraîchit la puissance seule, sans repeindre 
     Elements.UpdatePower, GF.UpdateAll = updatePower, updateAll
     truthy(powers > 0, "puissance relue")
     eq(alls, 0, "pas de repeinture complète")
+    Disable()
+end)
+
+test("groupe : migration v10, coins en indicateurs, taille de raid en paliers, filtre en cases", function()
+    local db = { version = 9, profiles = { A = { modules = { groupframes = {
+        indicators = { TOPLEFT = "139", BOTTOMRIGHT = "774" }, raidWidth = 90, raidHeight = 40, auraFilter = "boss" } } } } }
+    NS.Database.Migrate(db)
+    local group = db.profiles.A.modules.groupframes
+    eq(group.indicators[1].spells, "139")
+    eq(group.indicators[1].point, "TOPLEFT")
+    eq(group.indicators[4].spells, "774")
+    eq(group.indicators[4].point, "BOTTOMRIGHT")
+    eq(group.indicators.TOPLEFT, nil, "anciennes clés retirées")
+    eq(group.raidTiers[1].width, 90, "taille modifiée reprise par les paliers")
+    eq(group.raidTiers[2].height, 40)
+    eq(group.debuffGroups.boss.enabled, true, "filtre boss : case boss")
+    eq(group.debuffGroups.control.enabled, false)
+end)
+
+test("groupe : catalogue des préréglages, identifiants entiers et uniques", function()
+    for _, name in ipairs(GF.PRESET_ORDER) do
+        for _, entry in ipairs(GF.INDICATOR_PRESETS[name]) do
+            local seen = {}
+            for id in entry.spells:gmatch("[^,%s]+") do
+                local number = tonumber(id)
+                truthy(number and number > 0 and number == math.floor(number), name .. " : identifiant " .. id)
+                eq(seen[number], nil, name .. " : doublon " .. id)
+                seen[number] = true
+            end
+            truthy(GF.POINTS and entry.point, name .. " : point")
+        end
+    end
+    -- Nombre d'identifiants (rangs et auras) par entrée : un rang retiré par erreur fait échouer.
+    local expected = { hots = { 21, 19 }, defensives = { 11 }, externals = { 8 }, raidCooldowns = { 6 }, movement = { 8 } }
+    for name, counts in pairs(expected) do
+        for index, count in ipairs(counts) do
+            local _, found = GF.INDICATOR_PRESETS[name][index].spells:gsub("%d+", "")
+            eq(found, count, name .. " " .. index .. " : nombre d'identifiants")
+        end
+    end
+    truthy(GF.INDICATOR_PRESETS.defensives[1].spells:find("12976", 1, true), "Dernier rempart : identifiant de l'aura")
+end)
+
+test("groupe : débuffs par cases chaînées par négation, case ancrée en emplacement", function()
+    Mock.auraContainer = true
+    local engine = CreateFrame("AuraContainer")
+    engine.declared = {}
+    local frame = { auras = { engine = engine, groupSizes = { control = 22, boss = 20, dispellable = 18,
+        nonPlayer = 18, duration = 18 } }, health = CreateFrame("Frame"), overlay = CreateFrame("Frame") }
+    local groups = { control = { enabled = true, point = "CENTER" }, boss = { enabled = false },
+        dispellable = { enabled = true, point = "flow", max = 3 }, nonPlayer = { enabled = true, point = "flow", max = 2 },
+        duration = { enabled = true, point = "flow", max = 3 } }
+    Elements.ConfigureDebuffGroups(frame, groups, "all", {}, 1)
+    eq(engine.slots.controlSlot.filter, "HARMFUL|CROWD_CONTROL", "contrôle ancré : emplacement")
+    eq(engine.slots.controlSlot.button.points[1][2], frame.debuffAnchors.control)
+    eq(engine.groups.control, nil, "contrôle ancré : pas de rangée")
+    eq(engine.groups.boss, nil, "case décochée : rien")
+    eq(engine.groups.dispellable.filter, "HARMFUL|RAID|!CROWD_CONTROL", "contrôle exclu ensuite")
+    eq(engine.groups.nonPlayer.options.candidateFilters.isFromPlayerOrPlayerPet, false)
+    eq(engine.groups.duration.filter, "HARMFUL|!CROWD_CONTROL|!RAID", "cases précédentes exclues")
+    eq(engine.groups.duration.options.candidateFilters.isFromPlayerOrPlayerPet, true, "non-joueur exclu")
+    eq(engine.groups.duration.options.candidateFilters.isBossAura, nil, "boss décoché : pas exclu")
+    eq(engine.groups.nonPlayer.options.maxFrameCount, 2)
+    Mock.auraContainer = nil
+end)
+
+test("groupe : préréglage du filtre unique coche les cases", function()
+    GF.ApplyAuraFilterPreset("boss")
+    eq(GF.db.debuffGroups.boss.enabled, true)
+    eq(GF.db.debuffGroups.control.enabled, false)
+    GF.ApplyAuraFilterPreset("all")
+    for _, key in ipairs(Elements.DEBUFF_GROUPS) do eq(GF.db.debuffGroups[key].enabled, true, key) end
+end)
+
+test("groupe : cible du membre, bouton sécurisé enfant, nom et vie de <unité>target", function()
+    reset()
+    Enable()
+    Mock.SetGroup(2, false)
+    local ami = GF:GetButton("party1")
+    local frame = ami.memberTarget
+    truthy(frame, "bouton créé hors combat")
+    eq(frame:GetAttribute("useparent-unit"), true)
+    eq(frame:GetAttribute("unitsuffix"), "target")
+    eq(frame:GetAttribute("*type1"), "target")
+    eq(frame.points[1][2], ami, "ancré au bouton du membre")
+    Mock.units.party1target = { name = "Ogre", health = 30, healthMax = 60 }
+    Mock.FireEvent("UNIT_TARGET", "party1")
+    eq(frame.name.text, "Ogre")
+    Mock.units.party1target.health = 20
+    Mock.FireEvent("UNIT_HEALTH", "party1target")   -- jamais envoyé par le client : ignoré
+    eq(frame.health:GetValue(), 30, "jeton composé : pas d'événement")
+    GF.db.range = false
+    GF:UpdateRangeTicker()
+    Mock.Advance(0.3)
+    eq(frame.health:GetValue(), 20, "vie de la cible relue par le ticker, portée coupée")
+    GF.db.range = true
+    Mock.units.party1target = nil
+    GF.db.memberTarget = false
+    NS.Modules:Refresh("groupframes")
+    eq(frame:IsShown(), false, "option coupée : caché")
+    GF.db.memberTarget = true
+    Mock.units.party1target = { name = "Ogre", health = 30, healthMax = 60 }
+    NS.Modules:Refresh("groupframes")
+    eq(frame:IsShown(), true, "option remise : affiché")
+    Mock.SetGroup(4, true)
+    Mock.FireEvent("GROUP_ROSTER_UPDATE")
+    Mock.Advance(0.1)
+    eq(frame:IsShown(), false, "en raid : caché, même sous l'en-tête de groupe")
+    Mock.units.party1target = nil
+    Mock.SetGroup(1, false)
+    Disable()
+end)
+
+test("groupe : icônes des buffs de groupe manquants, détection de Reminders, cachées en combat", function()
+    reset()
+    Mock.units.player.class = "PRIEST"
+    Mock.spells[1243], Mock.spells[21562] = "Power Word: Fortitude", "Prayer of Fortitude"
+    Mock.knownSpells[1243] = true
+    Enable()
+    Mock.SetGroup(2, false)
+    local ami = GF:GetButton("party1")
+    Mock.FireEvent("UNIT_AURA", "party1")
+    truthy(ami.missingIcons[1] and ami.missingIcons[1]:IsShown(), "robustesse manquante")
+    Mock.units.party1.buffs = { "Prayer of Fortitude" }
+    Mock.FireEvent("UNIT_AURA", "party1")
+    eq(ami.missingIcons[1]:IsShown(), false, "version de groupe acceptée")
+    Mock.units.party1.buffs = nil
+    Mock.FireEvent("UNIT_AURA", "party1")
+    Mock.SetCombat(true)
+    Mock.FireEvent("PLAYER_REGEN_DISABLED")
+    eq(ami.missingIcons[1]:IsShown(), false, "combat : rien")
+    Mock.SetCombat(false)
+    Mock.FireEvent("PLAYER_REGEN_ENABLED")
+    eq(ami.missingIcons[1]:IsShown(), true, "sortie de combat : relu")
+    Mock.units.party1.hidden = true
+    Mock.FireEvent("UNIT_AURA", "party1")
+    eq(ami.missingIcons[1]:IsShown(), false, "hors de vue : inconnu, pas d'icône")
+    Mock.units.party1.hidden = nil
+    NS.db.modules.reminders.coverageRules.fortitude = false
+    Mock.FireEvent("UNIT_AURA", "party1")
+    eq(ami.missingIcons[1]:IsShown(), false, "famille décochée")
+    NS.db.modules.reminders.coverageRules.fortitude = true
+    Mock.knownSpells[1243], Mock.spells[1243], Mock.spells[21562] = nil, nil, nil
+    Mock.units.player.class = "MAGE"
+    Mock.SetGroup(1, false)
     Disable()
 end)

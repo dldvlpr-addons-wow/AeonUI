@@ -71,8 +71,7 @@ function T.reset()
     Mock.popups = {}
     Mock.namePlates = {}
     Mock.shapeshiftForm, Mock.formID = 0, nil
-    Mock.mainHandEnchant = false
-    Mock.mainHandTooltip = {}
+    Mock.mainHandEnchant, Mock.weaponEnchants, Mock.spellCosts = false, {}, {}
     Mock.debuffs = {}
     Mock.addonEnableState, Mock.addonArgOrder = 2, 1
     Mock.childEnableStates = {}
@@ -121,6 +120,7 @@ local FILES = {
     "tests/test_raidcooldowns.lua",
     "tests/test_radial_menu.lua",
     "tests/test_skinwindows.lua",
+    "tests/test_lot7.lua",
 }
 for _, file in ipairs(FILES) do
     T.reset()

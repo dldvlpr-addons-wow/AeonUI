@@ -124,7 +124,7 @@ end
 
 function TEXT.bags()
     local free = 0
-    for bag = 0, NS.NUM_BAGS do free = free + NS.GetBagFreeSlots(bag) end
+    for bag = 0, NS.NUM_BAGS do free = free + NS.GetBagFreeSlots(bag, true) end
     local color = free == 0 and "|cffff4040" or "|cffffffff"
     return Dim(L.TOPBAR_BAGS) .. " " .. color .. free .. "|r"
 end

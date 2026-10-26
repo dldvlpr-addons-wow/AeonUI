@@ -336,6 +336,7 @@ function Elements.Build(frame)
     frame.raidIcon = Icon(frame.overlay, RAID_ICONS)
     frame.classification = Icon(frame.overlay)   -- élite, rare (cfg.classification)
     frame.pvp = Icon(frame.overlay)              -- faction ou mêlée générale, si marqué JcJ (cfg.pvp)
+    frame.threat = Media:CreateText(frame.overlay, "OVERLAY", -2)   -- % de menace du joueur (cfg.threatPercent)
 
     -- Humeur du familier de chasseur (cfg.happiness) : cadre à part pour son infobulle.
     frame.happiness = CreateFrame("Frame", nil, frame)
@@ -502,6 +503,7 @@ function Elements.Layout(frame)
     Place(frame.classification, "CENTER", frame, "TOPRIGHT", 0, 0)
     frame.pvp:SetSize(S(20), S(20))
     Place(frame.pvp, "CENTER", frame, "BOTTOMLEFT", 0, 0)
+    Place(frame.threat, "BOTTOMRIGHT", frame, "TOPRIGHT", 0, S(2))
     frame.happiness:SetSize(height, height)
     Place(frame.happiness, "LEFT", frame, "RIGHT", S(2), 0)
 
@@ -585,7 +587,7 @@ function Elements.SetHashLines(bar, percents, vertical, length)
     for i, percent in ipairs(percents) do
         local line = bar.hashLines[i]
         if not line then
-            line = bar:CreateTexture(nil, "OVERLAY")
+            line = (bar.front or bar):CreateTexture(nil, "OVERLAY")
             NS.SetSolidColor(line, 1, 1, 1, 0.8)
             bar.hashLines[i] = line
         end
@@ -729,7 +731,180 @@ function Elements.UpdatePower(frame)
     bar:SetStatusBarColor(Elements.PowerColor(unit))
     Elements.SetUnitText(bar.text, unit, "power",
         Elements.TextFormat(frame.cfg and frame.cfg.powerFormat, frame.global and frame.global.powerText))
+    Elements.SetManaSpark(bar, unit == "player" and frame.cfg.manaSpark)
+    Elements.SetManaCostPrediction(bar, unit == "player" and frame.cfg.manaCostPrediction)
     bar:Show()
+end
+
+--------------------------------------------------------------------------------
+-- Règle des 5 secondes
+--------------------------------------------------------------------------------
+-- Après une dépense de mana, la régénération hors incantation ne reprend que 5 s plus tard.
+-- Une étincelle parcourt la barre de mana du joueur pendant ces 5 s. Dépense = sort réussi qui
+-- coûte du mana : le mana lui-même est secret sur Forever, son coût ne l'est pas.
+-- ponytail: un sort rendu gratuit (Idées claires) compte aussi ; lire le mana s'il redevient lisible.
+
+local FIVE_SECOND_RULE = 5
+local sparkBars = {}             -- [StatusBar] = true : barres qui montrent l'étincelle
+local sparkTracker
+local spentAt
+
+local function ManaType() return Enum and Enum.PowerType and Enum.PowerType.Mana or 0 end
+
+local function ShowsMana() return Known(UnitPowerType("player")) == ManaType() end
+
+local function MoveSparks()
+    local progress = spentAt and (GetTime() - spentAt) / FIVE_SECOND_RULE
+    if not progress or progress >= 1 then
+        spentAt = nil
+        sparkTracker:SetScript("OnUpdate", nil)
+    end
+    for bar in pairs(sparkBars) do
+        local spark = bar.manaSpark
+        if spentAt and bar:IsVisible() then
+            local vertical = bar.GetOrientation and bar:GetOrientation() == "VERTICAL"
+            spark:ClearAllPoints()
+            if vertical then
+                spark:SetSize(bar:GetWidth() * 2, 8)
+                spark:SetPoint("CENTER", bar, "BOTTOM", 0, bar:GetHeight() * progress)
+            else
+                spark:SetSize(8, bar:GetHeight() * 2)
+                spark:SetPoint("CENTER", bar, "LEFT", bar:GetWidth() * progress, 0)
+            end
+            spark:Show()
+        else
+            spark:Hide()
+        end
+    end
+end
+
+local function OnSparkEvent(_, _, _, _, spellID)
+    spellID = Known(spellID)
+    if not (spellID and NS.SpellCostsMana(spellID)) then return end
+    spentAt = GetTime()
+    sparkTracker:SetScript("OnUpdate", MoveSparks)
+end
+
+--- Montre ou non l'étincelle sur `bar` (barre de puissance du joueur) ; rien si elle n'affiche pas le mana.
+function Elements.SetManaSpark(bar, on)
+    on = on and ShowsMana() or nil
+    if not on and not sparkBars[bar] then return end
+    if on and not bar.manaSpark then
+        bar.manaSpark = (bar.front or bar):CreateTexture(nil, "OVERLAY", nil, 7)
+        bar.manaSpark:SetTexture("Interface\\CastingBar\\UI-CastingBar-Spark")
+        bar.manaSpark:SetBlendMode("ADD")
+        bar.manaSpark:Hide()
+    end
+    sparkBars[bar] = on
+    if not on then bar.manaSpark:Hide() end
+    if not sparkTracker then
+        sparkTracker = CreateFrame("Frame")
+        sparkTracker:SetScript("OnEvent", OnSparkEvent)
+    end
+    if next(sparkBars) then
+        if not sparkTracker:IsEventRegistered("UNIT_SPELLCAST_SUCCEEDED") then
+            NS.RegisterEventSafe(sparkTracker, "UNIT_SPELLCAST_SUCCEEDED", "player")
+        end
+    else
+        sparkTracker:UnregisterAllEvents()
+        sparkTracker:SetScript("OnUpdate", nil)
+        spentAt = nil
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Prédiction du coût en mana
+--------------------------------------------------------------------------------
+-- Pendant une incantation qui coûte du mana, un segment clair part du bord du remplissage vers
+-- l'arrière, de la longueur du coût. Mana et maximum peuvent être secrets : le segment reprend les
+-- bornes de la barre et reçoit le coût par SetValue, rogné par un cadre aux dimensions de la barre.
+-- Incantation suivie par son castGUID : un sort instantané lancé entre-temps ne l'efface pas.
+
+local costBars = {}              -- [StatusBar] = true : barres qui montrent la prédiction
+local costTracker
+local costCastGUID
+
+local function HideCostSegments()
+    costCastGUID = nil
+    for bar in pairs(costBars) do bar.manaCost.segment:Hide() end
+end
+
+local function ShowCostSegment(bar, cost)
+    local segment = bar.manaCost.segment
+    local fill = bar:GetStatusBarTexture()
+    local vertical = bar.GetOrientation and bar:GetOrientation() == "VERTICAL"
+    segment:SetStatusBarTexture(Media:StatusBarTexture())
+    segment:SetOrientation(vertical and "VERTICAL" or "HORIZONTAL")
+    segment:ClearAllPoints()
+    if vertical then
+        segment:SetPoint("TOPLEFT", fill, "TOPLEFT", 0, 0)
+        segment:SetPoint("TOPRIGHT", fill, "TOPRIGHT", 0, 0)
+        segment:SetHeight(bar:GetHeight())
+    else
+        segment:SetPoint("TOPRIGHT", fill, "TOPRIGHT", 0, 0)
+        segment:SetPoint("BOTTOMRIGHT", fill, "BOTTOMRIGHT", 0, 0)
+        segment:SetWidth(bar:GetWidth())
+    end
+    -- Couleur du type de puissance : celle de la barre peut être secrète (dégradé par pourcentage).
+    local r, g, b = Elements.PowerColor("player")
+    segment:SetStatusBarColor((r + 1) / 2, (g + 1) / 2, (b + 1) / 2, 0.6)
+    segment:SetMinMaxValues(bar:GetMinMaxValues())
+    segment:SetValue(cost)
+    segment:Show()
+end
+
+local function OnCostEvent(_, event, _, castGUID, spellID)
+    if event ~= "UNIT_SPELLCAST_START" then
+        -- GUID secret : rien à comparer, le segment s'efface plutôt que de rester affiché.
+        if costCastGUID and (isSecret(castGUID) or castGUID == costCastGUID) then HideCostSegments() end
+        return
+    end
+    castGUID, spellID = Known(castGUID), Known(spellID)
+    local cost = spellID and NS.GetSpellManaCost(spellID)
+    if not (castGUID and cost) or not ShowsMana() then HideCostSegments() return end
+    costCastGUID = castGUID
+    for bar in pairs(costBars) do
+        if bar:IsVisible() then ShowCostSegment(bar, cost) end
+    end
+end
+
+local COST_EVENTS = { "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_INTERRUPTED" }
+
+--- Montre ou non la prédiction du coût sur `bar` (barre de puissance du joueur) ; rien si elle n'affiche pas le mana.
+function Elements.SetManaCostPrediction(bar, on)
+    on = on and ShowsMana() or nil
+    if not on and not costBars[bar] then return end
+    if on and not bar.manaCost then
+        local clip = CreateFrame("Frame", nil, bar)
+        clip:SetAllPoints(bar)
+        clip:SetClipsChildren(true)
+        -- Texte, étincelle et repères passent dans un cadre au-dessus du segment.
+        local front = CreateFrame("Frame", nil, bar)
+        front:SetAllPoints(bar)
+        front:SetFrameLevel(clip:GetFrameLevel() + 1)
+        if bar.text then bar.text:SetParent(front) end
+        if bar.manaSpark then bar.manaSpark:SetParent(front) end
+        for _, line in ipairs(bar.hashLines or {}) do line:SetParent(front) end
+        bar.front = front
+        clip.segment = CreateFrame("StatusBar", nil, clip)
+        clip.segment:SetReverseFill(true)
+        clip.segment:Hide()
+        bar.manaCost = clip
+    end
+    costBars[bar] = on
+    if not on then bar.manaCost.segment:Hide() end
+    if not costTracker then
+        costTracker = CreateFrame("Frame")
+        costTracker:SetScript("OnEvent", OnCostEvent)
+    end
+    if next(costBars) then
+        if not costTracker:IsEventRegistered(COST_EVENTS[1]) then
+            for _, event in ipairs(COST_EVENTS) do NS.RegisterEventSafe(costTracker, event, "player") end
+        end
+    else
+        costTracker:UnregisterAllEvents()
+        costCastGUID = nil
+    end
 end
 
 --- Les `count` premiers caractères UTF-8 (jamais coupés au milieu d'un caractère).
@@ -865,6 +1040,25 @@ function Elements.UpdateThreatBorder(frame)
             NS.SetSolidColor(edge, theme.r, theme.g, theme.b, theme.a or 1)
         end
     end
+end
+
+local NEUTRAL_THREAT_COLOR = { 1, 1, 1 }
+
+--- % de menace du joueur sur l'unité (cfg.threatPercent), au-dessus du cadre, à la couleur du
+-- statut de menace. Rien hors liste de menace ou si la valeur est secrète.
+function Elements.UpdateThreatPercent(frame)
+    local percent, status
+    if frame.cfg.threatPercent then percent, status = NS.GetThreatPercent(frame.unit) end
+    if not percent then frame.threat:SetText("") return end
+    local c = status and Elements.THREAT_COLORS[status] or NEUTRAL_THREAT_COLOR
+    frame.threat:SetTextColor(c[1], c[2], c[3])
+    frame.threat:SetFormattedText("%d%%", percent)
+end
+
+--- Bordure et % de menace.
+function Elements.UpdateThreat(frame)
+    Elements.UpdateThreatBorder(frame)
+    Elements.UpdateThreatPercent(frame)
 end
 
 -- Atlas du moteur, comme l'icône du cadre de familier Blizzard.
@@ -1264,6 +1458,29 @@ function Elements.LayoutAuras(frame)
 end
 
 local ENGINE_GROUPS = { "listed", "crowdControl", "debuffs", "buffs" }
+-- Groupes de débuffs cumulables (cadres de groupe), dans l'ordre de la chaîne de négations : jeton
+-- ajouté au filtre, filtres candidats du groupe, puis ce que les groupes suivants nient.
+local DEBUFF_GROUPS = { "control", "boss", "dispellable", "nonPlayer", "duration" }
+Elements.DEBUFF_GROUPS = DEBUFF_GROUPS
+local DEBUFF_GROUP_SPECS = {
+    control = { token = "|CROWD_CONTROL", negate = "|!CROWD_CONTROL" },
+    boss = { candidates = { isBossAura = true }, negateCandidates = { isBossAura = false } },
+    dispellable = { token = "|RAID", negate = "|!RAID" },
+    nonPlayer = { candidates = { isFromPlayerOrPlayerPet = false }, negateCandidates = { isFromPlayerOrPlayerPet = true } },
+    duration = { candidates = { maxDuration = 31536000 } },   -- le moteur écarte les permanents (durée 0)
+}
+local VALID_POINT = { TOPLEFT = true, TOP = true, TOPRIGHT = true, LEFT = true, CENTER = true, RIGHT = true,
+                      BOTTOMLEFT = true, BOTTOM = true, BOTTOMRIGHT = true }
+
+local function GroupSignature(groups)
+    if not groups then return "" end
+    local parts = {}
+    for _, key in ipairs(DEBUFF_GROUPS) do
+        local group = groups[key] or {}
+        parts[#parts + 1] = table.concat({ tostring(group.enabled), tostring(group.point), tostring(group.size), tostring(group.max) }, ",")
+    end
+    return table.concat(parts, ";")
+end
 local CC_HIGHLIGHT = { r = 0.95, g = 0.95, b = 0.32, a = 1 }   -- couleur des lueurs (Core/Glow)
 
 --- Ensemble d'identifiants d'une liste du profil, nil si vide.
@@ -1288,10 +1505,14 @@ end
 function Elements.ConfigureAuraEngine(frame, size, spacing, perRow)
     local container, cfg, lists = frame.auras, frame.cfg, NS.db.auraLists
     local engine = container.engine
+    -- Plaques : leurs propres listes ; le reste (priorité, lueur des contrôles) reste commun.
+    local own = cfg.plate and cfg.auraLists or lists
+    local whitelistText, blacklistText = own.whitelist or "", own.blacklist or ""
     -- Plaques : reposées à chaque apparition ; réglage inchangé, rien à redemander au moteur.
     local signature = table.concat({ size, spacing, perRow, tostring(cfg.aurasInside), tostring(cfg.aurasAbove),
         tostring(cfg.auraMax), tostring(cfg.auraFilter), tostring(cfg.debuffsOnly), tostring(cfg.ccSlot and frame.ccSlot ~= nil),
-        lists.whitelist, lists.blacklist, tostring(lists.prioritize), tostring(lists.ccGlow) }, "\31")
+        whitelistText, blacklistText, tostring(cfg.whitelistAnyCaster), tostring(lists.prioritize), tostring(lists.ccGlow),
+        GroupSignature(cfg.debuffGroups) }, "\31")
     if container.engineSignature == signature then return end
     local anchor, horizontal, vertical = "TOPLEFT", "RIGHT", "DOWN"
     if cfg.aurasInside then anchor, horizontal, vertical = "BOTTOMRIGHT", "LEFT", "UP"
@@ -1304,6 +1525,15 @@ function Elements.ConfigureAuraEngine(frame, size, spacing, perRow)
     for _, key in ipairs(ENGINE_GROUPS) do
         for _, button in ipairs(NS.AuraGroupButtons(engine, key)) do resized = pcall(button.SetSize, button, size, size) and resized end
     end
+    local groups = cfg.debuffGroups
+    container.groupSizes = container.groupSizes or {}
+    for _, key in ipairs(groups and DEBUFF_GROUPS or {}) do
+        local groupSize = S((groups[key] or {}).size or cfg.auraSize or 22)
+        container.groupSizes[key] = groupSize
+        for _, button in ipairs(NS.AuraGroupButtons(engine, key)) do
+            resized = pcall(button.SetSize, button, groupSize, groupSize) and resized
+        end
+    end
     container.engineSignature = resized and signature or nil
     local init = container.engineInit or function(button) NS.InitAuraButton(button, { size = container.engineSize, dispel = true }) end
     local initCrowdControl = container.engineInitCrowdControl or function(button)
@@ -1313,22 +1543,27 @@ function Elements.ConfigureAuraEngine(frame, size, spacing, perRow)
 
     local max = math.min(MAX_AURAS, cfg.auraMax or MAX_AURAS)
     local mode = cfg.auraFilter or "all"
-    local blacklist = SpellSet(lists.blacklist)
-    local whitelist = mode ~= "all" and SpellSet(lists.whitelist) or nil
+    local blacklist = SpellSet(blacklistText)
+    local whitelist = mode ~= "all" and SpellSet(whitelistText) or nil
     local slot = cfg.ccSlot and frame.ccSlot or nil
     local crowdControlGroup = not slot and lists.ccGlow ~= "none"
-    local debuffCandidates = NS.AuraEngineCandidates(mode, Union(blacklist, whitelist))
+    -- Liste blanche d'une plaque : tes sorts seulement, sauf « de tout lanceur ». Dans ce cas, l'aura
+    -- listée d'un autre lanceur reste candidate des groupes suivants.
+    local playerOnly = cfg.plate and not cfg.whitelistAnyCaster
+    local listedFilter = playerOnly and "HARMFUL|PLAYER" or "HARMFUL"
+    local debuffCandidates = NS.AuraEngineCandidates(mode, playerOnly and blacklist or Union(blacklist, whitelist))
     local notCrowdControl = (slot or crowdControlGroup) and "|!CROWD_CONTROL" or ""
-    NS.SetAuraGroup(engine, "listed", { filter = "HARMFUL", max = whitelist and max or 0, index = 1, spacing = spacing,
+    NS.SetAuraGroup(engine, "listed", { filter = listedFilter, max = whitelist and max or 0, index = 1, spacing = spacing,
         size = size, candidates = { includeSpellIDs = whitelist }, init = init })
     NS.SetAuraGroup(engine, "crowdControl", { filter = NS.AuraEngineFilter("HARMFUL|CROWD_CONTROL", mode),
-        max = crowdControlGroup and max or 0, index = 2, spacing = spacing, size = size,
+        max = (crowdControlGroup and not groups) and max or 0, index = 2, spacing = spacing, size = size,
         candidates = debuffCandidates, init = initCrowdControl })
-    NS.SetAuraGroup(engine, "debuffs", { filter = NS.AuraEngineFilter("HARMFUL", mode) .. notCrowdControl, max = max,
+    NS.SetAuraGroup(engine, "debuffs", { filter = NS.AuraEngineFilter("HARMFUL", mode) .. notCrowdControl, max = groups and 0 or max,
         index = 3, spacing = spacing, size = size, prioritize = lists.prioritize or mode == "important",
         candidates = debuffCandidates, init = init })
     NS.SetAuraGroup(engine, "buffs", { filter = "HELPFUL", max = cfg.debuffsOnly and 0 or max, index = 4,
         newLine = true, spacing = spacing, size = size, candidates = { excludeSpellIDs = blacklist }, init = init })
+    if groups then Elements.ConfigureDebuffGroups(frame, groups, mode, debuffCandidates.excludeSpellIDs, spacing) end
     if slot or engine.declared.ccSlot then
         NS.SetAuraSlot(engine, "ccSlot", NS.AuraEngineFilter("HARMFUL|CROWD_CONTROL", mode), slot ~= nil, function(button)
             NS.InitAuraButton(button, { dispel = true, highlight = lists.ccGlow ~= "none" and CC_HIGHLIGHT or nil })
@@ -1336,6 +1571,53 @@ function Elements.ConfigureAuraEngine(frame, size, spacing, perRow)
         end)
     end
     pcall(engine.UpdateAllAuras, engine)
+end
+
+--- Groupes de débuffs cochés (cadres de groupe) : un groupe du moteur par case, chacun niant les
+-- précédents pour qu'une aura soit rendue une fois. Dans le flux des auras, ou, ancré ailleurs, un
+-- emplacement d'une aura sur un cadre d'ancrage à nous. « mine » : tes débuffs seulement.
+function Elements.ConfigureDebuffGroups(frame, groups, mode, exclude, spacing)
+    local container = frame.auras
+    local engine, sizes = container.engine, container.groupSizes
+    local highlight = NS.db.auraLists.ccGlow ~= "none" and CC_HIGHLIGHT or nil
+    local own = mode == "mine" and "mine" or "all"
+    local negate, negated = "", {}
+    frame.debuffAnchors = frame.debuffAnchors or {}
+    for order, key in ipairs(DEBUFF_GROUPS) do
+        local group, spec = groups[key] or {}, DEBUFF_GROUP_SPECS[key]
+        local filter = NS.AuraEngineFilter("HARMFUL" .. (spec.token or "") .. negate, own)
+        local candidates = { excludeSpellIDs = exclude }
+        for field, value in pairs(negated) do candidates[field] = value end
+        for field, value in pairs(spec.candidates or {}) do candidates[field] = value end
+        local function init(button)
+            NS.InitAuraButton(button, { size = sizes[key], dispel = true, highlight = key == "control" and highlight or nil })
+        end
+        local point = VALID_POINT[group.point] and group.point or nil
+        local enabled = group.enabled == true
+        NS.SetAuraGroup(engine, key, { filter = filter, max = (enabled and not point) and math.min(MAX_AURAS, group.max or 3) or 0,
+            index = 3 + order / 10, spacing = spacing, size = sizes[key], prioritize = NS.db.auraLists.prioritize,
+            candidates = candidates, init = init })
+        local anchor = frame.debuffAnchors[key]
+        if point and not anchor then
+            anchor = CreateFrame("Frame", nil, frame.overlay or frame)
+            anchor:SetFrameLevel((frame.overlay or frame):GetFrameLevel() + 3)
+            frame.debuffAnchors[key] = anchor
+        end
+        if anchor then
+            anchor:SetSize(sizes[key], sizes[key])
+            anchor:ClearAllPoints()
+            anchor:SetPoint(point or "CENTER", frame.health, point or "CENTER", 0, 0)
+            NS.SetAuraSlot(engine, key .. "Slot", filter, enabled and point ~= nil, function(button)
+                init(button)
+                pcall(button.ClearAllPoints, button)
+                pcall(button.SetAllPoints, button, anchor)
+            end, candidates)
+        end
+        if enabled then
+            negate = negate .. (spec.negate or "")
+            for field, value in pairs(spec.negateCandidates or {}) do negated[field] = value end
+        end
+    end
 end
 
 --- Pose le bouton en (colonne, ligne) : ligne 0 contre le cadre, les suivantes s'en éloignent.
@@ -1495,7 +1777,7 @@ function Elements.UpdateAll(frame)
     Elements.StartCast(frame)
     Elements.UpdateAuras(frame, true)
     Elements.UpdatePortrait(frame)
-    Elements.UpdateThreatBorder(frame)
+    Elements.UpdateThreat(frame)
     Elements.UpdateHappiness(frame)
 end
 
@@ -1510,7 +1792,7 @@ end
 Elements.UNIT_EVENTS = {
     UNIT_HEALTH = "UpdateHealthAndPrediction", UNIT_MAXHEALTH = "UpdateHealthAndPrediction",
     UNIT_FACTION = "UpdateFaction",
-    UNIT_THREAT_SITUATION_UPDATE = "UpdateThreatBorder", UNIT_HAPPINESS = "UpdateHappiness",
+    UNIT_THREAT_SITUATION_UPDATE = "UpdateThreat", UNIT_THREAT_LIST_UPDATE = "UpdateThreat", UNIT_HAPPINESS = "UpdateHappiness",
     UNIT_CLASSIFICATION_CHANGED = "UpdateClassification",
     UNIT_CONNECTION = "UpdateHealthAndPrediction",
     UNIT_MAXPOWER = "UpdatePower", UNIT_DISPLAYPOWER = "UpdatePower", UNIT_POWER_FREQUENT = "UpdatePower",

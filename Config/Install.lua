@@ -535,15 +535,23 @@ local function Filled(entries, field)
     return false
 end
 
+-- Liaison de clic posée par le joueur : un sort, macro ou objet saisi, ou un bijou (sans valeur).
+local function HasClickBinding(bindings)
+    for _, binding in pairs(bindings or {}) do
+        if type(binding) == "table" and (binding.kind == "trinket1" or binding.kind == "trinket2") then return true end
+    end
+    return Filled(bindings, "spell")
+end
+
 -- Soigneur : liaisons de clic et coins des cadres de groupe propres à la classe, quand elle en a.
 -- `keepPlayer` : seulement là où le joueur n'a encore rien posé (profil existant).
 local function ApplyHealPresets(style, keepPlayer)
     if style ~= "heal" then return end
     local clickCast, groupFrames = NS.Modules:Get("clickcast"), NS.Modules:Get("groupframes")
-    if clickCast and clickCast.enabled and not (keepPlayer and Filled(clickCast.db.bindings, "spell")) then
+    if clickCast and clickCast.enabled and not (keepPlayer and HasClickBinding(clickCast.db.bindings)) then
         clickCast:ApplyPreset()
     end
-    if groupFrames and not (keepPlayer and Filled(groupFrames.db.indicators)) then groupFrames:ApplyIndicatorPreset() end
+    if groupFrames and not (keepPlayer and Filled(groupFrames.db.indicators, "spells")) then groupFrames:ApplyIndicatorPreset() end
 end
 
 -- Remet aux défauts du module les clés posées par `overrides` (feuilles des sous-tables comprises).

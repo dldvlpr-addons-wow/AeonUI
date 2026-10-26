@@ -8,6 +8,7 @@ local _, NS = ...
 local CVars = {}
 NS.CVars = CVars
 CVars.pending = {}   -- [name] = jeton entre Restore en combat et l'écriture
+CVars.applied = {}   -- [name] = valeur posée par MuscaUI pendant cette session
 
 local function Get(name)
     if C_CVar and C_CVar.GetCVar then return C_CVar.GetCVar(name) end
@@ -20,6 +21,14 @@ local function Write(name, value)
     elseif _G.SetCVar then
         return SetCVar(name, value)
     end
+end
+
+-- Rend l'origine, sauf si l'utilisateur a changé la CVar après nous : son choix reste.
+-- Valeur posée inconnue (session suivante, avant tout Set) : l'origine est rendue.
+local function WriteOriginal(name, original)
+    local applied = CVars.applied[name]
+    if applied ~= nil and Get(name) ~= applied then return true end
+    return Write(name, original)
 end
 
 --- La CVar existe-t-elle sur ce client ?
@@ -39,8 +48,11 @@ function CVars:Set(name, value)
     -- effacerait la sauvegarde à la sortie du combat et l'origine serait perdue.
     CVars.pending[name] = nil
     if backup[name] == nil then backup[name] = Get(name) end
+    CVars.applied[name] = value
     NS:RunOutOfCombat(function()
         if Get(name) ~= value then Write(name, value) end
+        -- Valeur relue : le client peut normaliser ou borner ce qu'on lui donne.
+        if CVars.applied[name] == value then CVars.applied[name] = Get(name) end
     end)
     return true
 end
@@ -57,8 +69,9 @@ function CVars:Restore(name)
         if CVars.pending[name] ~= token then return end   -- annulée par Set, ou rendue par RestoreAll
         CVars.pending[name] = nil
         if NS.global.cvarBackup[name] == nil then return end
-        Write(name, original)
+        WriteOriginal(name, original)
         NS.global.cvarBackup[name] = nil
+        CVars.applied[name] = nil
     end)
     return true
 end
@@ -69,7 +82,10 @@ function CVars:RestoreAll(immediate)
     for name in pairs(backup) do
         if immediate then
             -- Écriture refusée (CVar protégée en combat) : la sauvegarde reste pour la prochaine fois.
-            if Write(name, backup[name]) ~= false then backup[name] = nil end
+            if WriteOriginal(name, backup[name]) ~= false then
+                backup[name] = nil
+                CVars.applied[name] = nil
+            end
             CVars.pending[name] = nil
         else
             self:Restore(name)

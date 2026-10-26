@@ -53,6 +53,27 @@ function NS.GetSpellName(id)
     return nil
 end
 
+--- Coût en mana du sort, ou nil (aucun coût en mana, type illisible). Un coût secret est rendu
+-- tel quel : l'appelant ne le passe qu'à un widget (SetValue), sans le comparer.
+function NS.GetSpellManaCost(id)
+    local costs = C_Spell and C_Spell.GetSpellPowerCost and C_Spell.GetSpellPowerCost(id)
+    local mana = Enum and Enum.PowerType and Enum.PowerType.Mana or 0
+    for _, cost in ipairs(costs or {}) do
+        local kind, amount = cost.type, cost.cost
+        if not isSecret(kind) and kind == mana then
+            if isSecret(amount) then return amount end
+            if amount and amount > 0 then return amount end
+        end
+    end
+    return nil
+end
+
+--- Vrai si le sort coûte du mana.
+function NS.SpellCostsMana(id)
+    local cost = NS.GetSpellManaCost(id)
+    return isSecret(cost) or cost ~= nil
+end
+
 function NS.GetSpellTexture(id)
     if C_Spell and C_Spell.GetSpellTexture then return (C_Spell.GetSpellTexture(id)) end
     if C_Spell and C_Spell.GetSpellInfo then
@@ -123,6 +144,75 @@ function NS.GetQuestItemLink()
         end
     end
     return fallback
+end
+
+local function Plain(value)
+    if isSecret(value) then return nil end
+    return value
+end
+
+--- Quêtes suivies, dans l'ordre du suivi ; liste vide si l'API manque.
+function NS.GetWatchedQuestIDs()
+    local list = {}
+    local api = C_QuestLog
+    if not (api and api.GetNumQuestWatches and api.GetQuestIDForQuestWatchIndex) then return list end
+    for index = 1, Plain(api.GetNumQuestWatches()) or 0 do
+        local questID = Plain(api.GetQuestIDForQuestWatchIndex(index))
+        if questID then list[#list + 1] = questID end
+    end
+    return list
+end
+
+--- Champs d'une quête du journal utiles au tri et aux filtres du suivi ; nil si elle n'y est plus.
+function NS.GetQuestFacts(questID)
+    local api = C_QuestLog
+    if not (api and api.GetLogIndexForQuestID and api.GetInfo) then return nil end
+    local logIndex = Plain(api.GetLogIndexForQuestID(questID))
+    local info = logIndex and api.GetInfo(logIndex)
+    if type(info) ~= "table" or Plain(info.isHeader) then return nil end
+    return {
+        logIndex = logIndex,
+        title = Plain(info.title) or "",
+        level = Plain(info.level) or 0,
+        frequency = Plain(info.frequency) or 0,
+        onMap = Plain(info.isOnMap) == true,
+        complete = api.IsComplete and Plain(api.IsComplete(questID)) == true or false,
+        trivial = api.IsQuestTrivial and Plain(api.IsQuestTrivial(questID)) == true or false,
+    }
+end
+
+--- Quêtes du journal sur la carte courante (zone, donjon), dans l'ordre du journal.
+function NS.GetQuestIDsOnMap()
+    local list = {}
+    local api = C_QuestLog
+    if not (api and api.GetNumQuestLogEntries and api.GetInfo) then return list end
+    for index = 1, Plain(api.GetNumQuestLogEntries()) or 0 do
+        local info = api.GetInfo(index)
+        if type(info) == "table" and Plain(info.isOnMap) == true and not Plain(info.isHeader)
+            and not Plain(info.isHidden) and not Plain(info.isTask) and not Plain(info.isBounty) then
+            list[#list + 1] = Plain(info.questID)
+        end
+    end
+    return list
+end
+
+--- Suit (true) ou ne suit plus (false) une quête ; false si l'API manque, échoue ou lève une erreur.
+function NS.SetQuestWatched(questID, watched)
+    local api = C_QuestLog and (watched and C_QuestLog.AddQuestWatch or C_QuestLog.RemoveQuestWatch)
+    if not api then return false end
+    local ok, result = pcall(api, questID)
+    return ok and result ~= false
+end
+
+--- Nombre de lignes du journal de quêtes (en-têtes compris) ; 0 tant qu'il n'est pas chargé.
+function NS.GetNumQuestLogEntries()
+    local api = C_QuestLog
+    return api and api.GetNumQuestLogEntries and Plain(api.GetNumQuestLogEntries()) or 0
+end
+
+--- Rencontre de boss en cours ; false si l'API manque.
+function NS.IsEncounterInProgress()
+    return _G.IsEncounterInProgress and Plain(IsEncounterInProgress()) == true or false
 end
 
 --- Quête affichée dans QuestFrame (QUEST_PROGRESS, QUEST_DETAIL) : répétable ?
@@ -374,6 +464,17 @@ function NS.OtherTankHasAggro(mob)
     return false
 end
 
+--- Menace du joueur sur `unit` : % (100 = il prend l'agro) et statut (0 à 3, nil si secret).
+-- nil sans liste de menace, sans l'API ou si le % est secret (restriction des valeurs de menace) ;
+-- troisième retour vrai dans ce dernier cas.
+function NS.GetThreatPercent(unit)
+    if not _G.UnitDetailedThreatSituation then return nil end
+    local ok, _, status, scaled = pcall(UnitDetailedThreatSituation, "player", unit)
+    if ok and isSecret(scaled) then return nil, nil, true end
+    if not ok or type(scaled) ~= "number" then return nil end
+    return scaled, not isSecret(status) and status or nil
+end
+
 --- Points de combo du joueur sur sa cible, tels quels (peut-être secrets) : pour StatusBar:SetValue.
 function NS.ComboPointsRaw()
     if _G.GetComboPoints then return (GetComboPoints("player", "target")) end
@@ -390,16 +491,23 @@ function NS.GetComboPoints()
     return points, max
 end
 
-local GLOBAL_COOLDOWN_SPELL = 61304   -- sort « Recharge globale » du moteur
+-- Sort « Recharge globale » : 61304 sur le moteur, 29515 sur les clients Classic (Forever d'après
+-- EllesmereUI, non vérifié en jeu). Le premier qui rapporte une recharge gagne.
+local GLOBAL_COOLDOWN_SPELLS = { 61304, 29515 }
 
 --- Recharge globale en cours : début, durée (en s) ; nil hors recharge, sans l'API ou si secrète.
 function NS.GetGlobalCooldown()
     if not (C_Spell and C_Spell.GetSpellCooldown) then return nil end
-    local ok, info = pcall(C_Spell.GetSpellCooldown, GLOBAL_COOLDOWN_SPELL)
-    if not ok or type(info) ~= "table" then return nil end
-    local start, duration = info.startTime, info.duration
-    if isSecret(start) or isSecret(duration) or not start or not duration or duration <= 0 then return nil end
-    return start, duration
+    for _, spellID in ipairs(GLOBAL_COOLDOWN_SPELLS) do
+        local ok, info = pcall(C_Spell.GetSpellCooldown, spellID)
+        if ok and type(info) == "table" then
+            local start, duration = info.startTime, info.duration
+            if not isSecret(start) and not isSecret(duration) and start and duration and duration > 0 then
+                return start, duration
+            end
+        end
+    end
+    return nil
 end
 
 --- Latence du monde en secondes (GetNetStats), 0 si inconnue.
@@ -410,19 +518,19 @@ function NS.WorldLatency()
     return world / 1000
 end
 
---- Sort hors recharge ? Charges : prêt au maximum de charges. Sinon : pas de vraie recharge
--- (le GCD compte comme prêt). isActive et isOnGCD restent lisibles en combat ; une valeur
--- secrète compte comme « pas prêt ».
-function NS.IsSpellReady(spellID)
-    if not (C_Spell and C_Spell.GetSpellCooldown) then return false end
-    local charges = C_Spell.GetSpellCharges and C_Spell.GetSpellCharges(spellID)
+--- Sort hors recharge ? Charges : prêt au maximum de charges (`anyCharge` : dès une charge, lu
+-- sur la recharge du sort). Sinon : pas de vraie recharge (le GCD compte comme prêt). isActive
+-- et isOnGCD restent lisibles en combat ; nil si l'API manque ou si la réponse est secrète.
+function NS.IsSpellReady(spellID, anyCharge)
+    if not (C_Spell and C_Spell.GetSpellCooldown) then return nil end
+    local charges = not anyCharge and C_Spell.GetSpellCharges and C_Spell.GetSpellCharges(spellID)
     if charges and not isSecret(charges.maxCharges) and (charges.maxCharges or 0) > 1 then
-        if isSecret(charges.isActive) then return false end
+        if isSecret(charges.isActive) then return nil end
         return not charges.isActive
     end
     local cd = C_Spell.GetSpellCooldown(spellID)
     if not cd then return true end
-    if isSecret(cd.isActive) or isSecret(cd.isOnGCD) then return false end
+    if isSecret(cd.isActive) or isSecret(cd.isOnGCD) then return nil end
     return not (cd.isActive and not cd.isOnGCD)
 end
 
@@ -444,6 +552,70 @@ function NS.GetSpellCharges(spellID)
     if not isSecret(current) and type(current) ~= "number" then return nil end
     if isSecret(start) or isSecret(duration) then start, duration = 0, 0 end
     return current, max, start or 0, duration or 0
+end
+
+--- Sort utilisable (ressource, forme) ? nil si l'API manque ou si la réponse est secrète.
+function NS.IsSpellUsable(spellID)
+    if not (C_Spell and C_Spell.IsSpellUsable) then return nil end
+    local ok, usable = pcall(C_Spell.IsSpellUsable, spellID)
+    if not ok or isSecret(usable) then return nil end
+    return usable and true or false
+end
+
+--- Sort en surbrillance (proc) ? false si l'API manque ou si la réponse est secrète.
+function NS.IsSpellOverlayed(spellID)
+    local api = (C_SpellActivationOverlay and C_SpellActivationOverlay.IsSpellOverlayed) or _G.IsSpellOverlayed
+    if not api or not spellID then return false end
+    local ok, on = pcall(api, spellID)
+    return ok and not isSecret(on) and on == true
+end
+
+--- Emplacements d'action qui portent le sort `spellID` (sort de base) : liste, vide sans API.
+function NS.FindSpellActionSlots(spellID)
+    local slots = {}
+    if isSecret(spellID) or not (C_ActionBar and C_ActionBar.FindSpellActionButtons) then return slots end
+    local ok, found = pcall(C_ActionBar.FindSpellActionButtons, spellID)
+    for _, slot in ipairs(ok and type(found) == "table" and found or {}) do
+        if not isSecret(slot) then slots[#slots + 1] = slot end
+    end
+    return slots
+end
+
+--- Texte court de la première touche liée à la commande `command` (« ACTIONBUTTON1 ») ; nil si
+-- aucune touche ou réponse illisible.
+function NS.GetBindingText(command)
+    if not (_G.GetBindingKey and _G.GetBindingText) then return nil end
+    local key = GetBindingKey(command)
+    if not key or isSecret(key) then return nil end
+    local text = GetBindingText(key, 1)
+    if not text or isSecret(text) or text == "" then return nil end
+    return text
+end
+
+--- Recharge de l'objet porté à l'emplacement `slot` (13, 14 : bijoux) : début, durée, GCD ?
+-- nil sans API ou si la réponse est secrète. Durée 0 : pas de recharge (ou objet sans usage).
+function NS.GetInventorySlotCooldown(slot)
+    if not _G.GetInventoryItemCooldown then return nil end
+    local ok, start, duration, _, isOnGCD = pcall(GetInventoryItemCooldown, "player", slot)
+    if not ok or isSecret(start) or isSecret(duration) or isSecret(isOnGCD) then return nil end
+    if type(start) ~= "number" or type(duration) ~= "number" then return nil end
+    return start, duration, isOnGCD and true or false
+end
+
+--- Objet de l'emplacement `slot` hors recharge (le GCD compte comme prêt) ; nil si illisible.
+function NS.IsInventorySlotReady(slot)
+    local start, duration, isOnGCD = NS.GetInventorySlotCooldown(slot)
+    if not start then return nil end
+    return isOnGCD or duration == 0 or start + duration <= GetTime()
+end
+
+--- Nom et icône de l'objet porté à l'emplacement `slot` ; nil si vide ou illisible.
+function NS.GetInventorySlotItem(slot)
+    local link = _G.GetInventoryItemLink and GetInventoryItemLink("player", slot)
+    if not link or isSecret(link) then return nil end
+    local icon = _G.GetInventoryItemTexture and GetInventoryItemTexture("player", slot)
+    if isSecret(icon) then icon = nil end
+    return link:match("%[(.-)%]") or link, icon
 end
 
 --------------------------------------------------------------------------------
@@ -490,31 +662,77 @@ end
 -- Gestionnaire de recharges Blizzard (C_CooldownViewer)
 --------------------------------------------------------------------------------
 
---- Sort d'un cooldownID du gestionnaire : identifiant d'origine et identifiant courant
--- (talent de remplacement). nil si l'API manque ou rend une valeur secrète.
+--- Sort d'un cooldownID du gestionnaire : clé de réglage, identifiant courant (talent de
+-- remplacement) et emplacement d'équipement. Objet porté (bijou) : clé « slot13 », pas de sort,
+-- emplacement. nil si l'API manque ou rend une valeur secrète.
 function NS.GetCooldownViewerSpell(cooldownID)
     if isSecret(cooldownID) or not (C_CooldownViewer and C_CooldownViewer.GetCooldownViewerCooldownInfo) then return nil end
     local ok, info = pcall(C_CooldownViewer.GetCooldownViewerCooldownInfo, cooldownID)
-    if not ok or not info or isSecret(info.spellID) or not info.spellID then return nil end
+    if not ok or not info then return nil end
+    local slot = info.equipSlot
+    if slot and not isSecret(slot) then return "slot" .. slot, nil, slot end
+    if isSecret(info.spellID) or not info.spellID then return nil end
     local live = info.overrideSpellID
     if isSecret(live) or not live or live == 0 then live = info.spellID end
     return info.spellID, live
 end
 
---- Sorts appris de la catégorie `category` (0 essentiel, 1 utilitaire, 2 icônes de buff,
--- 3 barres de buff) : { { spellID, name, icon } } dans l'ordre Blizzard.
-function NS.GetCooldownViewerSpells(category)
-    local list = {}
+--- Entrées des catégories `categories` (nombre ou liste ; 0 essentiel, 1 utilitaire, 2 icônes de
+-- buff, 3 barres de buff, 5 à 8 communs et équipement) : { { spellID, name, icon, slot } } dans
+-- l'ordre Blizzard, sans doublon. spellID : clé de réglage (« slot13 » pour un objet porté).
+-- `allowUnlearned` : sorts non appris compris.
+function NS.GetCooldownViewerSpells(categories, allowUnlearned)
+    local list, seen = {}, {}
     if not (C_CooldownViewer and C_CooldownViewer.GetCooldownViewerCategorySet) then return list end
-    local ok, ids = pcall(C_CooldownViewer.GetCooldownViewerCategorySet, category, false)
-    for _, cooldownID in ipairs(ok and ids or {}) do
-        local spellID, live = NS.GetCooldownViewerSpell(cooldownID)
-        if spellID then
-            list[#list + 1] = { spellID = spellID, name = NS.GetSpellName(live) or NS.GetSpellName(spellID) or tostring(spellID),
-                                icon = NS.GetSpellTexture(live) or NS.GetSpellTexture(spellID) }
+    for _, category in ipairs(type(categories) == "table" and categories or { categories }) do
+        local ok, ids = pcall(C_CooldownViewer.GetCooldownViewerCategorySet, category, allowUnlearned and true or false)
+        for _, cooldownID in ipairs(ok and type(ids) == "table" and ids or {}) do
+            local key, live, slot = NS.GetCooldownViewerSpell(cooldownID)
+            if key and not seen[key] then
+                seen[key] = true
+                local name, icon
+                if slot then
+                    name, icon = NS.GetInventorySlotItem(slot)
+                else
+                    name = NS.GetSpellName(live) or NS.GetSpellName(key)
+                    icon = NS.GetSpellTexture(live) or NS.GetSpellTexture(key)
+                end
+                list[#list + 1] = { spellID = key, name = name or tostring(key), icon = icon, slot = slot }
+            end
         end
     end
     return list
+end
+
+--- Opacité Edit Mode (0 à 1) d'une visionneuse du gestionnaire de recharges ; 1 si illisible.
+function NS.GetCooldownViewerOpacity(viewer)
+    local setting = _G.Enum and Enum.EditModeCooldownViewerSetting and Enum.EditModeCooldownViewerSetting.Opacity
+    if not (setting and viewer.GetSettingValue) then return 1 end
+    local ok, value = pcall(viewer.GetSettingValue, viewer, setting)
+    if not ok or type(value) ~= "number" or value <= 0 then return 1 end
+    return value / 100
+end
+
+--- Mode édition Blizzard ouvert ?
+function NS.IsEditModeActive()
+    local manager = _G.EditModeManagerFrame
+    return manager and manager.IsEditModeActive and manager:IsEditModeActive() and true or false
+end
+
+--- Appelle `fn` à l'entrée et à la sortie du mode édition Blizzard (EventRegistry).
+function NS.OnEditModeToggle(owner, fn)
+    local registry = _G.EventRegistry
+    if not (registry and registry.RegisterCallback) then return end
+    registry:RegisterCallback("EditMode.Enter", fn, owner)
+    registry:RegisterCallback("EditMode.Exit", fn, owner)
+end
+
+--- Ouvre la fenêtre de réglages du gestionnaire de recharges Blizzard (hors combat) ; faux sinon.
+function NS.OpenCooldownViewerSettings()
+    local settings = _G.CooldownViewerSettings
+    if NS.InCombat() or not (settings and settings.ShowUIPanel) then return false end
+    settings:ShowUIPanel()
+    return true
 end
 
 --------------------------------------------------------------------------------
@@ -587,51 +805,53 @@ function NS.AuraPasses(mode, spellId, dispelName, isBoss, isMine)
     return isSecret(isBoss) or isBoss == true or dispellable   -- "important"
 end
 
--- Motifs des lignes « Nom (30 min) » d'un enchantement temporaire, tirés des formats localisés.
-local tempEnchantPatterns
-local function TempEnchantPatterns()
-    if tempEnchantPatterns then return tempEnchantPatterns end
-    tempEnchantPatterns = {}
-    for _, key in ipairs({ "ITEM_ENCHANT_TIME_LEFT_DAYS", "ITEM_ENCHANT_TIME_LEFT_HOURS",
-                           "ITEM_ENCHANT_TIME_LEFT_MIN", "ITEM_ENCHANT_TIME_LEFT_SEC" }) do
-        local format = _G[key]
-        if type(format) == "string" then
-            local pattern = format:gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1")
-                :gsub("|4[^;]*;", ".-")
-                :gsub("%%%d?%$?s", ".+")
-                :gsub("%%%d?%$?d", "%%d+")
-            tempEnchantPatterns[#tempEnchantPatterns + 1] = "^" .. pattern .. "$"
-        end
-    end
-    return tempEnchantPatterns
-end
+-- Emplacements d'inventaire des armes, dans l'ordre d'Enum.WeaponSlot (MainHand 0, OffHand 1, Ranged 2).
+local WEAPON_INVENTORY_SLOTS = { 16, 17, 18 }
+local weaponEnchantDurations = {}   -- ["slot:enchantID"] = plus long temps restant vu (durée totale)
 
---- Ligne d'enchantement temporaire dans l'infobulle de l'arme principale. nil si texte secret.
-local function MainHandTooltipHasTempEnchant()
-    local info = _G.C_TooltipInfo
-    local data = info and info.GetInventoryItem and info.GetInventoryItem("player", 16)
-    if not (data and data.lines) then return false end
-    for _, line in ipairs(data.lines) do
-        local text = line.leftText
-        if isSecret(text) then return nil end
-        if type(text) == "string" then
-            for _, pattern in ipairs(TempEnchantPatterns()) do
-                if text:match(pattern) then return true end
+--- Enchantements temporaires des armes, tous types (imprégnation, huile, pierre, poison) :
+-- { slot, enchantID, icon, name, charges, expiration, duration }. expiration et duration nil :
+-- sans durée. Une valeur illisible (secrète) écarte l'entrée ; second retour vrai alors.
+-- ponytail: durée totale = plus long temps restant vu ; après un /reload, la barre repart pleine.
+function NS.GetWeaponEnchants()
+    local list, unreadable = {}, false
+    local api = C_Item and C_Item.GetWeaponEnchantInfo
+    if not api then return list, false end
+    local now = GetTime()
+    for weaponSlot, slot in ipairs(WEAPON_INVENTORY_SLOTS) do
+        for _, enchant in ipairs(api(weaponSlot - 1) or {}) do
+            local has, timeLeft, charges, icon, id = enchant.hasEnchant, enchant.timeLeft, enchant.charges,
+                enchant.enchantIconID, enchant.enchantID
+            if isSecret(has) or isSecret(timeLeft) or isSecret(charges) or isSecret(icon) or isSecret(id) then
+                unreadable = true
+            elseif has then
+                local link = _G.GetInventoryItemLink and GetInventoryItemLink("player", slot)
+                local name = not isSecret(link) and type(link) == "string" and link:match("%[(.-)%]") or nil
+                if not icon or icon == 0 then icon = _G.GetInventoryItemTexture and GetInventoryItemTexture("player", slot) end
+                local entry = { slot = slot, enchantID = id, icon = icon, name = name,
+                                charges = charges and charges > 0 and charges or nil }
+                if timeLeft and timeLeft > 0 then
+                    local key = slot .. ":" .. tostring(id)
+                    local seconds = timeLeft / 1000
+                    weaponEnchantDurations[key] = math.max(weaponEnchantDurations[key] or 0, seconds)
+                    entry.expiration, entry.duration = now + seconds, weaponEnchantDurations[key]
+                end
+                list[#list + 1] = entry
             end
         end
     end
-    return false
+    return list, unreadable
 end
 
 --- Arme principale enchantée (poison, arme de chaman…). nil si le client ne sait pas répondre.
--- Forever ne remonte pas l'arme de chaman dans GetWeaponEnchantInfo (false alors que l'infobulle
--- affiche « Croque-roc (30 min) ») : repli sur l'infobulle.
 function NS.HasMainHandEnchant()
-    if not _G.GetWeaponEnchantInfo then return MainHandTooltipHasTempEnchant() end
-    local has = GetWeaponEnchantInfo()
-    if isSecret(has) then return nil end
-    if has then return true end
-    return MainHandTooltipHasTempEnchant()
+    if not (C_Item and C_Item.GetWeaponEnchantInfo) then return nil end
+    local list, unreadable = NS.GetWeaponEnchants()
+    for _, entry in ipairs(list) do
+        if entry.slot == WEAPON_INVENTORY_SLOTS[1] then return true end
+    end
+    if unreadable then return nil end
+    return false
 end
 
 --------------------------------------------------------------------------------
@@ -648,13 +868,25 @@ function NS.GetBagSlots(bag)
     return fn and fn(bag) or 0
 end
 
-function NS.GetBagFreeSlots(bag)
+--- Places libres d'un sac. generalOnly : 0 pour un sac spécial (carquois, sac d'âme, d'herbes…),
+-- qui n'accepte que certains objets.
+function NS.GetBagFreeSlots(bag, generalOnly)
     local fn = Container.GetContainerNumFreeSlots or _G.GetContainerNumFreeSlots
     if not fn then return 0 end
-    return (fn(bag)) or 0
+    local free, bagType = fn(bag)
+    if generalOnly and bagType and bagType ~= 0 then return 0 end
+    return free or 0
 end
 
---- { itemID, quality, stackCount, hasNoValue, isLocked, link, icon } ou nil pour une case vide.
+--- Sac général (type 0) ? Faux pour un sac spécial.
+function NS.IsGeneralBag(bag)
+    local fn = Container.GetContainerNumFreeSlots or _G.GetContainerNumFreeSlots
+    if not fn then return true end
+    local _, bagType = fn(bag)
+    return not bagType or bagType == 0
+end
+
+--- { itemID, quality, stackCount, hasNoValue, isLocked, link, icon, isBound } ou nil pour une case vide.
 function NS.GetBagItem(bag, slot)
     if Container.GetContainerItemInfo then
         local info = Container.GetContainerItemInfo(bag, slot)
@@ -662,7 +894,7 @@ function NS.GetBagItem(bag, slot)
         return {
             itemID = info.itemID, quality = info.quality, stackCount = info.stackCount or 1,
             hasNoValue = info.hasNoValue, isLocked = info.isLocked, link = info.hyperlink,
-            icon = info.iconFileID,
+            icon = info.iconFileID, isBound = info.isBound,
         }
     end
     if _G.GetContainerItemInfo then
@@ -672,6 +904,67 @@ function NS.GetBagItem(bag, slot)
                  hasNoValue = noValue, isLocked = locked, link = link, icon = icon }
     end
     return nil
+end
+
+--------------------------------------------------------------------------------
+-- Banque
+--------------------------------------------------------------------------------
+
+local function BankAPI() return _G.C_Bank or {} end
+
+--- Onglets achetés d'un type de banque, consultable et sans verrou : { { bag, name } }, sac lu
+-- dans l'ID de l'onglet (jamais par position). Liste vide sans l'API ou banque fermée au joueur.
+function NS.GetBankTabs(bankType)
+    local Bank = BankAPI()
+    local tabs = {}
+    if bankType == nil or not Bank.FetchPurchasedBankTabData then return tabs end
+    if Bank.CanViewBank and not Bank.CanViewBank(bankType) then return tabs end
+    if Bank.FetchBankLockedReason and Bank.FetchBankLockedReason(bankType) ~= nil then return tabs end
+    for _, data in ipairs(Bank.FetchPurchasedBankTabData(bankType) or {}) do
+        if data.ID then tabs[#tabs + 1] = { bag = data.ID, name = data.name } end
+    end
+    return tabs
+end
+
+--- Dépôt automatique possible pour ce type de banque ?
+function NS.BankSupportsAutoDeposit(bankType)
+    local Bank = BankAPI()
+    if not Bank.AutoDepositItemsIntoBank then return false end
+    if Bank.DoesBankTypeSupportAutoDeposit then return Bank.DoesBankTypeSupportAutoDeposit(bankType) == true end
+    return bankType == (_G.Enum and Enum.BankType and Enum.BankType.Character)
+end
+
+function NS.BankAutoDeposit(bankType)
+    local Bank = BankAPI()
+    if Bank.AutoDepositItemsIntoBank then Bank.AutoDepositItemsIntoBank(bankType) end
+end
+
+--- Or déposé dans ce type de banque, nil s'il n'accepte pas l'argent.
+function NS.GetBankMoney(bankType)
+    local Bank = BankAPI()
+    if not (Bank.DoesBankTypeSupportMoneyTransfer and Bank.FetchDepositedMoney) then return nil end
+    if not Bank.DoesBankTypeSupportMoneyTransfer(bankType) then return nil end
+    return Bank.FetchDepositedMoney(bankType)
+end
+
+--- Range un type de banque (tri du client). Faux sans l'API.
+function NS.SortBank(bankType)
+    if not Container.SortBank then return false end
+    Container.SortBank(bankType)
+    return true
+end
+
+function NS.CloseBank()
+    local Bank = BankAPI()
+    if Bank.CloseBankFrame then Bank.CloseBankFrame() elseif _G.CloseBankFrame then CloseBankFrame() end
+end
+
+--- Guichet ouvert sur un banquier de bataillon (banque portable) : seuls les onglets de compte.
+function NS.IsAccountBanker()
+    local manager = _G.C_PlayerInteractionManager
+    local kind = _G.Enum and Enum.PlayerInteractionType and Enum.PlayerInteractionType.AccountBanker
+    return kind ~= nil and manager ~= nil and manager.IsInteractingWithNpcOfType ~= nil
+        and manager.IsInteractingWithNpcOfType(kind) == true
 end
 
 function NS.UseBagItem(bag, slot)
@@ -704,6 +997,14 @@ function NS.GetItemSellPrice(item)
     if not fn then return 0 end
     local price = select(11, fn(item))
     return tonumber(price) or 0
+end
+
+--- Type de liaison (Enum.ItemBind : 1 à la prise, 2 à l'équipement, 9 au compte jusqu'à
+-- l'équipement), ou nil tant que le client ne connaît pas l'objet.
+function NS.GetItemBindType(item)
+    local fn = (C_Item and C_Item.GetItemInfo) or _G.GetItemInfo
+    if not fn or not item then return nil end
+    return select(14, fn(item))
 end
 
 function NS.GetItemCount(itemID)
@@ -2189,4 +2490,353 @@ function NS.GetActionTexture(slot)
     local ok, texture = pcall(get, slot)
     if ok and texture and not NS.IsSecret(texture) then return texture end
     return nil
+end
+
+--- Action Blizzard liée à la touche `key` (« ALT-F »), nil si la touche est libre.
+function NS.KeyBindingAction(key)
+    local action = _G.GetBindingAction and GetBindingAction(key)
+    if type(action) == "string" and action ~= "" then return action end
+    return nil
+end
+
+--- Vrai si le joueur a une macro de ce nom ; vrai aussi sans API (aucun avertissement à tort).
+function NS.MacroExists(name)
+    if not _G.GetMacroInfo then return true end
+    return GetMacroInfo(name) ~= nil
+end
+
+--- Vrai si le client connaît l'objet (nom d'un objet porté ou `item:ID`) ; vrai aussi sans API.
+function NS.ItemKnown(item)
+    local instant = (C_Item and C_Item.GetItemInfoInstant) or _G.GetItemInfoInstant
+    if not instant then return true end
+    return instant(item) ~= nil
+end
+
+--------------------------------------------------------------------------------
+-- Rangs de sorts sur les barres d'action
+--------------------------------------------------------------------------------
+
+-- Emplacements d'action : 15 pages (barre principale et multibarres) de NUM_ACTIONBAR_BUTTONS.
+-- Le client n'a pas de constante du total.
+NS.NUM_ACTION_SLOTS = 15 * (_G.NUM_ACTIONBAR_BUTTONS or 12)
+
+--- Sort posé à l'emplacement `slot` : spellID lisible, nil sinon (vide, macro, objet, secret).
+function NS.GetActionSpellID(slot)
+    if not _G.GetActionInfo then return nil end
+    local ok, kind, id = pcall(GetActionInfo, slot)
+    if not ok or isSecret(kind) or isSecret(id) or kind ~= "spell" or type(id) ~= "number" then return nil end
+    return id
+end
+
+--- Nom du sort, nil s'il est illisible.
+function NS.GetPlainSpellName(id)
+    local name = NS.GetSpellName(id)
+    if name == nil or isSecret(name) then return nil end
+    return name
+end
+
+--- Rang affiché du sort (« Rang 4 »), nil s'il n'en a pas ou s'il est illisible.
+function NS.GetSpellRankText(id)
+    local api = C_Spell and C_Spell.GetSpellSubtext
+    local text = api and api(id)
+    if text == nil or isSecret(text) or type(text) ~= "string" or text == "" then return nil end
+    return text
+end
+
+--- Sort du grimoire actif du joueur et à son plus haut rang ? false sans l'API.
+function NS.IsTopRankSpellbookSpell(id)
+    local book = _G.C_SpellBook
+    if not (book and book.FindSpellBookSlotForSpell and book.IsSpellBookItemLowRank) then return false end
+    local ok, slot, bank = pcall(book.FindSpellBookSlotForSpell, id, false, false, false, false)
+    if not ok or slot == nil or isSecret(slot) or isSecret(bank) then return false end
+    local player = Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player or 0
+    if bank ~= player then return false end
+    local okRank, low = pcall(book.IsSpellBookItemLowRank, slot, bank)
+    return okRank and not isSecret(low) and not low
+end
+
+--- Curseur vide (ni objet, ni sort, ni argent) ? false sans l'API.
+function NS.CursorEmpty()
+    if not _G.GetCursorInfo then return false end
+    return GetCursorInfo() == nil
+end
+
+--- Pose `spellID` à l'emplacement `slot` ; le sort remplacé, rendu au curseur, est lâché.
+-- Hors combat seulement. false sans l'API.
+function NS.PlaceSpellInActionSlot(spellID, slot)
+    local pickup = C_Spell and C_Spell.PickupSpell
+    if not (pickup and _G.PlaceAction and _G.ClearCursor) or InCombatLockdown() then return false end
+    pickup(spellID)
+    PlaceAction(slot)
+    ClearCursor()
+    return true
+end
+
+--------------------------------------------------------------------------------
+-- Vols (maître de vol)
+--------------------------------------------------------------------------------
+
+--- Le joueur est-il en vol de maître de vol ? false sans l'API.
+function NS.OnTaxi()
+    if not _G.UnitOnTaxi then return false end
+    local on = UnitOnTaxi("player")
+    return not isSecret(on) and on == true
+end
+
+--- Heure du serveur en secondes, nil sans l'API.
+function NS.ServerTime()
+    local now = _G.GetServerTime and GetServerTime()
+    if type(now) ~= "number" or isSecret(now) then return nil end
+    return now
+end
+
+--- Nœuds de la carte de vol ouverte : { [slotIndex] = { nodeID, name, current } }, vide sans API.
+function NS.GetTaxiNodes()
+    local nodes = {}
+    local api = C_TaxiMap and C_TaxiMap.GetAllTaxiNodes
+    local map = _G.GetTaxiMapID and GetTaxiMapID()
+    if not (api and map) or isSecret(map) then return nodes end
+    local ok, list = pcall(api, map)
+    local current = Enum and Enum.FlightPathState and Enum.FlightPathState.Current or 0
+    for _, info in ipairs(ok and type(list) == "table" and list or {}) do
+        local slot, node, state = info.slotIndex, info.nodeID, info.state
+        if slot and node and not (isSecret(slot) or isSecret(node) or isSecret(state)) then
+            local name = info.name
+            nodes[slot] = { nodeID = node, name = not isSecret(name) and name or nil, current = state == current }
+        end
+    end
+    return nodes
+end
+
+--- Accroche le départ (`onTake(slotIndex)`) et la demande d'atterrissage anticipé (`onEarlyLanding()`).
+-- Une seule fois par session : hooksecurefunc ne se retire pas.
+function NS.HookTaxi(onTake, onEarlyLanding)
+    if _G.TakeTaxiNode then hooksecurefunc("TakeTaxiNode", onTake) end
+    if _G.TaxiRequestEarlyLanding then hooksecurefunc("TaxiRequestEarlyLanding", onEarlyLanding) end
+end
+
+--------------------------------------------------------------------------------
+-- Statistiques du personnage
+--------------------------------------------------------------------------------
+
+local STAT_SIDE_BY_CLASS = { WARRIOR = "melee", ROGUE = "melee", HUNTER = "ranged",
+                             MAGE = "spell", PRIEST = "spell", WARLOCK = "spell" }
+local DRUID_MELEE_FORMS = { [1] = true, [5] = true, [8] = true }   -- félin, ours, ours redoutable
+
+--- Côté qui compte pour le joueur : "melee", "ranged" ou "spell", d'après la classe, le rôle
+-- choisi et, pour le druide, la forme. Arguments facultatifs (tests) : sinon lus sur le joueur.
+function NS.GetStatSide(class, role, formID)
+    if not class then
+        local _, token = UnitClass("player")
+        class = not isSecret(token) and token or nil
+    end
+    if STAT_SIDE_BY_CLASS[class] then return STAT_SIDE_BY_CLASS[class] end
+    if not role then
+        local assigned = _G.UnitGroupRolesAssigned and UnitGroupRolesAssigned("player")
+        role = not isSecret(assigned) and assigned or "NONE"
+        if role == "NONE" and NS.IsTankUnit("player") then role = "TANK" end
+    end
+    if role == "HEALER" then return "spell" end
+    if class == "DRUID" then
+        formID = formID or (_G.GetShapeshiftFormID and GetShapeshiftFormID())
+        return not isSecret(formID) and DRUID_MELEE_FORMS[formID] and "melee" or "spell"
+    end
+    if class == "SHAMAN" and role ~= "TANK" and role ~= "DAMAGER" then return "spell" end
+    return "melee"
+end
+
+-- Lit `fn(...)` sous pcall : premier retour lisible, nil sinon.
+local function PlainStat(fn, ...)
+    if not fn then return nil end
+    local ok, value = pcall(fn, ...)
+    if not ok or value == nil or isSecret(value) or type(value) ~= "number" then return nil end
+    return value
+end
+
+-- Meilleure valeur de `fn(school)` sur les écoles de magie 2 à 7 ; nil si l'une est illisible.
+local function BestSchool(fn)
+    local best
+    for school = 2, 7 do
+        local value = PlainStat(fn, school)
+        if value == nil then return nil end
+        if not best or value > best then best = value end
+    end
+    return best
+end
+
+-- Soigneur (rôle choisi) : bonus de soins ; sinon meilleur bonus de dégâts des écoles 2 à 7.
+local function SpellPower()
+    local role = _G.UnitGroupRolesAssigned and UnitGroupRolesAssigned("player")
+    if not isSecret(role) and role == "HEALER" then return PlainStat(_G.GetSpellBonusHealing) end
+    return BestSchool(_G.GetSpellBonusDamage)
+end
+
+local function AttackPower(ranged)
+    local fn = ranged and _G.UnitRangedAttackPower or _G.UnitAttackPower
+    if not fn then return nil end
+    local ok, base, pos, neg = pcall(fn, "player")
+    if not ok or isSecret(base) or isSecret(pos) or isSecret(neg) or type(base) ~= "number" then return nil end
+    return base + (pos or 0) + (neg or 0)
+end
+
+local STAT_READERS = {
+    crit = {
+        melee = function() return PlainStat(_G.GetCritChance) end,
+        ranged = function() return PlainStat(_G.GetRangedCritChance) end,
+        spell = function() return BestSchool(_G.GetSpellCritChance) end,
+    },
+    haste = {
+        melee = function() return PlainStat(_G.GetMeleeHaste) end,
+        ranged = function() return PlainStat(_G.GetRangedHaste) end,
+        spell = function() return PlainStat(_G.UnitSpellHaste, "player") end,
+    },
+    hit = {
+        melee = function() return PlainStat(_G.GetHitModifier) end,
+        ranged = function() return PlainStat(_G.GetHitModifier) end,
+        spell = function() return PlainStat(_G.GetSpellHitModifier) end,
+    },
+    power = {
+        melee = function() return AttackPower(false) end,
+        ranged = function() return AttackPower(true) end,
+        spell = SpellPower,
+    },
+}
+
+--- Valeur de la statistique `key` du côté `side` (défaut : NS.GetStatSide()), nil si secrète ou
+-- sans l'API. `avoidance` rend esquive, parade, blocage ; `armor` l'armure effective.
+function NS.GetStat(key, side)
+    if key == "armor" then
+        if not _G.UnitArmor then return nil end
+        local ok, _, effective = pcall(UnitArmor, "player")
+        if not ok or isSecret(effective) or type(effective) ~= "number" then return nil end
+        return effective
+    end
+    if key == "avoidance" then
+        local dodge, parry, block = PlainStat(_G.GetDodgeChance), PlainStat(_G.GetParryChance),
+            PlainStat(_G.GetBlockChance)
+        if not (dodge and parry and block) then return nil end
+        return dodge, parry, block
+    end
+    local readers = STAT_READERS[key]
+    if not readers then return nil end
+    return readers[side or NS.GetStatSide()]()
+end
+
+--------------------------------------------------------------------------------
+-- Butin : analyse des lignes du chat
+--------------------------------------------------------------------------------
+
+local function EscapePattern(text) return (text:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0")) end
+
+--- Phrase de format du client (« Butin : %s.», « %2$s … %1$d ») en motif Lua ancré, et ordre des
+-- arguments de chaque capture.
+local function FormatToPattern(format)
+    local parts, order, pos, auto = { "^" }, {}, 1, 0
+    while true do
+        local first, last, index, kind = format:find("%%(%d*)%$?[%.%d]*([sdf])", pos)
+        if not first then break end
+        parts[#parts + 1] = EscapePattern(format:sub(pos, first - 1))
+        auto = auto + 1
+        order[#order + 1] = tonumber(index) or auto
+        parts[#parts + 1] = kind == "d" and "(%d+)" or kind == "f" and "([%d%.,]+)" or "(.-)"
+        pos = last + 1
+    end
+    parts[#parts + 1] = EscapePattern(format:sub(pos)) .. "$"
+    return table.concat(parts), order
+end
+NS.FormatToPattern = FormatToPattern
+
+-- Arguments de `text` selon `format`, rangés dans l'ordre du format d'origine ; nil si pas de correspondance.
+local function MatchFormat(text, format)
+    if type(format) ~= "string" then return nil end
+    local pattern, order = FormatToPattern(format)
+    local captures = { text:match(pattern) }
+    if #captures == 0 then return nil end
+    local args = {}
+    for i, index in ipairs(order) do args[index] = captures[i] end
+    return args
+end
+
+--- Somme en cuivre d'un texte d'argent du client (« 1 Or, 2 Argent, 3 Cuivre »), nil si illisible.
+local function ParseMoney(text)
+    local total, found = 0, false
+    for _, coin in ipairs({ { "GOLD_AMOUNT", 10000 }, { "SILVER_AMOUNT", 100 }, { "COPPER_AMOUNT", 1 } }) do
+        local format = _G[coin[1]]
+        if type(format) == "string" then
+            local pattern = FormatToPattern(format)
+            local amount = text:match((pattern:sub(2, -2)))   -- sans les ancres ^ et $
+            if amount then total, found = total + tonumber(amount) * coin[2], true end
+        end
+    end
+    return found and total or nil
+end
+
+local ITEM_FORMATS = {   -- versions « multiple » d'abord : la simple avalerait « x5 »
+    "LOOT_ITEM_SELF_MULTIPLE", "LOOT_ITEM_PUSHED_SELF_MULTIPLE", "LOOT_ITEM_CREATED_SELF_MULTIPLE",
+    "LOOT_ITEM_SELF", "LOOT_ITEM_PUSHED_SELF", "LOOT_ITEM_CREATED_SELF",
+}
+local MONEY_FORMATS = { "YOU_LOOT_MONEY", "LOOT_MONEY_SPLIT" }
+-- Gain de réputation, variantes avec bonus d'abord ; globales absentes ignorées par MatchFormat.
+local FACTION_FORMATS = { "FACTION_STANDING_INCREASED_DOUBLE_BONUS", "FACTION_STANDING_INCREASED_ACH_BONUS",
+                          "FACTION_STANDING_INCREASED_BONUS", "FACTION_STANDING_INCREASED_ACCOUNT_WIDE",
+                          "FACTION_STANDING_INCREASED" }
+
+--- Ligne de butin du joueur : { kind = "item", link, itemID, quantity }, { kind = "money", copper }
+-- ou { kind = "faction", name, quantity } ; nil si le texte est secret, d'un autre joueur ou inconnu.
+function NS.ParseLootLine(text)
+    if text == nil or isSecret(text) or type(text) ~= "string" then return nil end
+    for _, global in ipairs(ITEM_FORMATS) do
+        local args = MatchFormat(text, _G[global])
+        if args then
+            local link = args[1]
+            local itemID = tonumber(link:match("item:(%d+)"))
+            return { kind = "item", link = link, itemID = itemID, quantity = tonumber(args[2]) or 1 }
+        end
+    end
+    for _, global in ipairs(MONEY_FORMATS) do
+        local args = MatchFormat(text, _G[global])
+        local copper = args and ParseMoney(args[1])
+        if copper then return { kind = "money", copper = copper } end
+    end
+    for _, global in ipairs(FACTION_FORMATS) do
+        local args = MatchFormat(text, _G[global])
+        if args then return { kind = "faction", name = args[1], quantity = tonumber(args[2]) or 0 } end
+    end
+    return nil
+end
+
+--- Nom et icône d'une monnaie, nil si illisibles.
+function NS.GetCurrencyDisplay(currencyType)
+    local api = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo
+    if not api or currencyType == nil or isSecret(currencyType) then return nil end
+    local ok, info = pcall(api, currencyType)
+    if not ok or type(info) ~= "table" or isSecret(info.name) then return nil end
+    return info.name, info.iconFileID
+end
+
+--- Icône d'un objet par son ID, nil tant que le client ne la connaît pas.
+function NS.GetItemIcon(itemID)
+    local api = C_Item and C_Item.GetItemIconByID
+    return api and itemID and api(itemID) or nil
+end
+
+--------------------------------------------------------------------------------
+-- Sacs : objets à ne jamais vendre
+--------------------------------------------------------------------------------
+
+--- L'objet de la case appartient-il à un ensemble d'équipement ? false sans l'API.
+function NS.IsBagItemInEquipmentSet(bag, slot)
+    local api = Container.GetContainerItemEquipmentSetInfo
+    if not api then return false end
+    local ok, inSet = pcall(api, bag, slot)
+    return ok and not isSecret(inSet) and inSet == true
+end
+
+--- L'objet de la case est-il encore remboursable chez le marchand ? false sans l'API.
+function NS.IsBagItemRefundable(bag, slot)
+    local api = Container.GetContainerItemPurchaseInfo
+    if not api then return false end
+    local ok, info = pcall(api, bag, slot, false)
+    local seconds = ok and type(info) == "table" and info.refundSeconds or nil
+    return seconds ~= nil and not isSecret(seconds) and type(seconds) == "number" and seconds > 0
 end

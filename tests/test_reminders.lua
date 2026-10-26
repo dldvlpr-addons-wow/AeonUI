@@ -107,14 +107,20 @@ test("poison : arme enchantée ou non", function()
     eq(Keys(Reminders:Collect()).roguePoison, nil)
 end)
 
-test("arme de chaman vue seulement dans l'infobulle", function()
+test("arme de chaman : imprégnation lue par C_Item, secret = sans réponse", function()
     reset()
     Mock.units.player.class = "SHAMAN"
     Mock.knownSpells[8017] = true
     Mock.spells[8017] = "Rockbiter Weapon"
-    Mock.mainHandTooltip = { "Masse", "+5 Agility" }
     eq(Keys(Reminders:Collect()).shamanWeapon, "Missing: Weapon imbue")
-    Mock.mainHandTooltip = { "Masse", "Rockbiter 3 (30 min)" }
+    -- Arme secondaire seule : l'arme principale reste à imprégner.
+    Mock.weaponEnchants[1] = { { hasEnchant = true, enchantType = 3, timeLeft = 60000, charges = 0, enchantID = 2, enchantIconID = 7 } }
+    eq(Keys(Reminders:Collect()).shamanWeapon, "Missing: Weapon imbue")
+    local timeLeft = Mock.SetSecret(1234)
+    Mock.weaponEnchants[0] = { { hasEnchant = true, enchantType = 3, timeLeft = timeLeft, charges = 0, enchantID = 3, enchantIconID = 7 } }
+    eq(NS.HasMainHandEnchant(), nil)
+    eq(Keys(Reminders:Collect()).shamanWeapon, nil)
+    Mock.weaponEnchants[0] = { { hasEnchant = true, enchantType = 3, timeLeft = 1800000, charges = 0, enchantID = 3, enchantIconID = 7 } }
     eq(Keys(Reminders:Collect()).shamanWeapon, nil)
 end)
 
@@ -192,7 +198,7 @@ test("rappels : membres sans buff de groupe, buffs choisis, icône cliquable hor
     eq(entry.text, "Arcane Intellect: 1 member(s) without")
     eq(entry.unit, "party2", "cible : le membre sans")
     Mock.units.party2.dead = true
-    Mock.Advance(11)   -- la couverture du groupe est mise en cache 10 s
+    Reminders:OnRefresh()   -- réponse par membre gardée : relue quand le groupe ou les réglages changent
     eq(Keys(Reminders:Collect())["coverage:arcaneIntellect"], nil, "mort : ne compte pas")
     Mock.units.party2.dead = nil
     -- Buff choisi par identifiant.
@@ -203,7 +209,7 @@ test("rappels : membres sans buff de groupe, buffs choisis, icône cliquable hor
     eq(Keys(Reminders:Collect())["custom:99999"], nil, "sort inconnu : rien")
     -- Icône : sort et cible posés, lueur.
     NS.Modules:SetEnabled("reminders", true)
-    Mock.Advance(11)   -- cache de couverture expiré (le membre est revenu à la vie)
+    -- Membre revenu à la vie : réponse inconnue (mort) relue à chaque évaluation.
     Reminders:Evaluate()
     local _, lines = Reminders:GetFrame()
     local button
@@ -217,11 +223,12 @@ test("rappels : membres sans buff de groupe, buffs choisis, icône cliquable hor
     Mock.SetCombat(true)
     Reminders:Evaluate()
     Mock.SetCombat(false)
-    -- Buff de groupe lancé par le joueur : son UNIT_AURA rafraîchit la couverture, sans attendre 10 s.
+    -- Membre buffé : son UNIT_AURA relit sa seule réponse, sans scrutation.
     Mock.units.party2.buffs = { "Arcane Brilliance" }
-    Mock.FireEvent("UNIT_AURA", "player")
+    eq(Keys(Reminders:Collect())["coverage:arcaneIntellect"] ~= nil, true, "sans événement : réponse gardée")
+    Mock.FireEvent("UNIT_AURA", "party2")
     Mock.Advance(0.4)
-    eq(Keys(Reminders:Collect())["coverage:arcaneIntellect"], nil, "joueur buffé : couverture relue")
+    eq(Keys(Reminders:Collect())["coverage:arcaneIntellect"], nil, "membre buffé : couverture relue")
     Mock.units.party2.buffs = nil
     Reminders.db.customBuffs = ""
     Mock.SetGroup(1, false)

@@ -5,6 +5,8 @@
 -- barres (en combat compris) : débuffs d'abord, puis buffs, chacun du plus court au plus long.
 -- Sinon, voie maison : objet durée du moteur quand il existe (secret compris), sinon valeurs
 -- lisibles ; illisible (combat) : barre pleine, sans chiffre.
+-- Enchantements d'arme temporaires (imprégnations, poisons, huiles…) : barres en tête de pile,
+-- au-dessus des buffs ; le conteneur du moteur est ancré sous elles.
 local _, NS = ...
 local L = NS.L
 local Media = NS.Media
@@ -16,6 +18,7 @@ local AuraBars = NS.Modules:Register("aurabars", {
         enabled = false,
         show = "both",            -- "buffs", "debuffs", "both"
         hidePermanent = true,     -- auras sans durée (formes, auras de paladin) écartées
+        weaponEnchants = true,    -- enchantements d'arme temporaires en tête de pile
         maxBars = 12,
         width = 220,
         height = 18,
@@ -34,6 +37,7 @@ local bars = {}
 local list = {}
 local engine            -- conteneur du moteur ; false : absent
 local engineBars = {}   -- { bar, icon, harmful } des boutons du moteur, pour les retailler
+local enchants = {}     -- enchantements d'arme, relus sur WEAPON_ENCHANT_CHANGED / WEAPON_SLOT_CHANGED
 
 local function Known(value)
     if NS.IsSecret(value) then return nil end
@@ -162,8 +166,6 @@ local function LayoutEngine()
     if not engine then return end
     local db = AuraBars.db
     local anchor = db.growUp and "BOTTOMRIGHT" or "TOPRIGHT"
-    engine:ClearAllPoints()
-    engine:SetPoint(anchor, holder, anchor, 0, 0)
     NS.SetAuraContainerFlow(engine, anchor, "LEFT", db.growUp and "UP" or "DOWN", nil, true)
     local candidates = { maxDuration = db.hidePermanent and math.huge or nil }
     local groups = {
@@ -185,28 +187,47 @@ local function LayoutEngine()
     NS.SetAuraContainerUnit(engine, "player", true)
 end
 
+--- Relit les enchantements d'arme (entrées au format de Collect).
+local function ReadEnchants()
+    wipe(enchants)
+    if not (active and AuraBars.db.weaponEnchants) then return end
+    for _, enchant in ipairs((NS.GetWeaponEnchants())) do
+        enchants[#enchants + 1] = { icon = enchant.icon, name = enchant.name, duration = enchant.duration,
+                                    expiration = enchant.expiration, stacks = enchant.charges }
+    end
+end
+
 function AuraBars:Update()
     if not holder then return end
     local db = self.db
     local shown = 0
-    if active and not engine then   -- avec le moteur, rien à lire ni à poser
-        for _, entry in ipairs(self.Collect()) do
-            if shown >= db.maxBars then break end
-            shown = shown + 1
-            local bar = Bar(shown)
-            bar.manual = nil
-            bar:SetSize(db.width - db.height - 2, db.height)
-            bar.icon:SetSize(db.height, db.height)
-            bar:ClearAllPoints()
-            local offset = (shown - 1) * (db.height + db.spacing)
-            if db.growUp then
-                bar:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", 0, offset)
-            else
-                bar:SetPoint("TOPRIGHT", holder, "TOPRIGHT", 0, -offset)
-            end
-            Paint(bar, entry)
-            bar:Show()
+    local function Place(entry)
+        if shown >= db.maxBars then return end
+        shown = shown + 1
+        local bar = Bar(shown)
+        bar.manual = nil
+        bar:SetSize(db.width - db.height - 2, db.height)
+        bar.icon:SetSize(db.height, db.height)
+        bar:ClearAllPoints()
+        local offset = (shown - 1) * (db.height + db.spacing)
+        if db.growUp then
+            bar:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", 0, offset)
+        else
+            bar:SetPoint("TOPRIGHT", holder, "TOPRIGHT", 0, -offset)
         end
+        Paint(bar, entry)
+        bar:Show()
+    end
+    if active and db.show ~= "debuffs" then
+        for _, entry in ipairs(enchants) do Place(entry) end
+    end
+    if engine then   -- le moteur lit et pose les auras, sous les barres d'arme
+        local anchor = db.growUp and "BOTTOMRIGHT" or "TOPRIGHT"
+        local offset = shown * (db.height + db.spacing)
+        engine:ClearAllPoints()
+        engine:SetPoint(anchor, holder, anchor, 0, db.growUp and offset or -offset)
+    elseif active then
+        for _, entry in ipairs(self.Collect()) do Place(entry) end
     end
     for index = shown + 1, #bars do bars[index]:Hide() end
     holder:SetSize(db.width, math.max(db.height, db.maxBars * (db.height + db.spacing) - db.spacing))
@@ -232,16 +253,22 @@ local function Build()
 end
 
 local events = CreateFrame("Frame")
-events:SetScript("OnEvent", function() AuraBars:Update() end)
+events:SetScript("OnEvent", function(_, event)
+    if event ~= "UNIT_AURA" then ReadEnchants() end
+    AuraBars:Update()
+end)
 
 function AuraBars:OnEnable()
     if not holder then Build() end
     active = true
     NS.RegisterEventSafe(events, "UNIT_AURA", "player")
     NS.RegisterEventSafe(events, "PLAYER_ENTERING_WORLD")
+    NS.RegisterEventSafe(events, "WEAPON_ENCHANT_CHANGED")
+    NS.RegisterEventSafe(events, "WEAPON_SLOT_CHANGED")
     NS.Movers:Register("auraBars", holder, L.AURABARS_TITLE, "TOPRIGHT", -230, -300)
     NS.Movers:Load("auraBars")
     LayoutEngine()
+    ReadEnchants()
     self:Update()
 end
 
@@ -254,6 +281,7 @@ end
 
 function AuraBars:OnRefresh()
     if holder then LayoutEngine() end
+    ReadEnchants()
     self:Update()
 end
 
@@ -263,6 +291,7 @@ function AuraBars:BuildOptions(o)
         { name = L.OPT_AURABARS_DEBUFFS, value = "debuffs" },
     })
     o:Check("hidePermanent", L.OPT_AURABARS_HIDE_PERMANENT)
+    o:Check("weaponEnchants", L.OPT_AURABARS_WEAPON_ENCHANTS)
     o:Slider("maxBars", L.OPT_AURABARS_MAX, 1, 40, 1)
     o:Slider("width", L.OPT_RESOURCE_WIDTH, 100, 500, 2)
     o:Slider("height", L.OPT_RESOURCE_HEIGHT, 10, 40, 1)

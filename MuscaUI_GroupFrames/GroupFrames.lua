@@ -31,9 +31,15 @@ local GroupFrames = NS.Modules:Register("groupframes", {
         horizontal = false,             -- groupe : colonne (false) ou ligne (true)
         reverse = false,                -- groupe : croissance vers le haut (colonne) ou la gauche (ligne)
         partySortRole = true,           -- groupe : tanks, soigneurs puis dégâts
+        playerPosition = "first",       -- groupe sans tri par rôle : joueur "first" | "last"
+        memberTarget = true, memberTargetSide = "RIGHT", memberTargetWidth = 80,   -- groupe : cible de chaque membre
+        missingBuffs = true,            -- icônes des buffs de groupe manquants (détection de Reminders)
         raidUnitsPerColumn = 5, raidColumns = 8, raidSortBy = "ROLE",   -- "GROUP" | "CLASS" | "ROLE" | "NAME"
         raidUnitGrowth = "DOWN", raidGroupGrowth = "RIGHT",   -- membres, puis colonnes : GROWTH
         raidGroups = 8,                 -- raid : groupes 1 à N affichés
+        -- Paliers du raid (membres des groupes affichés) : jusqu'à 10, jusqu'à 25 ; au-delà, raidWidth,
+        -- raidHeight et raidColumns.
+        raidTiers = { { width = 120, height = 52, columns = 2 }, { width = 104, height = 46, columns = 5 } },
         raidThreshold = 5,              -- cadres de raid au-delà de 5, 10, 15, 20, 25 ou 40 membres (en dessous : disposition du groupe)
         nameLength = 12,                -- caractères du nom (0 = entier)
         namePosition = "TOPLEFT",       -- "TOPLEFT" | "CENTER"
@@ -58,12 +64,25 @@ local GroupFrames = NS.Modules:Register("groupframes", {
         auraPosition = "INSIDE",        -- "INSIDE" (bas droite de la vie) | "ABOVE" | "BELOW"
         auraBuffs = false,              -- buffs après les débuffs
         castbar = false, castbarHeight = 4,   -- incantation du membre, au bas de la vie
-        auraFilter = "all",             -- débuffs montrés : NS.AURA_FILTERS
+        auraFilter = "all",             -- préréglage des groupes de débuffs (NS.AURA_FILTERS) ; "mine" : tes débuffs
+        -- Groupes de débuffs cumulables : point "flow" (avec les auras) ou ancre sur 9 points (une aura).
+        debuffGroups = {
+            control = { enabled = true, point = "CENTER", size = 22, max = 1 },
+            boss = { enabled = true, point = "TOP", size = 20, max = 1 },
+            dispellable = { enabled = true, point = "flow", size = 18, max = 3 },
+            nonPlayer = { enabled = true, point = "flow", size = 18, max = 3 },
+            duration = { enabled = true, point = "flow", size = 18, max = 3 },
+        },
         portrait = false,               -- portrait 2D à gauche, dans le cadre
         targetHighlight = true,         -- bordure d'accent sur la cible (après menace et dispel)
         mouseoverHighlight = true,      -- voile clair au survol
-        -- Sorts suivis : identifiants par coin (tous les rangs, lus par nom), icône et recharge.
-        indicators = { TOPLEFT = "", TOPRIGHT = "", BOTTOMLEFT = "", BOTTOMRIGHT = "" },
+        -- Sorts suivis : huit indicateurs (identifiants, tous les rangs, et ancre sur 9 points), icône et recharge.
+        indicators = {
+            { spells = "", point = "TOPLEFT" }, { spells = "", point = "TOPRIGHT" },
+            { spells = "", point = "BOTTOMLEFT" }, { spells = "", point = "BOTTOMRIGHT" },
+            { spells = "", point = "TOP" }, { spells = "", point = "BOTTOM" },
+            { spells = "", point = "LEFT" }, { spells = "", point = "RIGHT" },
+        },
         indicatorSize = 10, indicatorMine = true,   -- mine : seulement les auras posées par le joueur
         extraFrames = false, extraNames = "",       -- noms séparés par des virgules ; vide = tanks du groupe
         friendlyBoss = false,
@@ -142,14 +161,46 @@ local ROLE_ORDER = { "TANK", "HEALER", "DAMAGER", "NONE" }
 
 local BLIZZARD = { "PartyFrame", "CompactPartyFrame", "CompactRaidFrameContainer" }
 
+local POINTS = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }
+local VALID_POINT = {}
+for _, point in ipairs(POINTS) do VALID_POINT[point] = true end
+local function Point(point, fallback) return VALID_POINT[point] and point or fallback end
+GroupFrames.POINTS = POINTS
 local CORNERS = { "TOPLEFT", "TOPRIGHT", "BOTTOMLEFT", "BOTTOMRIGHT" }
-GroupFrames.CORNERS = CORNERS
--- Préréglage de classe (Classic : rangs 1, reconnus par nom) : soins sur la durée et bouclier.
+GroupFrames.MAX_INDICATORS = 8
+-- Préréglages d'indicateurs, tous les rangs Classic (et l'aura quand elle diffère du sort lancé).
 local INDICATOR_PRESETS = {
-    PRIEST = { BOTTOMRIGHT = "139", BOTTOMLEFT = "17" },      -- Rénovation, Mot de pouvoir : Bouclier
-    DRUID = { BOTTOMRIGHT = "774", BOTTOMLEFT = "8936" },     -- Récupération, Rétablissement
+    hots = {   -- Rénovation, Récupération ; Rétablissement, Mot de pouvoir : Bouclier
+        { spells = "139, 6074, 6075, 6076, 6077, 6078, 10927, 10928, 10929, 25315, "
+            .. "774, 1058, 1430, 2090, 2091, 3627, 8910, 9839, 9840, 9841, 25299", point = "BOTTOMRIGHT" },
+        { spells = "8936, 8938, 8939, 8940, 8941, 9750, 9856, 9857, 9858, "
+            .. "17, 592, 600, 3747, 6065, 6066, 10898, 10899, 10900, 10901", point = "BOTTOMLEFT" },
+    },
+    -- Mur protecteur, Bouclier divin, Protection divine, Bloc de glace, Évasion, Écorce,
+    -- Dernier rempart (sort 12975, aura 12976), Dissuasion
+    defensives = { { spells = "871, 642, 1020, 498, 5573, 11958, 5277, 22812, 12975, 12976, 19263", point = "TOP" } },
+    -- Bénédiction de protection, Infusion de puissance, Innervation, Bénédiction de sacrifice, Gardien de peur
+    externals = { { spells = "1022, 5599, 10278, 10060, 29166, 6940, 20729, 6346", point = "TOPRIGHT" } },
+    -- Pierre d'âme, Intervention divine
+    raidCooldowns = { { spells = "20707, 20762, 20763, 20764, 20765, 19752", point = "LEFT" } },
+    -- Sprint, Célérité, Bénédiction de liberté, Aspect du guépard, Aspect de la meute
+    movement = { { spells = "2983, 8696, 11305, 1850, 9821, 1044, 5118, 13159", point = "RIGHT" } },
 }
 GroupFrames.INDICATOR_PRESETS = INDICATOR_PRESETS
+GroupFrames.PRESET_ORDER = { "hots", "defensives", "externals", "raidCooldowns", "movement" }
+local CLASS_PRESET = { PRIEST = "hots", DRUID = "hots" }
+-- Filtre unique d'avant (NS.AURA_FILTERS) : groupes de débuffs cochés.
+local FILTER_GROUPS = {
+    important = { boss = true, dispellable = true }, dispellable = { dispellable = true }, boss = { boss = true },
+}
+
+--- Coche les groupes de débuffs équivalents au filtre `mode` ("all" et "mine" : tous).
+function GroupFrames.ApplyAuraFilterPreset(mode)
+    local wanted = FILTER_GROUPS[mode]
+    for _, key in ipairs(Elements.DEBUFF_GROUPS) do
+        GroupFrames.db.debuffGroups[key].enabled = not wanted or wanted[key] == true
+    end
+end
 local BOSS_COUNT = 5
 
 local function Known(value)
@@ -163,10 +214,35 @@ end
 
 local RAID_SIZED = { raid = true, tank = true, assist = true }
 
+--- Palier du raid d'après les membres des groupes affichés : 1 jusqu'à 10, 2 jusqu'à 25, 3 au-delà.
+-- Groupe illisible (secret) : le membre compte.
+function GroupFrames.RaidTier()
+    local groups, count = tonumber(GroupFrames.db.raidGroups) or 8, 0
+    if IsInRaid() then
+        for i = 1, GetNumGroupMembers() do
+            local subgroup = Known(select(3, GetRaidRosterInfo(i)))
+            if not subgroup or subgroup <= groups then count = count + 1 end
+        end
+    end
+    return GroupFrames.TierOf(count)
+end
+
+function GroupFrames.TierOf(count) return count <= 10 and 1 or count <= 25 and 2 or 3 end
+
+--- Réglages du palier `tier` (défaut : courant) : { width, height, columns }.
+local function RaidTierSettings(tier)
+    local db = GroupFrames.db
+    return db.raidTiers[tier or GroupFrames.raidTier or 3]
+        or { width = db.raidWidth, height = db.raidHeight, columns = db.raidColumns }
+end
+
 --- Largeur et hauteur des boutons de l'en-tête `key` : raid (tanks, assistants) ou groupe.
 function GroupFrames.Size(key)
     local db = GroupFrames.db
-    if RAID_SIZED[key] then return db.raidWidth, db.raidHeight end
+    if RAID_SIZED[key] then
+        local tier = RaidTierSettings()
+        return tier.width, tier.height
+    end
     return db.width, db.height
 end
 
@@ -178,7 +254,7 @@ local function Config(key)
         castbar = db.castbar, castbarHeight = db.castbarHeight,
         auras = db.auras, auraSize = db.auraSize, auraFilter = db.auraFilter, auraMax = db.auraMax,
         aurasAbove = db.auraPosition == "ABOVE", aurasInside = db.auraPosition == "INSIDE",
-        debuffsOnly = not db.auraBuffs,
+        debuffsOnly = not db.auraBuffs, debuffGroups = db.debuffGroups,
         vertical = db.vertical, name = true, level = false, combo = false,
         portrait = db.portrait, portraitInside = true,
         nameLength = (tonumber(db.nameLength) or 0) > 0 and db.nameLength or nil,
@@ -461,21 +537,28 @@ local function IndicatorCandidates(list)
     return { includeSpellIDs = ids }
 end
 
---- Coins suivis par le moteur : un emplacement par coin, collé à la création sur un cadre d'ancrage
--- à nous. Le moteur peut refuser de déplacer son bouton (auras secrètes) ; le cadre d'ancrage, jamais.
+--- Indicateur n° `index` : sorts et ancre lus du profil (ancre inconnue : centre).
+function GroupFrames.Indicator(index)
+    local entry = GroupFrames.db.indicators[index]
+    if type(entry) ~= "table" then return GroupFrames.SpellList(""), "CENTER" end
+    return GroupFrames.SpellList(entry.spells), Point(entry.point, "CENTER")
+end
+
+--- Indicateurs suivis par le moteur : un emplacement par indicateur, collé à la création sur un cadre
+-- d'ancrage à nous. Le moteur peut refuser de déplacer son bouton (auras secrètes) ; le cadre d'ancrage, jamais.
 local function BuildIndicatorSlots(button, engine)
     local db = GroupFrames.db
     local size = NS.Pixel:Scale(db.indicatorSize)
     local filter = db.indicatorMine and "HELPFUL|PLAYER" or "HELPFUL"
-    button.cornerAnchors = button.cornerAnchors or {}
-    for _, corner in ipairs(CORNERS) do
-        local anchor = button.cornerAnchors[corner] or CreateFrame("Frame", nil, button.overlay)
-        button.cornerAnchors[corner] = anchor
+    button.indicatorAnchors = button.indicatorAnchors or {}
+    for index = 1, GroupFrames.MAX_INDICATORS do
+        local list, point = GroupFrames.Indicator(index)
+        local anchor = button.indicatorAnchors[index] or CreateFrame("Frame", nil, button.overlay)
+        button.indicatorAnchors[index] = anchor
         anchor:SetSize(size, size)
         anchor:ClearAllPoints()
-        anchor:SetPoint(corner, button.health, corner, 0, 0)
-        local list = GroupFrames.SpellList(db.indicators[corner])
-        NS.SetAuraSlot(engine, corner, filter, not list.empty, function(slotButton)
+        anchor:SetPoint(point, button.health, point, 0, 0)
+        NS.SetAuraSlot(engine, "indicator" .. index, filter, not list.empty, function(slotButton)
             NS.InitAuraButton(slotButton, { size = size, noNumbers = true })
             pcall(slotButton.ClearAllPoints, slotButton)
             pcall(slotButton.SetAllPoints, slotButton, anchor)
@@ -524,9 +607,10 @@ local function BuildIndicators(button)
     end
     button.indicators = button.indicators or {}
     local size = NS.Pixel:Scale(GroupFrames.db.indicatorSize)
-    for _, corner in ipairs(CORNERS) do
-        local indicator = button.indicators[corner]
-        if not indicator and (GroupFrames.db.indicators[corner] or "") ~= "" then
+    for index = 1, GroupFrames.MAX_INDICATORS do
+        local list, point = GroupFrames.Indicator(index)
+        local indicator = button.indicators[index]
+        if not indicator and not list.empty then
             indicator = CreateFrame("Frame", nil, button.overlay)
             indicator:SetFrameLevel(button.overlay:GetFrameLevel() + 2)
             NS.Media:CreateBackdrop(indicator)
@@ -537,17 +621,17 @@ local function BuildIndicators(button)
             indicator.cooldown:SetAllPoints(indicator)
             if indicator.cooldown.SetHideCountdownNumbers then indicator.cooldown:SetHideCountdownNumbers(true) end
             indicator:Hide()
-            button.indicators[corner] = indicator
+            button.indicators[index] = indicator
         end
         if indicator then
             indicator:SetSize(size, size)
             indicator:ClearAllPoints()
-            indicator:SetPoint(corner, button.health, corner, 0, 0)
+            indicator:SetPoint(point, button.health, point, 0, 0)
         end
     end
 end
 
---- Premier buff de la liste du coin présent sur l'unité ; identifiant ou nom secrets : ignorés.
+--- Premier buff de la liste de l'indicateur présent sur l'unité ; identifiant ou nom secrets : ignorés.
 function GroupFrames:UpdateIndicators(button, sameUnit)
     if button.auraSlots then   -- le moteur écoute UNIT_AURA ; ici, seulement l'unité
         NS.SetAuraContainerUnit(button.auraSlots, button.unit, not sameUnit)
@@ -563,8 +647,8 @@ function GroupFrames:UpdateIndicators(button, sameUnit)
         return
     end
     local filter = self.db.indicatorMine and "HELPFUL|PLAYER" or "HELPFUL"
-    for corner, indicator in pairs(button.indicators) do
-        local list = self.SpellList(self.db.indicators[corner])
+    for index, indicator in pairs(button.indicators) do
+        local list = self.Indicator(index)
         local found, unreadable
         for index = 1, list.empty and 0 or 40 do
             local icon, duration, expiration, _, _, _, spellId, _, _, name = NS.GetAura(button.unit, index, filter)
@@ -583,14 +667,33 @@ function GroupFrames:UpdateIndicators(button, sameUnit)
     end
 end
 
---- Coins remplis du préréglage de la classe du joueur ; false sans préréglage.
-function GroupFrames:ApplyIndicatorPreset()
-    local _, classFile = UnitClass("player")
-    local preset = INDICATOR_PRESETS[classFile]
+--- Préréglage `name` (défaut : celui de la classe du joueur) ajouté aux premiers indicateurs vides ;
+-- un jeu de sorts déjà présent n'est pas doublé. false sans préréglage ou sans place.
+function GroupFrames:ApplyIndicatorPreset(name)
+    local preset = INDICATOR_PRESETS[name or CLASS_PRESET[select(2, UnitClass("player"))]]
     if not preset then return false end
-    for _, corner in ipairs(CORNERS) do self.db.indicators[corner] = preset[corner] or "" end
-    NS.Modules:Refresh("groupframes")
-    return true
+    local list, added = self.db.indicators, false
+    for _, wanted in ipairs(preset) do
+        local free
+        for index = GroupFrames.MAX_INDICATORS, 1, -1 do
+            local entry = list[index]
+            if type(entry) ~= "table" then entry = {}; list[index] = entry end
+            if entry.spells == wanted.spells then free = nil break end
+            if (entry.spells or "") == "" then free = entry end
+        end
+        if free then free.spells, free.point, added = wanted.spells, wanted.point, true end
+    end
+    if added then NS.Modules:Refresh("groupframes") end
+    return added
+end
+
+--- Indicateur non vide ancré au point `point` ?
+local function IndicatorAt(point)
+    for index = 1, GroupFrames.MAX_INDICATORS do
+        local list, at = GroupFrames.Indicator(index)
+        if at == point and not list.empty then return true end
+    end
+    return false
 end
 
 function GroupFrames:UpdateAll(button)
@@ -604,6 +707,8 @@ function GroupFrames:UpdateAll(button)
     Elements.UpdateAuras(button, true)
     self:UpdateIndicators(button)
     Elements.UpdatePortrait(button)
+    self:UpdateMemberTarget(button)
+    self:UpdateMissingBuffs(button)
     self:UpdateRole(button)
     self:UpdateBorder(button)
     self:UpdateStatus(button)
@@ -644,12 +749,12 @@ local function PlaceIcons(button)
     local icon = NS.Pixel:Scale(db.roleIconSize or 12)
     local corner = db.roleIconPosition or "TOPLEFT"
     -- Coin pris par un sort suivi : l'icône de rôle se range à côté, vers l'intérieur.
-    local taken = (db.indicators[corner] or "") ~= "" and NS.Pixel:Scale(db.indicatorSize) + 2 or 0
+    local taken = IndicatorAt(corner) and NS.Pixel:Scale(db.indicatorSize) + 2 or 0
     button.role:SetSize(icon, icon)
     button.role:ClearAllPoints()
     button.role:SetPoint(corner, button.health, corner, corner:find("LEFT") and 1 + taken or -1 - taken,
         corner:find("TOP") and -1 or 1)
-    if button.auras and button.cfg.aurasInside and (db.indicators.BOTTOMRIGHT or "") ~= "" then
+    if button.auras and button.cfg.aurasInside and IndicatorAt("BOTTOMRIGHT") then
         button.auras:ClearAllPoints()   -- auras intérieures décalées à gauche du sort suivi
         button.auras:SetPoint("BOTTOMRIGHT", button.health, "BOTTOMRIGHT",
             -NS.Pixel:Scale(db.indicatorSize) - 4, NS.Pixel:Scale(2))
@@ -740,6 +845,75 @@ local function Style(header, buttonName)
     if unit then OnUnitChanged(button, "unit", unit) end
 end
 
+--- Cible du membre (groupe de 5) : bouton sécurisé qui reprend l'unité du parent suivie de
+-- « target » ; le client la résout au clic et l'affiche ou la cache, en combat compris. Hors combat.
+local function PlaceMemberTarget(button)
+    local db, frame = GroupFrames.db, button.memberTarget
+    -- L'en-tête de groupe montre aussi un petit raid (seuil > 5) : cible du membre en groupe seulement.
+    local wanted = db.memberTarget and not IsInRaid()
+    if button.isPreview or button.header.key ~= "party" or (not frame and not wanted) then return end
+    if not frame then
+        frame = CreateFrame("Button", nil, button, "SecureUnitButtonTemplate")
+        frame:SetAttribute("useparent-unit", true)
+        frame:SetAttribute("unitsuffix", "target")
+        frame:SetAttribute("*type1", "target")
+        frame:RegisterForClicks("AnyUp")
+        NS.Media:CreateBackdrop(frame)
+        frame.health = NS.Media:CreateStatusBar(frame)
+        frame.health:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -1)
+        frame.health:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
+        NS.Media:SetHealthColor(frame.health, 0.75, 0.25, 0.25)
+        frame.name = NS.Media:CreateText(frame.health, "OVERLAY", -1, "OUTLINE")
+        frame.name:SetPoint("LEFT", frame.health, "LEFT", 2, 0)
+        frame.name:SetPoint("RIGHT", frame.health, "RIGHT", -2, 0)
+        frame.name:SetWordWrap(false)
+        button.memberTarget = frame
+    end
+    local right = db.memberTargetSide ~= "LEFT"
+    local gap = right and 2 or -2
+    frame:ClearAllPoints()
+    frame:SetPoint(right and "TOPLEFT" or "TOPRIGHT", button, right and "TOPRIGHT" or "TOPLEFT", gap, 0)
+    frame:SetPoint(right and "BOTTOMLEFT" or "BOTTOMRIGHT", button, right and "BOTTOMRIGHT" or "BOTTOMLEFT", gap, 0)
+    frame:SetWidth(NS.Pixel:Scale(db.memberTargetWidth))
+    if wanted then RegisterUnitWatch(frame) else UnregisterUnitWatch(frame) frame:Hide() end
+end
+
+--- Nom et vie de la cible du membre : valeurs peut-être secrètes, passées aux puits sans test.
+function GroupFrames:UpdateMemberTarget(button)
+    local frame = button.memberTarget
+    if not (frame and button.unit and self.db.memberTarget) then return end
+    local unit = button.unit .. "target"
+    if not UnitExists(unit) then return end
+    frame.name:SetText(UnitName(unit))
+    frame.health:SetMinMaxValues(0, UnitHealthMax(unit))
+    frame.health:SetValue(UnitHealth(unit))
+end
+
+--- Icônes des buffs de groupe que le membre n'a pas, en rangée en haut du cadre. Détection
+-- partagée avec la pile de rappels (NS.MissingBuffs) ; rien en combat ni sur réponse inconnue.
+local MISSING_ICON_SIZE = 12
+function GroupFrames:UpdateMissingBuffs(button)
+    local missing = self.db.missingBuffs and not inCombat and button.unit and NS.MissingBuffs
+        and NS.MissingBuffs(button.unit) or {}
+    local icons = button.missingIcons or {}
+    button.missingIcons = icons
+    local size = NS.Pixel:Scale(MISSING_ICON_SIZE)
+    for index, rule in ipairs(missing) do
+        local icon = icons[index]
+        if not icon then
+            icon = button.health:CreateTexture(nil, "OVERLAY", nil, 7)
+            icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            icons[index] = icon
+        end
+        icon:SetSize(size, size)
+        icon:ClearAllPoints()
+        icon:SetPoint("TOP", button.health, "TOP", (index - (#missing + 1) / 2) * (size + 1), -1)
+        icon:SetTexture(NS.GetSpellTexture(rule.spells[1]))
+        icon:Show()
+    end
+    for index = #missing + 1, #icons do icons[index]:Hide() end
+end
+
 local function Relayout(button)
     button.cfg, button.global = Config(button.header.key), GroupFrames.db
     Elements.BuildAuras(button)
@@ -747,6 +921,7 @@ local function Relayout(button)
     PlaceCastbar(button)
     PlaceIcons(button)
     BuildIndicators(button)
+    if not NS.InCombat() then PlaceMemberTarget(button) end
 end
 
 --------------------------------------------------------------------------------
@@ -765,6 +940,7 @@ local function StyleChildren(header)
             child:SetAttribute("*type2", "togglemenu")
             child:RegisterForClicks("AnyUp")
             Style(header, child:GetName())
+            PlaceMemberTarget(child)
             local clickCast = NS.Modules:Get("clickcast")
             if clickCast then clickCast:Apply(child) end
         end
@@ -830,6 +1006,9 @@ local function Apply(header)
             header:SetAttribute("groupingOrder", "1,2,3,4,5,6,7,8")
         end
         header:SetAttribute("sortMethod", "INDEX")
+        -- Le joueur passe en tête de l'ordre (sans chiffre) : DESC le place en dernier.
+        header:SetAttribute("sortDir", (db.playerPosition == "last" and not db.partySortRole and threshold <= 5)
+            and "DESC" or "ASC")
         if threshold > 5 then
             RegisterStateDriver(header, "visibility", aboveThreshold .. " hide; [group] show; " .. (db.showSolo and "show" or "hide"))
         else
@@ -861,7 +1040,7 @@ local function Apply(header)
         SetGrowth(header, db.raidUnitGrowth, db.raidGroupGrowth, S(db.spacing))
         local groups = math.max(1, math.min(8, tonumber(db.raidGroups) or 8))
         header:SetAttribute("groupFilter", groups < 8 and ("1,2,3,4,5,6,7,8"):sub(1, groups * 2 - 1) or nil)
-        header:SetAttribute("maxColumns", db.raidColumns)
+        header:SetAttribute("maxColumns", RaidTierSettings().columns)
         header:SetAttribute("unitsPerColumn", db.raidUnitsPerColumn)
         if db.raidSortBy == "GROUP" then
             header:SetAttribute("groupBy", "GROUP")
@@ -999,7 +1178,7 @@ local POINT_STEP = { TOP = { 0, -1 }, BOTTOM = { 0, 1 }, LEFT = { 1, 0 }, RIGHT 
 
 --- Membres que l'en-tête montrerait, dans son ordre : groupFilter, groupBy puis sortMethod
 -- (INDEX : ordre du raid, NAME : alphabétique), plafonnés à maxColumns x unitsPerColumn.
-local function PreviewMembers(header, size)
+local function PreviewMembers(header, size, maxColumns)
     local filter, groupBy = header:GetAttribute("groupFilter"), header:GetAttribute("groupBy")
     local byName = header:GetAttribute("sortMethod") == "NAME"
     local rank = function() return 0 end
@@ -1016,7 +1195,7 @@ local function PreviewMembers(header, size)
         if byName then return a.name < b.name end
         return a.index < b.index
     end)
-    local limit = (header:GetAttribute("maxColumns") or 1) * (header:GetAttribute("unitsPerColumn") or 5)
+    local limit = (maxColumns or 1) * (header:GetAttribute("unitsPerColumn") or 5)
     for index = #list, limit + 1, -1 do list[index] = nil end
     return list
 end
@@ -1089,7 +1268,13 @@ function GroupFrames:SetPreview(size)
         holder:SetFrameStrata("MEDIUM")
         previewHeaders[mode] = holder
     end
-    local fakes = PreviewMembers(header, size)
+    local width, height = header:GetAttribute("initial-width"), header:GetAttribute("initial-height")
+    local maxColumns = header:GetAttribute("maxColumns")
+    if mode == "raid" then   -- palier de la taille montrée, pas celui du raid courant
+        local tier = RaidTierSettings(GroupFrames.TierOf(math.min(size, 5 * (tonumber(self.db.raidGroups) or 8))))
+        width, height, maxColumns = NS.Pixel:Scale(tier.width), NS.Pixel:Scale(tier.height), tier.columns
+    end
+    local fakes = PreviewMembers(header, size, maxColumns)
     for _ = #holder.buttons + 1, #fakes do Style(holder, CreateFrame("Button", nil, holder)) end
     -- Le premier membre occupe le coin formé par `point` et `columnAnchorPoint` ; les suivants
     -- s'empilent depuis ce coin, puis les colonnes.
@@ -1097,7 +1282,6 @@ function GroupFrames:SetPreview(size)
     local unitStep, columnStep = POINT_STEP[point] or POINT_STEP.TOP, POINT_STEP[columnPoint] or POINT_STEP.LEFT
     local vertical = unitStep[1] == 0
     local corner = vertical and (point .. columnPoint) or (columnPoint .. point)
-    local width, height = header:GetAttribute("initial-width"), header:GetAttribute("initial-height")
     local spacing = math.abs(vertical and (header:GetAttribute("yOffset") or 0) or (header:GetAttribute("xOffset") or 0))
     local columnSpacing = header:GetAttribute("columnSpacing") or 0
     local perColumn = math.max(1, header:GetAttribute("unitsPerColumn") or 5)
@@ -1270,7 +1454,8 @@ local UNIT_EVENTS = { "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_POWER_UPDATE", "UNI
                       "UNIT_NAME_UPDATE", "UNIT_CONNECTION", "UNIT_AURA", "UNIT_FACTION", "UNIT_THREAT_SITUATION_UPDATE",
                       "UNIT_HEAL_PREDICTION", "UNIT_ABSORB_AMOUNT_CHANGED", "UNIT_HEAL_ABSORB_AMOUNT_CHANGED",
                       "INCOMING_RESURRECT_CHANGED",
-                      "INCOMING_SUMMON_CHANGED", "READY_CHECK_CONFIRM", "UNIT_PORTRAIT_UPDATE", "UNIT_MODEL_CHANGED" }
+                      "INCOMING_SUMMON_CHANGED", "READY_CHECK_CONFIRM", "UNIT_PORTRAIT_UPDATE", "UNIT_MODEL_CHANGED",
+                      "UNIT_TARGET" }
 
 local function OnReadyCheck(event)
     if event == "READY_CHECK" then
@@ -1298,9 +1483,28 @@ end
 -- derrière son unité a changé ou est illisible, sinon rôle, chef et ressource seuls.
 local rosterPending, rosterFull = false, false
 
+--- Palier du raid changé : en-têtes de raid refaits hors combat (Apply retaille aussi les boutons
+-- existants, initial-width ne touchant que les nouveaux).
+local function UpdateRaidTier()
+    local tier = GroupFrames.RaidTier()
+    if tier == GroupFrames.raidTier then return end
+    GroupFrames.raidTier = tier
+    NS:RunOutOfCombat(function()
+        if not active then return end
+        for key in pairs(RAID_SIZED) do
+            local header, role = GroupFrames.headers[key], ROLE_HEADERS[key]
+            if header and not (role and not GroupFrames.db[role.option]) then Apply(header) end
+        end
+    end)
+end
+
 local function RosterPass()
     rosterPending = false
     if not active then return end
+    UpdateRaidTier()
+    NS:RunOutOfCombat(function()
+        if active then ForEach(nil, PlaceMemberTarget) end
+    end)
     local full = rosterFull
     rosterFull = false
     ForEach(nil, function(button)
@@ -1341,6 +1545,10 @@ events:SetScript("OnEvent", function(_, event, unit)
         PaintMana(unit)
     end
     if event == "INCOMING_RESURRECT_CHANGED" and unit then TrackResurrection(unit) end
+    -- Vie de la cible du joueur ; celle des autres membres (jeton composé, sans événement) : RangeTick.
+    if (event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH") and unit == "target" and byUnit.player then
+        ForEach("player", function(button) GroupFrames:UpdateMemberTarget(button) end)
+    end
     if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ROLES_ASSIGNED" or event == "PARTY_LEADER_CHANGED"
         or event == "PLAYER_ENTERING_WORLD" or event == "INSTANCE_ENCOUNTER_ENGAGE_UNIT" then
         if event == "GROUP_ROSTER_UPDATE" then wipe(rezCasting) wipe(rezOffered) end   -- jetons décalés
@@ -1350,12 +1558,14 @@ events:SetScript("OnEvent", function(_, event, unit)
         -- Aperçu caché en combat, repris à la sortie (SetPreview refuse le combat).
         if GroupFrames.previewSize then GroupFrames:SetPreview(GroupFrames.previewSize) end
         if GroupFrames.db.roleHideInCombat then ForEach(nil, function(button) GroupFrames:UpdateRole(button) end) end
+        ForEach(nil, function(button) GroupFrames:UpdateMissingBuffs(button) end)
     elseif event == "INCOMING_SUMMON_CHANGED" and not unit then
         ForEach(nil, function(button) GroupFrames:UpdateStatus(button) end)
     elseif event == "RAID_TARGET_UPDATE" then
         ForEach(nil, Elements.UpdateRaidIcon)
     elseif event == "PLAYER_TARGET_CHANGED" then
         UpdateTargetBorders()
+        ForEach("player", function(button) GroupFrames:UpdateMemberTarget(button) end)
     elseif event == "READY_CHECK" or event == "READY_CHECK_FINISHED" then
         OnReadyCheck(event)
         ForEach(nil, function(button) GroupFrames:UpdateStatus(button) end)
@@ -1363,11 +1573,14 @@ events:SetScript("OnEvent", function(_, event, unit)
         ForEach(unit, function(button)
             if event == "UNIT_THREAT_SITUATION_UPDATE" then
                 GroupFrames:UpdateBorder(button)
+            elseif event == "UNIT_TARGET" then
+                GroupFrames:UpdateMemberTarget(button)
             elseif event == "UNIT_AURA" then
                 -- Bordure refaite seulement si le type dissipable change ; la menace a son événement.
                 if DispelKind(button) ~= button.dispelKind then GroupFrames:UpdateBorder(button) end
                 Elements.UpdateAuras(button)
                 GroupFrames:UpdateIndicators(button, true)
+                GroupFrames:UpdateMissingBuffs(button)
             elseif event == "INCOMING_RESURRECT_CHANGED" or event == "INCOMING_SUMMON_CHANGED"
                     or event == "READY_CHECK_CONFIRM" then
                 GroupFrames:UpdateStatus(button)
@@ -1379,6 +1592,7 @@ events:SetScript("OnEvent", function(_, event, unit)
             elseif event == "UNIT_HEALTH" or event == "UNIT_CONNECTION" then
                 if rezOffered[unit] then GroupFrames:UpdateStatus(button) end   -- relevé : l'offre disparaît
                 GroupFrames:UpdateState(button)
+                if event == "UNIT_CONNECTION" then GroupFrames:UpdateMissingBuffs(button) end
             end
         end)
     end
@@ -1386,7 +1600,12 @@ end)
 
 local function RangeTick()
     if not active then return end
-    ForEach(nil, function(button) GroupFrames:UpdateRange(button) end)
+    local range = GroupFrames.db.range
+    ForEach(nil, function(button)
+        if range then GroupFrames:UpdateRange(button) end
+        -- UNIT_HEALTH n'arrive pas pour « party1target » : relecture au pas du ticker existant.
+        if button.memberTarget and button.memberTarget:IsShown() then GroupFrames:UpdateMemberTarget(button) end
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -1396,6 +1615,7 @@ end
 function GroupFrames:OnEnable()
     active = true
     inCombat = NS.InCombat() and true or false
+    self.raidTier = self.RaidTier()
     self:Reconcile()
     for _, event in ipairs({ "GROUP_ROSTER_UPDATE", "PLAYER_ROLES_ASSIGNED", "PARTY_LEADER_CHANGED",
                              "PLAYER_ENTERING_WORLD", "RAID_TARGET_UPDATE", "READY_CHECK", "READY_CHECK_FINISHED",
@@ -1409,9 +1629,10 @@ function GroupFrames:OnEnable()
     self:UpdateRangeTicker()
 end
 
---- Ticker de portée seulement avec l'option ; coupée, UpdateAll remet l'alpha plein.
+--- Ticker de portée et de vie des cibles de membres, seulement avec l'une des deux options ;
+-- portée coupée, UpdateAll remet l'alpha plein.
 function GroupFrames:UpdateRangeTicker()
-    local wanted = active and self.db.range
+    local wanted = active and (self.db.range or self.db.memberTarget)
     if wanted and not rangeTicker and C_Timer and C_Timer.NewTicker then
         rangeTicker = C_Timer.NewTicker(0.25, RangeTick)
     elseif not wanted and rangeTicker then
@@ -1447,6 +1668,7 @@ function GroupFrames:RegisterCastEvents()
 end
 
 function GroupFrames:OnRefresh()
+    self.raidTier = self.RaidTier()   -- groupes affichés changés
     self:Reconcile()
     self:RegisterCastEvents()
     self:UpdateHealerMana()
@@ -1464,6 +1686,9 @@ local function DropPreview()
     if GroupFrames.previewSize and not NS.unlocked and not (window and window:IsShown()) then GroupFrames:SetPreview(nil) end
 end
 NS:On("OPTIONS_HIDDEN", DropPreview)
+NS:On("MISSING_BUFFS_CHANGED", function()
+    if active then ForEach(nil, function(button) GroupFrames:UpdateMissingBuffs(button) end) end
+end)
 NS:On("UNLOCK", DropPreview)
 
 --------------------------------------------------------------------------------
@@ -1487,6 +1712,16 @@ function GroupFrames:BuildOptions(o)
     o:Slider("width", L.OPT_UF_WIDTH, 40, 200, 2)
     o:Slider("height", L.OPT_UF_HEIGHT, 12, 80, 1)
     o:Check("partySortRole", L.OPT_GF_PARTY_SORT_ROLE)
+    o:Dropdown("playerPosition", L.OPT_GF_PLAYER_POSITION, {
+        { name = L.GF_PLAYER_FIRST, value = "first" }, { name = L.GF_PLAYER_LAST, value = "last" } })
+    -- Grisé avec le tri par rôle : le joueur reste dans son bloc de rôle.
+    o.layout.dependents[#o.layout.dependents + 1] = { frame = o.layout.last,
+        conditions = { function() return not GroupFrames.db.partySortRole and (tonumber(GroupFrames.db.raidThreshold) or 5) <= 5 end } }
+    o:Hint(L.OPT_GF_PLAYER_POSITION_HINT)
+    o:Check("memberTarget", L.OPT_GF_MEMBER_TARGET)
+    o:Dropdown("memberTargetSide", L.OPT_GF_MEMBER_TARGET_SIDE, {
+        { name = L.POINT_RIGHT, value = "RIGHT" }, { name = L.POINT_LEFT, value = "LEFT" } }, 36)
+    o:Slider("memberTargetWidth", L.OPT_UF_WIDTH, 40, 160, 2, 36)
     o:Check("showPlayer", L.OPT_GF_SHOW_PLAYER)
     o:Check("showSolo", L.OPT_GF_SHOW_SOLO)
     o:Advanced()
@@ -1495,13 +1730,20 @@ function GroupFrames:BuildOptions(o)
     o:EndAdvanced()
 
     o:Tab(L.UF_UNIT_RAID)
+    for tier, label in ipairs({ L.OPT_GF_TIER_10, L.OPT_GF_TIER_25 }) do
+        o.layout:Note(label, 20)
+        o:Slider("raidTiers." .. tier .. ".width", L.OPT_UF_WIDTH, 40, 200, 2)
+        o:Slider("raidTiers." .. tier .. ".height", L.OPT_UF_HEIGHT, 12, 80, 1)
+        o:Slider("raidTiers." .. tier .. ".columns", L.OPT_GF_COLUMNS, 1, 8, 1)
+    end
+    o.layout:Note(L.OPT_GF_TIER_40, 20)
     o:Slider("raidWidth", L.OPT_UF_WIDTH, 40, 200, 2)
     o:Slider("raidHeight", L.OPT_UF_HEIGHT, 12, 80, 1)
+    o:Slider("raidColumns", L.OPT_GF_COLUMNS, 1, 8, 1)
     o:Dropdown("raidSortBy", L.OPT_GF_SORT, {
         { name = L.GF_SORT_ROLE, value = "ROLE" }, { name = L.GF_SORT_GROUP, value = "GROUP" },
         { name = L.GF_SORT_CLASS, value = "CLASS" }, { name = L.GF_SORT_NAME, value = "NAME" } })
     o:Slider("raidUnitsPerColumn", L.OPT_GF_UNITS_PER_COLUMN, 1, 10, 1)
-    o:Slider("raidColumns", L.OPT_GF_COLUMNS, 1, 8, 1)
     local growth = {}
     for _, direction in ipairs(GroupFrames.GROWTH_ORDER) do
         growth[#growth + 1] = { name = L["GF_GROWTH_" .. direction], value = direction }
@@ -1598,8 +1840,25 @@ function GroupFrames:BuildOptions(o)
     o:Slider("auraSize", L.OPT_UF_AURA_SIZE, 10, 32, 1, 36)
     o:Advanced()
     o:Slider("auraMax", L.OPT_GF_AURA_MAX, 1, 16, 1, 36)
-    o:Dropdown("auraFilter", L.OPT_AURA_FILTER, NS.AuraFilterChoices, 36)
+    o:Dropdown("auraFilter", L.OPT_AURA_FILTER, NS.AuraFilterChoices, 36, function(mode)
+        GroupFrames.ApplyAuraFilterPreset(mode)
+        o:Changed()
+        o.layout:Refresh()
+    end)
+    o:Hint(L.OPT_GF_AURA_FILTER_HINT)
     o:EndAdvanced()
+    local anchors = { { name = L.GF_DEBUFF_FLOW, value = "flow" } }
+    for _, point in ipairs(POINTS) do anchors[#anchors + 1] = { name = L["POINT_" .. point], value = point } end
+    for _, key in ipairs(Elements.DEBUFF_GROUPS) do
+        o:Check("debuffGroups." .. key .. ".enabled", L["OPT_GF_DEBUFF_" .. key:upper()], 36)
+        o:Advanced()
+        o:Dropdown("debuffGroups." .. key .. ".point", L.OPT_GF_DEBUFF_POINT, anchors, 52)
+        o:Slider("debuffGroups." .. key .. ".size", L.OPT_UF_AURA_SIZE, 10, 32, 1, 52)
+        o:Slider("debuffGroups." .. key .. ".max", L.OPT_GF_AURA_MAX, 1, 8, 1, 52)
+        o.layout.dependents[#o.layout.dependents + 1] = { frame = o.layout.last,   -- ancré : une seule aura
+            conditions = { function() return GroupFrames.db.debuffGroups[key].point == "flow" end } }
+        o:EndAdvanced()
+    end
     o:Check("auraBuffs", L.OPT_GF_AURA_BUFFS, 36)
 
     o:Tab(L.OPT_GF_TAB_ALERTS)
@@ -1625,15 +1884,21 @@ function GroupFrames:BuildOptions(o)
     o:Tab(L.OPT_GF_SPELL_INDICATORS)
     o:Advanced()
     o.layout:Note(L.NOTE_GF_SPELL_INDICATORS, 20)
-    for _, corner in ipairs(CORNERS) do
-        o:EditBox("indicators." .. corner, L["OPT_GF_CORNER_" .. corner], 1)
+    local points = {}
+    for _, point in ipairs(POINTS) do points[#points + 1] = { name = L["POINT_" .. point], value = point } end
+    for index = 1, GroupFrames.MAX_INDICATORS do
+        o:EditBox("indicators." .. index .. ".spells", string.format(L.OPT_GF_INDICATOR_N, index), 1)
+        o:Dropdown("indicators." .. index .. ".point", L.OPT_GF_INDICATOR_POINT, points, 20)
     end
     o:EndAdvanced()
     o:Slider("indicatorSize", L.OPT_GF_INDICATOR_SIZE, 6, 20, 1)
     o:Check("indicatorMine", L.OPT_GF_INDICATOR_MINE)
-    o.layout:Button(L.CLICKCAST_PRESET, function()
-        if not GroupFrames:ApplyIndicatorPreset() then NS.Print(L.MSG_GF_NO_PRESET) end
-    end, 20)
+    for _, name in ipairs(GroupFrames.PRESET_ORDER) do
+        o.layout:Button(L["GF_PRESET_" .. name:upper()], function()
+            if not GroupFrames:ApplyIndicatorPreset(name) then NS.Print(L.MSG_GF_PRESET_FULL) end
+        end, 20)
+    end
+    o:Check("missingBuffs", L.OPT_GF_MISSING_BUFFS)
 end
 
 --- Aperçu des options : un groupe de cinq et vingt membres de raid, à leur taille, avec couleurs
@@ -1665,10 +1930,11 @@ function GroupFrames:BuildPreview(p)
         local spacing = db.spacing
         local partyWidth = db.horizontal and (5 * db.width + 4 * spacing) or db.width
         local partyHeight = db.horizontal and db.height or (5 * db.height + 4 * spacing)
+        local tier = RaidTierSettings(GroupFrames.TierOf(PREVIEW_RAID_SIZE))
         local perColumn = math.max(1, db.raidUnitsPerColumn)
-        local columns = math.min(math.ceil(PREVIEW_RAID_SIZE / perColumn), math.max(1, db.raidColumns))
-        local raidWidth = columns * db.raidWidth + (columns - 1) * spacing
-        local raidHeight = math.min(PREVIEW_RAID_SIZE, perColumn) * (db.raidHeight + spacing) - spacing
+        local columns = math.min(math.ceil(PREVIEW_RAID_SIZE / perColumn), math.max(1, tier.columns))
+        local raidWidth = columns * tier.width + (columns - 1) * spacing
+        local raidHeight = math.min(PREVIEW_RAID_SIZE, perColumn) * (tier.height + spacing) - spacing
         -- Groupe au-dessus du raid (colonne étroite).
         local gap = 24
         local scale, originX, originY = p.Fit(math.max(partyWidth, raidWidth), partyHeight + gap + raidHeight, 8)
@@ -1682,8 +1948,8 @@ function GroupFrames:BuildPreview(p)
         local raidTop = originY + (partyHeight + gap) * scale
         for i = 1, math.min(PREVIEW_RAID_SIZE, columns * perColumn) do
             local column, row = math.floor((i - 1) / perColumn), (i - 1) % perColumn
-            member("raid" .. i, raid[i], originX + column * (db.raidWidth + spacing) * scale,
-                raidTop + row * (db.raidHeight + spacing) * scale, db.raidWidth * scale, db.raidHeight * scale, db, scale)
+            member("raid" .. i, raid[i], originX + column * (tier.width + spacing) * scale,
+                raidTop + row * (tier.height + spacing) * scale, tier.width * scale, tier.height * scale, db, scale)
         end
         p.Hotspot(p.Region("raidspot", originX, raidTop, raidWidth * scale, raidHeight * scale), L.UF_UNIT_RAID)
     end

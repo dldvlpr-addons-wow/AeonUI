@@ -25,6 +25,7 @@ test("vente : seulement les gris avec valeur, par lots de 10", function()
     eq(#Mock.used, 10, "premier lot")
     Mock.Advance(0.25)
     eq(#Mock.used, 12, "second lot")
+    Mock.FireEvent("BAG_UPDATE_DELAYED")   -- ventes comptées à la libération des cases
     truthy(Mock.bags[bag][slot], "blanc gardé")
     truthy(Mock.bags[bag][slot + 1], "gris sans valeur gardé")
     truthy(Mock.FindPrinted("12|cffc7c7cfs|r"), "total annoncé")
@@ -205,4 +206,13 @@ test("quêtes : anti double, une quête déjà choisie n'est pas reprise avant 3
     _G.GetQuestID = nil
     Mock.gossip = { active = {}, available = {} }
     NS.db.modules.automation.autoQuests = false
+end)
+
+test("quêtes : récompense la plus chère repérée, prix inconnu = relire plus tard", function()
+    local prices = { 10, 250, 0, 250 }
+    eq(Automation.BestReward(4, function(i) return prices[i] end), 2, "premier des plus chers")
+    eq(Automation.BestReward(2, function() return 0 end), nil, "rien ne vaut : pas de repère")
+    local best, pending = Automation.BestReward(3, function(i) return i ~= 2 and 5 or nil end)
+    eq(best, nil)
+    eq(pending, true, "objet pas encore connu du client")
 end)

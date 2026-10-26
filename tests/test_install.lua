@@ -247,9 +247,9 @@ test("profils de classe sur le profil actuel : pas de résidu d'un autre style, 
     eq(NS.Modules:Get("gcdbar").enabled, false, "profil partagé : rien du druide lanceur ne reste")
     eq(NS.db.modules.unitframes.units.player.castbarWidth, 260)
     Mock.units.player.class = "PRIEST"
-    NS.db.modules.groupframes.indicators.TOPLEFT = "Perso"
+    NS.db.modules.groupframes.indicators[1].spells = "Perso"
     truthy(Install:ApplyClassSettings("heal"))
-    eq(NS.db.modules.groupframes.indicators.TOPLEFT, "Perso", "coins du joueur gardés")
+    eq(NS.db.modules.groupframes.indicators[1].spells, "Perso", "indicateurs du joueur gardés")
     eq(NS.Modules:Get("clickcast").enabled, true)
 end)
 

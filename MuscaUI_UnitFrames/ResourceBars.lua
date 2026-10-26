@@ -28,6 +28,8 @@ local ResourceBars = NS.Modules:Register("resourcebars", {
         powerHeight = 12,
         powerText = "current",
         threshold = 0,              -- repère sur la barre de puissance, en % (0 : aucun)
+        manaSpark = false,          -- règle des 5 secondes sur la barre de puissance (mana)
+        manaCostPrediction = true,  -- coût en mana de l'incantation en cours
     -- Paliers de couleur (en %, 0 : coupé) et repères (« 25, 50 ») des barres de vie et de puissance.
     healthLow = 0, healthLowColor = { r = 0.9, g = 0.15, b = 0.15 },
     healthMid = 0, healthMidColor = { r = 0.95, g = 0.75, b = 0.1 },
@@ -108,6 +110,8 @@ local function UpdatePower(db)
     local r, g, b = Elements.PowerColor("player")
     bar:SetStatusBarColor(Elements.BandColor("player", "power", bar.steps, r, g, b))
     Elements.SetUnitText(bar.text, "player", "power", Elements.TextFormat(nil, db.powerText))
+    Elements.SetManaSpark(bar, db.manaSpark)
+    Elements.SetManaCostPrediction(bar, db.manaCostPrediction)
     -- Largeur lue sur la barre : celle reprise d'une cible comprise.
     Elements.SetHashLines(bar, bar.hashPercents, bar.vertical, bar.vertical and bar:GetHeight() or bar:GetWidth() or db.width)
     return true
@@ -188,7 +192,8 @@ local UNIT_EVENT_BARS = {
 }
 local EVENTS = { "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_TARGET_CHANGED",
                  "UPDATE_SHAPESHIFT_FORM", "PLAYER_ENTERING_WORLD", "GROUP_ROSTER_UPDATE",
-                 "ZONE_CHANGED_NEW_AREA", "PLAYER_MOUNT_DISPLAY_CHANGED" }
+                 "ZONE_CHANGED_NEW_AREA", "PLAYER_MOUNT_DISPLAY_CHANGED",
+                 "COMBO_TARGET_CHANGED" }
 
 local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event)
@@ -229,7 +234,11 @@ function ResourceBars:OnDisable()
     active = false
     events:UnregisterAllEvents()
     for _, spec in ipairs(BARS) do NS.Movers:Unregister(spec.mover) end
-    if bars.power then self:Update() end
+    if bars.power then
+        Elements.SetManaSpark(bars.power, false)
+        Elements.SetManaCostPrediction(bars.power, false)
+        self:Update()
+    end
 end
 
 function ResourceBars:OnRefresh()
@@ -269,6 +278,8 @@ function ResourceBars:BuildOptions(o)
     o:Title(L.OPT_RESOURCE_POWER)
     o:Check("power", L.OPT_RESOURCE_SHOW)
     o:Slider("powerHeight", L.OPT_RESOURCE_HEIGHT, 4, 40, 1, 36)
+    o:Check("manaSpark", L.OPT_MANA_SPARK, 36)
+    o:Check("manaCostPrediction", L.OPT_MANA_COST_PREDICTION, 36)
     o:Dropdown("powerText", L.OPT_RESOURCE_TEXT, modes, 36)
     o:Advanced()
     o:Slider("threshold", L.OPT_RESOURCE_THRESHOLD, 0, 100, 5, 36)

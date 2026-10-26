@@ -18,7 +18,7 @@ Ce document compare des fonctionnalités et des limites du client. Aucun code QU
 | MuscaUI : cœur (Core, Config) | Code lu | Bonne |
 | MuscaUI : Modules/*.lua et sous-addons `MuscaUI_*` | README, `docs/options.md`, greps `Register`/`secure`/`yieldsTo` | Moyenne : corps des fichiers non lu |
 
-Non vérifié sur Forever : `C_DamageMeter`, `C_EncounterTimeline`, `C_CooldownViewer`, `C_Secrets`, `CustomAuraButtonTemplate` (slots d'aura sécurisés), `CustomAuraContainerTemplate` (AuraContainer), `C_DeathRecap`, `C_CurveUtil.EvaluateColorValueFromBoolean`, `C_ActionBar.GetActionCooldownDuration` (vu en jeu sur 70124, signature non relue), `C_NamePlateManager`, `UnitGetDetailedHealPrediction` et `CreateUnitHealPredictionCalculator`, les filtres d'aura `BIG_DEFENSIVE`, `EXTERNAL_DEFENSIVE`, `IMPORTANT` et `CROWD_CONTROL`. Ces API sont à passer à l'agent `wow-api` avant toute reprise d'idée qui en dépend.
+Non vérifié sur Forever : `C_EncounterTimeline`, `C_CooldownViewer`, `C_Secrets`, `CustomAuraButtonTemplate` (slots d'aura sécurisés), `CustomAuraContainerTemplate` (AuraContainer), `C_DeathRecap`, `C_CurveUtil.EvaluateColorValueFromBoolean`, `C_ActionBar.GetActionCooldownDuration` (vu en jeu sur 70124, signature non relue), `C_NamePlateManager`, `UnitGetDetailedHealPrediction` et `CreateUnitHealPredictionCalculator`, les filtres d'aura `BIG_DEFENSIVE`, `EXTERNAL_DEFENSIVE`, `IMPORTANT` et `CROWD_CONTROL`. Ces API sont à passer à l'agent `wow-api` avant toute reprise d'idée qui en dépend. `C_DamageMeter` est vérifié : il est chargé sur Forever (`Blizzard_DamageMeter.toc`, `AllowLoadGameType: standard, camelot`), et ses accesseurs de session sont secrets en combat.
 
 ## 1. Synthèse
 
@@ -38,7 +38,7 @@ Légende de pertinence sur Forever : **forte** (le contenu vanilla s'en sert), *
 | ActionBars | Moteur « owned », flyout, GSE, mouseover, buff borders | 8 barres, `/musca kb`, cession à Bartender/Dominos | Proches ; QUI plus fin sur le style | Forte |
 | ResourceBars | Liées au Cooldown Manager, indexées par spé | Barres séparées (puissance, combo, mana druide) | QUI peu adapté à Forever | MuscaUI mieux placé |
 | Cooldown Manager | ~42 000 lignes autour des viewers Blizzard + conteneurs perso | Réglages par sort, movers des viewers | Composer, conteneurs perso | Faible (dépend du CDM) |
-| Damage meter | `C_DamageMeter`, 5 fenêtres, 11 modes, breakout | Absent (laissé à ForeverMeter) | Module entier | À vérifier (API) |
+| Damage meter | `C_DamageMeter`, 5 fenêtres, 11 modes, breakout | Absent (laissé à ForeverMeter) | Module entier | API présente, lecture secrète en combat |
 | Reminders | Défensive à presser sur timer de boss mod | Rappels de buffs de classe, groupe, durabilité, posture | Objets différents | QUI faible, MuscaUI fort |
 | Bags | Catégories, recherche à opérateurs, tri multi-passes, cache multi-perso, banque de guilde | Fenêtre unique, recherche, tri, banque au thème | Écart large | Forte |
 | Chat | Remplacement complet de l'affichage, historique persistant, conversations, combat log en onglet | Habillage de ChatFrame, copie, mots-clés, historique au reload | Écart large, coût et risque élevés | Partielle |
@@ -361,7 +361,7 @@ QUI :
 
 MuscaUI : absent, laissé à ForeverMeter (dépendance requise côté CurseForge). DataPanels affiche un DPS secret à largeur fixe.
 
-Verdict : à ne pas reprendre tant que ForeverMeter couvre le besoin. Si `C_DamageMeter` existe sur Forever, un module natif supprimerait la dépendance ; vérifier l'API d'abord. L'identification par icône de spé ne marche pas sans spé.
+Verdict : à ne pas reprendre tant que ForeverMeter couvre le besoin. `C_DamageMeter` existe sur Forever, mais ses accesseurs de session sont secrets en combat : un module natif ne pourrait afficher les chiffres qu'à travers des widgets qui acceptent les valeurs secrètes. L'identification par icône de spé ne marche pas sans spé.
 
 ### 3.8 Reminders
 QUI :

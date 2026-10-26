@@ -52,6 +52,7 @@ Modules\DataPanels.lua
 Modules\Automation.lua
 Modules\Reminders.lua
 Modules\Alerts.lua
+Modules\ThreatWarning.lua
 Modules\Frames.lua
 Modules\UnitFrameElements.lua
 Modules\SwingTimer.lua
@@ -59,10 +60,12 @@ Modules\GCDBar.lua
 Modules\RaidCooldowns.lua
 Modules\RadialMenu.lua
 Modules\MovementAlert.lua
+Modules\FlightTimer.lua
 Modules\MovableWindows.lua
 Modules\AuraBars.lua
 Modules\CooldownBars.lua
 Modules\Loot.lua
+Modules\LootFeed.lua
 Modules\RaidUtility.lua
 Modules\DataBars.lua
 Modules\BlizzardFrames.lua

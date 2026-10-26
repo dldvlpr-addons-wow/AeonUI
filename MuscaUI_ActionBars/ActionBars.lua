@@ -46,7 +46,8 @@ local ActionBars = NS.Modules:Register("actionbars", {
         cooldownDesaturate = true, -- icône grisée pendant une recharge (hors recharge globale)
         cooldownColor = { r = 0, g = 0, b = 0 },   -- couleur du voile de recharge
         procGlow = "blizzard",    -- lueur d'un sort en surbrillance : "blizzard" ou un style de NS.Glow
-        bars = { Bar(true), Bar(true), Bar(true), Bar(false, { perRow = 1 }), Bar(false, { perRow = 1 }), Bar(false),
+        -- Barre 1 : page par modificateur (0 = aucune).
+        bars = { Bar(true, { pageAlt = 0, pageCtrl = 0, pageShift = 0 }), Bar(true), Bar(true), Bar(false, { perRow = 1 }), Bar(false, { perRow = 1 }), Bar(false),
                  Bar(false), Bar(false) },
     },
 })
@@ -70,7 +71,36 @@ local BAR_DEFS = {
 -- (véhicule Blizzard) et barre 1 cachée pour laisser la barre Blizzard dédiée.
 local SPECIAL_BAR = "[overridebar][vehicleui][possessbar]"
 local PAGE_DRIVER = SPECIAL_BAR .. " 12; [bar:2] 2; [bar:3] 3; [bar:4] 4; [bar:5] 5; [bar:6] 6; "
-    .. "[bonusbar:1] 7; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10; [bonusbar:5] 11; 1"
+    .. "[bonusbar:1] 7; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10; [bonusbar:5] 11; "
+local MODIFIERS = { { key = "pageAlt", mod = "alt" }, { key = "pageCtrl", mod = "ctrl" }, { key = "pageShift", mod = "shift" } }
+
+--- Pages libres pour un modificateur de la barre 1 : celles des barres 2 à 8 éteintes (2, 7 à 12
+-- restent au pilote : page manuelle, formes, vol, véhicule).
+function ActionBars.FreePages(bars)
+    local pages = {}
+    for index = 2, #BAR_DEFS do
+        if not (bars[index] and bars[index].enabled) then pages[#pages + 1] = BAR_DEFS[index].page end
+    end
+    table.sort(pages)
+    return pages
+end
+
+--- Pilote de page de la barre 1 : modificateurs après formes et véhicule, qu'ils ne masquent jamais.
+-- Une page reprise depuis par une barre allumée est ignorée et remise à « aucune », que le menu suit.
+function ActionBars.PageDriver(bars)
+    local free = {}
+    for _, page in ipairs(ActionBars.FreePages(bars)) do free[page] = true end
+    local driver = PAGE_DRIVER
+    for _, modifier in ipairs(MODIFIERS) do
+        local page = bars[1][modifier.key]
+        if free[page] then
+            driver = driver .. "[mod:" .. modifier.mod .. "] " .. page .. "; "
+        elseif page ~= 0 then
+            bars[1][modifier.key] = 0
+        end
+    end
+    return driver .. "1"
+end
 
 local MOVER_DEFAULTS = {
     { "BOTTOM", 0, 40 }, { "BOTTOM", 0, 84 }, { "BOTTOM", 0, 128 },
@@ -78,6 +108,7 @@ local MOVER_DEFAULTS = {
 }
 
 local active = false
+local dragging = false   -- ACTIONBAR_SHOWGRID .. HIDEGRID : barres cachées par condition révélées
 
 --------------------------------------------------------------------------------
 -- Construction
@@ -767,12 +798,14 @@ local function SetupBar(index)
     for _, button in ipairs(bar.buttons) do ShadowCooldown(button) end
     LayoutBar(bar, cfg)
     if index == 1 then
-        for _, button in ipairs(bar.buttons) do RegisterAttributeDriver(button, "actionpage", PAGE_DRIVER) end
+        local driver = ActionBars.PageDriver(ActionBars.db.bars)
+        for _, button in ipairs(bar.buttons) do RegisterAttributeDriver(button, "actionpage", driver) end
     end
     NS.Visibility:Register("actionbar" .. index, bar, function() return ActionBars.db.bars[index].visibility end, {
         secure = true,
         prefix = (index == 1 and (SPECIAL_BAR .. " hide; ") or "") .. "[petbattle] hide; ",
         alpha = function() return ActionBars:BarAlpha(index) end,
+        forceVisible = function() return dragging end,
     })
     local d = MOVER_DEFAULTS[index]
     Movers:Register("bar" .. index, bar, string.format(L.MOVER_ACTIONBAR, index), d[1], d[2], d[3])
@@ -987,6 +1020,11 @@ events:SetScript("OnEvent", function(_, event, ...)
         UpdateDragLock()
     end
     if event == "CVAR_UPDATE" then return end
+    -- Glisser d'un sort ou d'un objet : drivers sans conditions (hors combat), rendus au relâcher.
+    if event == "ACTIONBAR_SHOWGRID" or event == "ACTIONBAR_HIDEGRID" then
+        dragging = event == "ACTIONBAR_SHOWGRID"
+        for index in pairs(ActionBars.bars) do NS.Visibility:Refresh("actionbar" .. index) end
+    end
     if event == "UPDATE_BINDINGS" then
         NS:RunOutOfCombat(function()
             if not active then return end
@@ -1044,7 +1082,7 @@ end)
 
 function ActionBars:OnDisable()
     if self.binding then self:SetKeyBindMode(false) end
-    active = false
+    active, dragging = false, false
     RunFader()
     events:UnregisterAllEvents()
     wipe(frameSeen) wipe(trailing)
@@ -1117,6 +1155,18 @@ function ActionBars:BuildOptions(o)
         o:Tab(string.format(L.MOVER_ACTIONBAR, index))
         o:Check(key .. "enabled", L.OPT_AB_BAR_ENABLED)
         o:CopyFrom("bars." .. index, sources, 36)
+        if index == 1 then
+            local function Pages()
+                local choices = { { name = L.AB_PAGE_NONE, value = 0 } }
+                for _, page in ipairs(ActionBars.FreePages(ActionBars.db.bars)) do
+                    choices[#choices + 1] = { name = string.format(L.AB_PAGE, page), value = page }
+                end
+                return choices
+            end
+            o:Dropdown(key .. "pageAlt", L.OPT_AB_PAGE_ALT, Pages, 36)
+            o:Dropdown(key .. "pageCtrl", L.OPT_AB_PAGE_CTRL, Pages, 36)
+            o:Dropdown(key .. "pageShift", L.OPT_AB_PAGE_SHIFT, Pages, 36)
+        end
         o:Slider(key .. "buttons", L.OPT_AB_BUTTONS, 1, 12, 1, 36)
         o:Slider(key .. "perRow", L.OPT_AB_PER_ROW, 1, 12, 1, 36)
         o:Slider(key .. "size", L.OPT_AB_SIZE, 20, 64, 1, 36)

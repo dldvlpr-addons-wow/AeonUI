@@ -1,15 +1,18 @@
 -- Modules/Automation.lua
 -- Petits automatismes, chacun avec son interrupteur :
 --   * réparation chez le marchand (banque de guilde d'abord si autorisé) ;
---   * vente des objets gris, par lots, arrêtée si le marchand se ferme ;
+--   * vente des objets gris et des objets marqués camelote (sacs : Alt + clic gauche), par lots,
+--     arrêtée si le marchand se ferme ; total compté à la fin du verrou de chaque case ;
+--   * sorts remontés de rang sur les barres d'action quand un rang supérieur est appris ;
 --   * libération de l'esprit protégée : maintenir ALT pour libérer (instances par défaut) ;
 --   * acceptation des invitations venant d'amis, de Battle.net ou de la guilde ;
 --   * suppression rapide : le mot de confirmation est pré-rempli ;
 --   * butin rapide (Maj pour ramasser à la main) ;
 --   * quêtes : acceptation et rendu automatiques (Maj pour suspendre), jamais de choix de
 --     récompense à la place du joueur ;
+--   * repère sur la récompense au choix la plus chère à la revente (le joueur choisit toujours) ;
 --   * cinématiques passées, réinitialisation d'instance annoncée au groupe.
--- Aucune action protégée : tout est autorisé hors et en combat, mais les hooks posés
+-- Aucune action protégée, sauf la pose d'un sort sur une barre : différée hors combat. Les hooks posés
 -- sur Blizzard ne se retirent pas, d'où le test `active` au début de chacun.
 local _, NS = ...
 local L = NS.L
@@ -34,8 +37,10 @@ local Automation = NS.Modules:Register("automation", {
         fastDelete = true,
         quickLoot = true,
         autoQuests = false,
+        questRewardMark = true,
         skipCinematics = false,
         announceReset = false,
+        uprank = true,
     },
 })
 
@@ -90,23 +95,35 @@ end
 --------------------------------------------------------------------------------
 
 local sellQueue, sellTimer, sellTotal = {}, nil, 0
+local sellPending = {}   -- [bag * 1000 + slot] = { bag, slot, itemID, value } : vente envoyée, verrou en cours
 
---- Liste les objets gris vendables : { bag, slot, itemID, value }.
+local function BagsList(key)
+    local bags = NS.db and NS.db.modules and NS.db.modules.bags
+    return NS.ParseSpellList(bags and bags[key] or "")
+end
+
+--- Objets à vendre : gris et marqués camelote (`junkMarked` des sacs), { bag, slot, itemID, value },
+-- puis le nombre d'objets gardés (sans prix, ensemble d'équipement, épinglés, remboursables).
 function Automation:FindJunk()
-    local junk = {}
+    local junk, kept = {}, 0
+    local marked, pinned = BagsList("junkMarked"), BagsList("pinned")
     for bag = 0, NS.NUM_BAGS do
         for slot = 1, NS.GetBagSlots(bag) do
             local item = NS.GetBagItem(bag, slot)
-            if item and item.quality == POOR and not item.hasNoValue and not item.isLocked then
+            local isMarked = item and marked[item.itemID]
+            if item and not item.isLocked and (isMarked or (item.quality == POOR and not item.hasNoValue)) then
                 local price = NS.GetItemSellPrice(item.link or item.itemID)
-                if price > 0 then
+                if price <= 0 or pinned[item.itemID] or NS.IsBagItemInEquipmentSet(bag, slot)
+                        or NS.IsBagItemRefundable(bag, slot) then
+                    if isMarked or price > 0 then kept = kept + 1 end
+                else
                     junk[#junk + 1] = { bag = bag, slot = slot, itemID = item.itemID,
                                         value = price * (item.stackCount or 1) }
                 end
             end
         end
     end
-    return junk
+    return junk, kept
 end
 
 local function StopSelling(announce)
@@ -114,7 +131,21 @@ local function StopSelling(announce)
     if announce and sellTotal > 0 then
         NS.Print(string.format(L.AUTO_SOLD, NS.FormatMoney(sellTotal)))
     end
-    sellQueue, sellTotal = {}, 0
+    sellQueue, sellTotal, sellPending = {}, 0, {}
+end
+
+--- Fin de verrou : case vidée ou changée = vendue ; même objet déverrouillé = refusé.
+local function SettleSales()
+    for key, entry in pairs(sellPending) do
+        local item = NS.GetBagItem(entry.bag, entry.slot)
+        if not item or item.itemID ~= entry.itemID then
+            sellTotal = sellTotal + entry.value
+            sellPending[key] = nil
+        elseif not item.isLocked then
+            sellPending[key] = nil
+        end
+    end
+    if not sellTimer and #sellQueue == 0 and not next(sellPending) then StopSelling(true) end
 end
 
 local function SellBatch()
@@ -125,15 +156,17 @@ local function SellBatch()
         local item = NS.GetBagItem(entry.bag, entry.slot)
         if item and item.itemID == entry.itemID and not item.isLocked then
             NS.UseBagItem(entry.bag, entry.slot)
-            sellTotal = sellTotal + entry.value
+            sellPending[entry.bag * 1000 + entry.slot] = entry
         end
     end
-    if #sellQueue == 0 then StopSelling(true) end
+    if #sellQueue == 0 and sellTimer then sellTimer:Cancel() sellTimer = nil end
 end
 
 function Automation:SellJunk()
     StopSelling(false)
-    sellQueue = self:FindJunk()
+    local kept
+    sellQueue, kept = self:FindJunk()
+    if kept > 0 then NS.Print(string.format(L.AUTO_JUNK_KEPT, kept)) end
     if #sellQueue == 0 then return 0 end
     local count = #sellQueue
     SellBatch()
@@ -141,6 +174,82 @@ function Automation:SellJunk()
         sellTimer = C_Timer.NewTicker(SELL_INTERVAL, SellBatch)
     end
     return count
+end
+
+--------------------------------------------------------------------------------
+-- Rangs supérieurs sur les barres d'action
+--------------------------------------------------------------------------------
+-- Sort appris (LEARNED_SPELL_IN_SKILL_LINE) : traité dès que le grimoire le connaît (tout de suite
+-- ou au SPELLS_CHANGED suivant), hors combat et curseur vide. Chaque emplacement qui porte un rang
+-- inférieur du même sort (même nom) reçoit le nouveau rang. Macros non touchées.
+
+local uprankPending, uprankWaiting = {}, false
+local uprankReplaced, uprankToken = {}, 0   -- sorts remplacés, annoncés ensemble après UPRANK_REPORT_DELAY
+local UPRANK_REPORT_DELAY = 2
+
+-- Un seul message par session d'apprentissage : chaque remplacement relance le délai.
+local function ReportUpranks()
+    uprankToken = uprankToken + 1
+    local token = uprankToken
+    C_Timer.After(UPRANK_REPORT_DELAY, function()
+        if token ~= uprankToken or not next(uprankReplaced) then return end
+        local list = {}
+        for text in pairs(uprankReplaced) do list[#list + 1] = text end
+        table.sort(list)
+        uprankReplaced = {}
+        NS.Print(string.format(L.AUTO_UPRANKED, table.concat(list, ", ")))
+    end)
+end
+
+local function ReplaceLowerRanks()
+    uprankWaiting = false
+    if not (active and Automation.db.uprank) then wipe(uprankPending) return end
+    if not next(uprankPending) then return end
+    if NS.InCombat() then
+        uprankWaiting = true
+        events:UnregisterEvent("CURSOR_CHANGED")
+        NS:RunOutOfCombat(ReplaceLowerRanks)
+        return
+    end
+    if not NS.CursorEmpty() then
+        uprankWaiting = true
+        NS.RegisterEventSafe(events, "CURSOR_CHANGED")
+        return
+    end
+    events:UnregisterEvent("CURSOR_CHANGED")
+    local replaced = false
+    for spellID in pairs(uprankPending) do
+        local name = NS.GetPlainSpellName(spellID)
+        -- Sort pas encore au plus haut rang du grimoire : gardé pour le SPELLS_CHANGED suivant.
+        local ready = name and NS.IsTopRankSpellbookSpell(spellID)
+        if not name or ready then uprankPending[spellID] = nil end
+        if ready then
+            local placed = false
+            for slot = 1, NS.NUM_ACTION_SLOTS do
+                local current = NS.GetActionSpellID(slot)
+                if current and current ~= spellID and NS.GetPlainSpellName(current) == name
+                        and NS.PlaceSpellInActionSlot(spellID, slot) then
+                    placed = true
+                end
+            end
+            if placed then
+                local rank = NS.GetSpellRankText(spellID)
+                uprankReplaced[rank and string.format("%s (%s)", name, rank) or name] = true
+                replaced = true
+            end
+        end
+    end
+    if replaced then ReportUpranks() end
+end
+
+local function ScheduleUprank()
+    if not uprankWaiting and next(uprankPending) then ReplaceLowerRanks() end
+end
+
+function Automation:OnSpellLearned(spellID)
+    if not self.db.uprank or type(spellID) ~= "number" or NS.IsSecret(spellID) then return end
+    uprankPending[spellID] = true
+    if NS.IsTopRankSpellbookSpell(spellID) then ScheduleUprank() end
 end
 
 --------------------------------------------------------------------------------
@@ -363,6 +472,63 @@ local QUEST_HANDLERS = {
 }
 
 --------------------------------------------------------------------------------
+-- Récompense la plus chère
+--------------------------------------------------------------------------------
+-- Indépendant de autoQuests et de Maj : c'est un repère, jamais un choix. Accroché à
+-- l'affichage du panneau de récompense (les boutons y sont remplis), relu quand le client
+-- reçoit un objet encore inconnu.
+
+local rewardMark, rewardPending
+local rewardHooked = false
+
+--- Choix au prix de revente le plus haut parmi `count` ; nil si aucun ne vaut rien.
+-- Second retour vrai : un prix encore inconnu, à relire.
+function Automation.BestReward(count, price)
+    local best, bestPrice
+    for i = 1, count do
+        local value = price(i)
+        if value == nil then return nil, true end
+        if value > 0 and (not bestPrice or value > bestPrice) then best, bestPrice = i, value end
+    end
+    return best, false
+end
+
+local function RewardPrice(index)
+    local link = _G.GetQuestItemLink and GetQuestItemLink("choice", index)
+    if not link or not (C_Item and C_Item.GetItemInfo) then return nil end
+    return (select(11, C_Item.GetItemInfo(link)))
+end
+
+local function MarkBestReward()
+    rewardPending = false
+    if rewardMark then rewardMark:Hide() end
+    if not (active and Automation.db.questRewardMark) then return end
+    local count = _G.GetNumQuestChoices and GetNumQuestChoices() or 0
+    if count <= 1 then return end
+    local best
+    best, rewardPending = Automation.BestReward(count, RewardPrice)
+    local rewards = _G.QuestInfoRewardsFrame
+    -- Bouton du choix : type "choice" et GetID() = indice (RewardButtons[i] n'est pas toujours le choix i).
+    for _, rewardButton in ipairs(best and rewards and rewards.RewardButtons or {}) do
+        if rewardButton:IsShown() and rewardButton.type == "choice" and rewardButton:GetID() == best then
+            if not rewardMark then
+                rewardMark = CreateFrame("Frame")
+                rewardMark:SetSize(16, 16)
+                rewardMark.texture = rewardMark:CreateTexture(nil, "OVERLAY")
+                rewardMark.texture:SetAllPoints()
+                rewardMark.texture:SetAtlas("coin-gold")
+            end
+            rewardMark:SetParent(rewardButton)
+            rewardMark:SetFrameLevel(rewardButton:GetFrameLevel() + 5)
+            rewardMark:ClearAllPoints()
+            rewardMark:SetPoint("TOPLEFT", rewardButton, "TOPLEFT", -2, 2)
+            rewardMark:Show()
+            return
+        end
+    end
+end
+
+--------------------------------------------------------------------------------
 -- Cinématiques et réinitialisation d'instance
 --------------------------------------------------------------------------------
 
@@ -408,7 +574,15 @@ events:SetScript("OnEvent", function(_, event, ...)
         if Automation.db.repair then Automation:Repair() end
         if Automation.db.sellJunk then Automation:SellJunk() end
     elseif event == "MERCHANT_CLOSED" then
+        SettleSales()
         StopSelling(true)
+    elseif event == "BAG_UPDATE_DELAYED" or event == "ITEM_LOCK_CHANGED" then
+        if next(sellPending) then SettleSales() end
+    elseif event == "LEARNED_SPELL_IN_SKILL_LINE" then
+        Automation:OnSpellLearned((...))
+    elseif event == "SPELLS_CHANGED" or event == "CURSOR_CHANGED" then
+        if event == "CURSOR_CHANGED" then uprankWaiting = false end
+        ScheduleUprank()
     elseif event == "PLAYER_DEAD" then
         releaseCleared = false
         -- Le popup se construit pendant PLAYER_DEAD : son bouton n'existe qu'une frame plus tard.
@@ -421,6 +595,8 @@ events:SetScript("OnEvent", function(_, event, ...)
         Automation:OnInvite(name, guid)
     elseif event == "LOOT_READY" then
         Automation:QuickLoot()
+    elseif event == "GET_ITEM_INFO_RECEIVED" or event == "QUEST_ITEM_UPDATE" then
+        if rewardPending and _G.QuestFrameRewardPanel and QuestFrameRewardPanel:IsShown() then MarkBestReward() end
     elseif QUEST_HANDLERS[event] then
         if not QuestsPaused() then QUEST_HANDLERS[event]() end
     elseif event == "CINEMATIC_START" then
@@ -436,7 +612,9 @@ function Automation:OnEnable()
     active = true
     for _, event in ipairs({ "MERCHANT_SHOW", "MERCHANT_CLOSED", "PLAYER_DEAD", "PLAYER_ALIVE",
                              "PLAYER_UNGHOST", "PARTY_INVITE_REQUEST", "LOOT_READY", "CINEMATIC_START",
-                             "PLAY_MOVIE", "CHAT_MSG_SYSTEM" }) do
+                             "PLAY_MOVIE", "CHAT_MSG_SYSTEM", "GET_ITEM_INFO_RECEIVED", "QUEST_ITEM_UPDATE",
+                             "BAG_UPDATE_DELAYED", "ITEM_LOCK_CHANGED", "LEARNED_SPELL_IN_SKILL_LINE",
+                             "SPELLS_CHANGED" }) do
         NS.RegisterEventSafe(events, event)
     end
     for event in pairs(QUEST_HANDLERS) do
@@ -455,6 +633,10 @@ function Automation:OnEnable()
         if _G.StaticPopup_Hide then hooksecurefunc("StaticPopup_Hide", RearmIfDead) end
         deleteHooked = true
     end
+    if not rewardHooked and _G.QuestFrameRewardPanel then
+        QuestFrameRewardPanel:HookScript("OnShow", MarkBestReward)
+        rewardHooked = true
+    end
     -- Activé alors que le joueur est déjà mort : armer tout de suite.
     if _G.UnitIsDead and UnitIsDead("player") then self:ArmReleaseGuard() end
 end
@@ -463,6 +645,8 @@ function Automation:OnDisable()
     active = false
     events:UnregisterAllEvents()
     StopSelling(false)
+    wipe(uprankPending)
+    uprankWaiting = false
     Disarm()
 end
 
@@ -482,6 +666,7 @@ function Automation:BuildOptions(o)
     o:Title(L.OPT_AUTO_LOOT_QUESTS)
     o:Check("quickLoot", L.OPT_AUTO_QUICK_LOOT)
     o:Check("autoQuests", L.OPT_AUTO_QUESTS)
+    o:Check("questRewardMark", L.OPT_AUTO_QUEST_REWARD_MARK)
     o:Title(L.OPT_AUTO_DEATH)
     o:Check("releaseGuard", L.OPT_AUTO_RELEASE)
     o:Check("releaseInstanceOnly", L.OPT_AUTO_RELEASE_INSTANCE, 36)
@@ -493,4 +678,6 @@ function Automation:BuildOptions(o)
     o:Check("fastDelete", L.OPT_AUTO_DELETE)
     o:Check("skipCinematics", L.OPT_AUTO_CINEMATICS)
     o:Check("announceReset", L.OPT_AUTO_RESET)
+    o:Check("uprank", L.OPT_AUTO_UPRANK)
+    o:Hint(L.OPT_AUTO_UPRANK_HINT)
 end

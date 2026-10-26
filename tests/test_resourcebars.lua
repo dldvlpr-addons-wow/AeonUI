@@ -134,3 +134,53 @@ test("barre de recharge globale : montrée pendant la recharge, cachée à la fi
     NS.db.anchors.gcdBar = nil
     C_Spell.GetSpellCooldown = nil
 end)
+
+test("barres de ressources : étincelle des 5 s après un sort qui coûte du mana, pas après un sort gratuit", function()
+    local bars = enable()
+    NS.db.modules.resourcebars.manaSpark = true
+    RB:OnRefresh()
+    local spark = bars.power.manaSpark
+    truthy(spark, "étincelle créée")
+    Mock.spellCosts[133] = { { type = 0, cost = 25 } }
+    Mock.FireEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 6603)
+    Mock.Advance(1)
+    eq(spark:IsShown(), false, "sort sans coût en mana : rien")
+    Mock.FireEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 133)
+    Mock.Advance(1)
+    truthy(spark:IsShown(), "sort + baisse : étincelle")
+    Mock.Advance(5)
+    eq(spark:IsShown(), false, "cachée après 5 s")
+    NS.db.modules.resourcebars.manaSpark = false
+    disable()
+end)
+
+test("barres de ressources : coût en mana de l'incantation, suivi par castGUID", function()
+    local bars = enable()
+    local bar = bars.power
+    local segment = bar.manaCost and bar.manaCost.segment
+    truthy(segment, "prédiction active par défaut")
+    Mock.spellCosts[133] = { { type = 0, cost = 25 } }
+    Mock.FireEvent("UNIT_SPELLCAST_START", "player", "cast-1", 6603)
+    eq(segment:IsShown(), false, "sort sans coût en mana : rien")
+    -- Couleur de barre secrète (dégradé par pourcentage) : jamais relue pour le segment.
+    bar.GetStatusBarColor = function() error("attempt to perform arithmetic on a secret value") end
+    Mock.FireEvent("UNIT_SPELLCAST_START", "player", "cast-2", 133)
+    bar.GetStatusBarColor = nil
+    truthy(segment:IsShown(), "incantation coûteuse : segment")
+    local r = NS.UnitFrameElements.PowerColor("player")
+    eq(segment.barColor[1], (r + 1) / 2, "couleur tirée du type de puissance")
+    eq(bar.text.parent, bar.front, "texte au-dessus du segment")
+    eq(segment.value, 25)
+    eq(segment.max, 100, "bornes reprises de la barre")
+    Mock.FireEvent("UNIT_SPELLCAST_FAILED", "player", "cast-3", 6603)
+    truthy(segment:IsShown(), "échec d'un autre sort : segment gardé")
+    Mock.FireEvent("UNIT_SPELLCAST_STOP", "player", "cast-2", 133)
+    eq(segment:IsShown(), false, "fin de l'incantation : effacé")
+    Mock.FireEvent("UNIT_SPELLCAST_START", "player", Mock.SetSecret("cast-4"), 133)
+    eq(segment:IsShown(), false, "GUID secret : rien")
+    Mock.units.player.powerType = "RAGE"
+    RB:OnRefresh()
+    Mock.FireEvent("UNIT_SPELLCAST_START", "player", "cast-5", 133)
+    eq(segment:IsShown(), false, "barre sans mana : rien")
+    disable()
+end)

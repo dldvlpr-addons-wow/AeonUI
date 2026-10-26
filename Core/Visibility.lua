@@ -113,7 +113,8 @@ end
 --------------------------------------------------------------------------------
 -- opts : secure (state driver), prefix (conditions macro posées avant, « [petbattle] hide; »),
 -- hoverGroup (survol partagé), alpha() (opacité visible, 1 par défaut), apply(frame, visible)
--- (application propre au module à la place de SetShown), forceVisible() (vrai : rien de caché).
+-- (application propre au module à la place de SetShown), forceVisible() (vrai : rien de caché ;
+-- cadre sécurisé : conditions retirées hors combat, préfixe gardé).
 
 local hoverFrame = CreateFrame("Frame")
 hoverFrame.elapsed = 0
@@ -166,7 +167,8 @@ local function Apply(entry, state)
     if opts.secure then
         NS:RunOutOfCombat(function()
             if Visibility.entries[entry.key] ~= entry then return end
-            local macro = Visibility.Macro(spec)
+            -- forceVisible : conditions retirées, préfixe gardé (glisser vers une barre cachée).
+            local macro = not (opts.forceVisible and opts.forceVisible()) and Visibility.Macro(spec) or nil
             if macro or opts.prefix then
                 RegisterStateDriver(entry.frame, "visibility", (opts.prefix or "") .. (macro or "show"))
             else

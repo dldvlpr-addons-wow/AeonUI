@@ -3,12 +3,14 @@
 -- curseur, relâcher sur une entrée la lance. Entrées : sorts, objets, macros, montures, et
 -- sous-menus (« menu:2 ») : survoler l'entrée un instant ouvre la palette 2 à sa place.
 -- Quatre palettes, chacune sa touche (facultative : une palette sans touche sert de sous-menu).
--- Hors combat seulement : sur ce client les extraits sécurisés ne compilent pas, et écrire les
--- attributs d'un bouton sécurisé est interdit en combat. En combat, la touche ne fait rien.
 -- Mécanique : la touche est liée (SetOverrideBindingClick) à un bouton sécurisé qui reçoit
 -- l'appui et le relâcher. À l'appui : palette ouverte, aucune action. Au relâcher : l'entrée
 -- survolée devient l'action du bouton, que le clic exécute, puis la palette se ferme. Un seul
 -- bouton pour toutes les touches : le clic lié porte le numéro de palette (« Palette2 »).
+-- En combat, écrire les attributs du bouton est interdit : les actions de chaque emplacement
+-- sont posées d'avance hors combat (« type-musca2-3 »), et un extrait sécurisé (WrapScript)
+-- calcule l'emplacement visé au relâcher, puis renomme le clic en « musca2-3 ». Les montures,
+-- marqueurs et sous-menus restent hors combat.
 local _, NS = ...
 local L = NS.L
 local Media = NS.Media
@@ -213,9 +215,10 @@ local function Track()
         hovered, hoveredSince = pick, GetTime()
         Paint()
     end
-    -- Sous-menu survolé assez longtemps : sa palette s'ouvre, centrée sur l'entrée.
+    -- Sous-menu survolé assez longtemps : sa palette s'ouvre, centrée sur l'entrée. Pas en
+    -- combat : l'extrait sécurisé ne connaît que la palette de la touche.
     local entry = hovered and entries[hovered]
-    if entry and entry.kind == "menu" and entry.value ~= current and #(lists[entry.value] or {}) > 0
+    if entry and entry.kind == "menu" and entry.value ~= current and not NS.InCombat() and #(lists[entry.value] or {}) > 0
         and GetTime() - hoveredSince >= SUBMENU_DELAY then
         local sx, sy = RadialMenu.SlotPosition(db.layout, hovered, #entries, db.radius, db.iconSize)
         Open(entry.value, palette.cx + sx, palette.cy + sy)
@@ -255,6 +258,63 @@ function Open(index, x, y)
     palette:Show()
 end
 
+-- Extrait sécurisé du clic, actif en combat seulement : même calcul que RadialMenu.Pick, sur les
+-- positions posées d'avance par SetCombatSlots. Le bouton couvre l'écran (souris coupée) pour que
+-- GetMousePosition donne le curseur ; renvoyer false annule le clic.
+local COMBAT_CLICK = [[
+if not SecureCmdOptionParse("[combat] 1") then return end
+local fx, fy = self:GetMousePosition()
+if not fx then return false end
+local x, y = fx * self:GetWidth(), fy * self:GetHeight()
+if down then originX, originY = x, y return false end
+if not originX then return false end
+local dx, dy = x - originX, y - originY
+originX, originY = nil, nil
+local index = tonumber(strmatch(button, "^Palette(%d)$")) or 1
+local count = self:GetAttribute("musca-count" .. index) or 0
+if count == 0 or dx * dx + dy * dy < ]] .. DEADZONE * DEADZONE .. [[ then return false end
+local grid = self:GetAttribute("musca-layout") == "grid"
+local best, bestDistance
+for i = 1, count do
+    local sx, sy = self:GetAttribute("musca-x" .. index .. "-" .. i), self:GetAttribute("musca-y" .. index .. "-" .. i)
+    local distance
+    if grid then
+        distance = (dx - sx) * (dx - sx) + (dy - sy) * (dy - sy)
+    else
+        local diff = abs(atan2(dy, dx) - atan2(sy, sx))
+        distance = min(diff, 360 - diff)   -- atan2 du client : degrés
+    end
+    if not bestDistance or distance < bestDistance then best, bestDistance = i, distance end
+end
+local slot = "musca" .. index .. "-" .. best
+if not self:GetAttribute("*type-" .. slot) then return false end
+return slot
+]]
+
+--- Pose hors combat, pour chaque palette, la position et l'action de chaque emplacement.
+local function SetCombatSlots()
+    local db = RadialMenu.db
+    button:SetAttribute("musca-layout", db.layout)
+    for index = 1, PALETTE_COUNT do
+        local list = lists[index] or {}
+        button:SetAttribute("musca-count" .. index, #list)
+        for i = 1, MAX_ENTRIES do
+            local entry, slot = list[i], "musca" .. index .. "-" .. i
+            local x, y
+            if entry then x, y = RadialMenu.SlotPosition(db.layout, i, #list, db.radius, db.iconSize) end
+            button:SetAttribute("musca-x" .. index .. "-" .. i, x)
+            button:SetAttribute("musca-y" .. index .. "-" .. i, y)
+            local kind, attribute, value
+            if entry then kind, attribute, value = RadialMenu.Attributes(entry) end
+            -- « * » : trouvé aussi quand la touche porte un modificateur (SHIFT-Q, Maj tenue).
+            button:SetAttribute("*type-" .. slot, kind)
+            for _, name in ipairs({ "spell", "item", "macro" }) do
+                button:SetAttribute("*" .. name .. "-" .. slot, name == attribute and value or nil)
+            end
+        end
+    end
+end
+
 local function Close()
     palette:Hide()
     hovered, current = nil, nil
@@ -273,16 +333,20 @@ local function Build()
     button:RegisterForClicks("AnyDown", "AnyUp")
     -- ActionButtonUseKeyDown à 1 : sans ceci, le modèle n'agit qu'à l'appui, avant nos attributs.
     button:SetAttribute("useOnKeyDown", false)
+    button:SetAllPoints(UIParent)
+    button:EnableMouse(false)
+    local header = CreateFrame("Frame", nil, UIParent, "SecureHandlerBaseTemplate")
+    header:WrapScript(button, "OnClick", COMBAT_CLICK)
     button:SetScript("PreClick", function(self, mouseButton, down)
-        -- En combat : pas d'attribut possible, la touche ne fait rien.
-        if NS.InCombat() then return end
-        self:SetAttribute("type", nil)
+        local combat = NS.InCombat()
+        if not combat then self:SetAttribute("type", nil) end
         if down then
             local index = tonumber(tostring(mouseButton):match("^Palette(%d)$")) or 1
             if #(lists[index] or {}) > 0 then Open(index) end
             return
         end
-        if not palette:IsShown() then return end
+        -- En combat, l'extrait sécurisé choisit l'action ; la palette n'est que visuelle.
+        if combat or not palette:IsShown() then return end
         Track()
         local entry = hovered and entries[hovered]
         if not entry then return end
@@ -321,6 +385,7 @@ end
 
 local function ReadLists()
     for index = 1, PALETTE_COUNT do lists[index] = RadialMenu.ParseEntries(RadialMenu:PaletteConfig(index).entries) end
+    if not NS.InCombat() then SetCombatSlots() end   -- module sécurisé : rafraîchi hors combat
 end
 
 function RadialMenu:OnEnable()

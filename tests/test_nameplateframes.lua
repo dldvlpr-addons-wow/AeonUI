@@ -306,3 +306,29 @@ test("plaques : UNIT_FACTION neutre devenu hostile recolore la barre (réaction 
     Disable()
     Mock.namePlates = {}
 end)
+
+test("plaques : listes d'auras propres, liste blanche limitée à tes sorts sauf « tout lanceur »", function()
+    reset()
+    Mock.auraContainer = true
+    NS.auraContainerProbe = nil
+    NS.db.auraLists.whitelist = "999"
+    NPF.db.auraLists.whitelist, NPF.db.auraLists.blacklist = "139", "123"
+    Enable()
+    Enemy("nameplate1")
+    Mock.AddNamePlate("nameplate1")
+    local engine = NPF:GetFrame("nameplate1").auras.engine
+    local listed = engine.groups.listed
+    eq(listed.filter, "HARMFUL|PLAYER", "tes sorts seulement par défaut")
+    eq(listed.options.candidateFilters.includeSpellIDs[139], true, "liste blanche des plaques")
+    eq(listed.options.candidateFilters.includeSpellIDs[999], nil, "liste commune ignorée")
+    eq(engine.groups.debuffs.options.candidateFilters.excludeSpellIDs[123], true, "liste noire des plaques")
+    eq(engine.groups.debuffs.options.candidateFilters.excludeSpellIDs[139], nil, "aura listée d'un autre lanceur : reste dans les débuffs")
+    NPF.db.whitelistAnyCaster = true
+    NS.Modules:Refresh("nameplateframes")
+    eq(engine.groups.listed.FilterString, "HARMFUL", "tout lanceur")
+    eq(engine.groups.debuffs.CandidateFilters.excludeSpellIDs[139], true, "tout lanceur : déjà dans le groupe listé")
+    NPF.db.whitelistAnyCaster = false
+    NPF.db.auraLists.whitelist, NPF.db.auraLists.blacklist, NS.db.auraLists.whitelist = "", "", ""
+    Mock.RemoveNamePlate("nameplate1")
+    Disable()
+end)

@@ -1,7 +1,7 @@
 -- MuscaUI_Bags/Bags.lua
 -- Sacs tout-en-un léger : une seule fenêtre pour le sac à dos et les sacs équipés, sur son mover.
 -- Recherche par nom, tri par l'API du client, niveau d'objet sur l'équipement, objets gris
--- signalés (pièce), bordure de qualité, recharges, emplacements libres et or.
+-- signalés (pièce ; teintée pour un objet marqué camelote par Alt + clic gauche), bordure de qualité, recharges, emplacements libres et or.
 --
 -- Les cases sont les boutons des sacs Blizzard eux-mêmes, posés dans notre fenêtre : leur sac et
 -- leur case sont écrits par Blizzard, donc l'utilisation en combat n'est pas bloquée (un SetID fait
@@ -25,12 +25,14 @@ local Bags = NS.Modules:Register("bags", {
         upgrade = true,           -- flèche sur l'équipement d'un niveau supérieur à la pièce portée
         newFirst = true,          -- objets arrivés depuis la dernière ouverture en tête
         pinned = "",              -- identifiants d'objets toujours en tête (« 6948, 2901 »)
+        junkMarked = "",          -- identifiants marqués camelote (Alt + clic gauche), vendus par Automation
         layout = "grid",          -- "grid" (ordre des sacs) ou "categories" (sections titrées)
-        categoryOrder = "pinned, custom, new, equipment, consumable, tradegoods, quest, recipe, junk, other, empty",
+        categoryOrder = "pinned, custom, new, equipment, consumable, tradegoods, quest, recipe, junk, special, other, empty",
         categoryNames = {},       -- [clé] = libellé choisi (vide : libellé par défaut)
         categoryShown = { pinned = true, new = true, equipment = true, consumable = true, tradegoods = true,
-                          quest = true, recipe = true, junk = true },   -- décochée : objets rangés dans « Divers »
+                          quest = true, recipe = true, junk = true, special = true },   -- décochée : objets rangés dans « Divers »
         customCategories = "",    -- une ligne par groupe : « Potions = 118, 858 »
+        bindText = true,          -- « LqE » / « LqB » sous l'icône d'un objet pas encore lié
     },
 })
 
@@ -56,7 +58,7 @@ local EQUIP_SLOTS = {
 
 -- Catégories : ordre par défaut, et classe d'objet (GetItemInfoInstant) -> catégorie.
 local CATEGORY_KEYS = { "pinned", "custom", "new", "equipment", "consumable", "tradegoods", "quest", "recipe",
-                        "junk", "other", "empty" }
+                        "junk", "special", "other", "empty" }
 local CLASS_CATEGORY = { [0] = "consumable", [2] = "equipment", [4] = "equipment", [5] = "tradegoods",
                          [7] = "tradegoods", [9] = "recipe", [12] = "quest" }
 local HEADER_HEIGHT = 16
@@ -177,6 +179,7 @@ local function RestoreButton(button)
     if button.SetIgnoreParentAlpha then button:SetIgnoreParentAlpha(false) end
     button.muscaLevel:Hide()
     button.muscaJunk:Hide()
+    button.muscaBind:Hide()
     button.muscaBg:Hide()
     for _, edge in pairs(button.muscaBorder) do edge:Hide() end
     button:SetAlpha(1)
@@ -224,6 +227,29 @@ local function Decorate(button)
     button.muscaUpgrade:SetSize(S(12), S(12))
     button.muscaUpgrade:SetPoint("TOPRIGHT", button, "TOPRIGHT", -1, -1)
     if not button.muscaUpgrade:SetAtlas("bags-greenarrow") then NS.SetSolidColor(button.muscaUpgrade, 0.2, 0.9, 0.3, 1) end
+    button.muscaBind = Media:CreateText(button, "OVERLAY", -2, "OUTLINE")
+    button.muscaBind:SetPoint("BOTTOM", button, "BOTTOM", 0, 1)
+    button:HookScript("OnClick", function(self, mouseButton) Bags.OnItemClick(self, mouseButton) end)
+end
+
+--- Ajoute `id` à la liste « 1, 2 » s'il n'y est pas, le retire sinon. Rend le texte et vrai si ajouté.
+function Bags.ToggleListID(text, id)
+    local ids, found = {}, false
+    for token in (text or ""):gmatch("%d+") do
+        if tonumber(token) == id then found = true else ids[#ids + 1] = token end
+    end
+    if not found then ids[#ids + 1] = tostring(id) end
+    return table.concat(ids, ", "), not found
+end
+
+--- Alt + clic gauche sur un objet : le marque camelote (vendu chez le marchand) ou le démarque.
+-- Alt n'a pas d'action Blizzard sur un objet de sac : le clic ne prend pas l'objet.
+function Bags.OnItemClick(button, mouseButton)
+    if not active or mouseButton ~= "LeftButton" or not IsAltKeyDown() then return end
+    local item = button.muscaItem
+    if not (item and item.itemID) or not button.GetBagID then return end
+    Bags.db.junkMarked = Bags.ToggleListID(Bags.db.junkMarked, item.itemID)
+    Bags.UpdateButton(button, button:GetBagID(), button:GetID())
 end
 
 Bags.Decorate = Decorate   -- repris par la banque (MuscaUI_Bags/Bank.lua)
@@ -255,6 +281,30 @@ local function ItemName(item)
         name = getInfo and getInfo(link or item.itemID)
     end
     return type(name) == "string" and NS.Modules.SortKey(name) or ""
+end
+
+-- Liaison pas encore faite : Enum.ItemBind -> mot-clé de recherche (et texte sous l'icône).
+local BIND_KINDS = { [1] = "bop", [2] = "boe", [9] = "boa" }
+
+--- "bop", "boe", "boa" pour un objet pas encore lié, nil sinon ou tant que le type est inconnu.
+function Bags.BindKind(item)
+    if not item or item.isBound ~= false then return nil end
+    return BIND_KINDS[NS.GetItemBindType(item.link or item.itemID)]
+end
+
+--- Recherche : nom, ou début d'un mot-clé de liaison (langue du joueur, puis anglais).
+function Bags.MatchesSearch(item, query)
+    query = NS.Modules.SortKey(query or ""):match("^%s*(.-)%s*$")
+    if query == "" then return true end
+    if not item then return false end
+    if ItemName(item):find(query, 1, true) then return true end
+    if #query < 2 then return false end
+    local kind = Bags.BindKind(item)
+    if not kind then return false end
+    for _, word in ipairs({ L["BAGS_SEARCH_" .. kind:upper()], kind }) do
+        if NS.Modules.SortKey(word):sub(1, #query) == query then return true end
+    end
+    return false
 end
 
 local function EquipLocation(item)
@@ -289,8 +339,16 @@ function Bags.CategoryOrder(text)
     for word in tostring(text or ""):lower():gmatch("%a+") do
         if known[word] and not seen[word] then seen[word] = true order[#order + 1] = word end
     end
-    for _, key in ipairs(CATEGORY_KEYS) do
-        if not seen[key] then order[#order + 1] = key end
+    -- Clé absente d'un ordre enregistré : à sa place par défaut (avant « empty » pour « special »).
+    for position, key in ipairs(CATEGORY_KEYS) do
+        if not seen[key] then
+            local at = #order + 1
+            for i, other in ipairs(order) do
+                if other == CATEGORY_KEYS[position + 1] then at = i break end
+            end
+            table.insert(order, at, key)
+            seen[key] = true
+        end
     end
     return order
 end
@@ -302,11 +360,15 @@ local function ItemClass(item)
 end
 
 --- Catégorie d'une case : « custom:<nom> » pour un groupe libre, sinon une clé de CATEGORY_KEYS.
--- Une catégorie décochée renvoie ses objets dans « other ».
-function Bags.Category(item, bag, slot, pinned, custom)
-    if not item then return "empty" end
+-- Une catégorie décochée renvoie ses objets dans « other ». `general` faux : sac spécial (carquois,
+-- sac d'âme…), cases vides comprises.
+function Bags.Category(item, bag, slot, pinned, custom, general)
     local db = Bags.db
     local shown = db.categoryShown
+    if general == false and shown.special then
+        if not (item and (custom[item.itemID] or pinned[item.itemID])) then return "special" end
+    end
+    if not item then return "empty" end
     if custom[item.itemID] then return "custom:" .. custom[item.itemID] end
     local key
     if pinned[item.itemID] then key = "pinned"
@@ -335,14 +397,17 @@ function Bags.CategoryLabel(key)
 end
 
 --- Sections dans l'ordre : { { key, label, buttons } }, sections vides écartées.
-function Bags.Sections(list)
+--- `general` : cache [sac] = NS.IsGeneralBag de la passe en cours (un appel par sac).
+function Bags.Sections(list, general)
     local db = Bags.db
     local pinned = NS.ParseSpellList(db.pinned)
     local custom, customNames = Bags.CustomCategories(db.customCategories)
     local byKey = {}
+    general = general or {}
     for _, button in ipairs(list) do
         local bag, slot = button:GetBagID(), button:GetID()
-        local key = Bags.Category(BagItem(bag, slot), bag, slot, pinned, custom)
+        if general[bag] == nil then general[bag] = NS.IsGeneralBag(bag) end
+        local key = Bags.Category(BagItem(bag, slot), bag, slot, pinned, custom, general[bag])
         byKey[key] = byKey[key] or {}
         table.insert(byKey[key], button)
     end
@@ -377,8 +442,9 @@ function Bags.IsUpgrade(item, level)
     return level > lowest
 end
 
---- Icône, quantité et recharge : peintes par Blizzard. Ici niveau, camelote, bordure, recherche.
-function Bags.UpdateButton(button, bag, slot)
+--- Icône, quantité et recharge : peintes par Blizzard. Ici niveau, camelote, bordure, recherche
+-- (`query` : texte cherché, celui de la fenêtre des sacs par défaut).
+function Bags.UpdateButton(button, bag, slot, query)
     local db = Bags.db
     local item = BagItem(bag, slot)
     button.muscaItem = item
@@ -387,6 +453,7 @@ function Bags.UpdateButton(button, bag, slot)
         button.muscaLevel:Hide()
         button.muscaJunk:Hide()
         button.muscaUpgrade:Hide()
+        button.muscaBind:Hide()
         local c = NS.db.theme.border
         r, g, b = c.r, c.g, c.b
     else
@@ -395,22 +462,27 @@ function Bags.UpdateButton(button, bag, slot)
         button.muscaLevel:SetText(level and tostring(level) or "")
         button.muscaLevel:SetTextColor(NS.QualityColor(item.quality))
         button.muscaLevel:SetShown(level and true or false)
-        button.muscaJunk:SetShown(db.junk and item.quality == 0 and not item.hasNoValue)
+        local marked = NS.ParseSpellList(db.junkMarked)[item.itemID]
+        button.muscaJunk:SetShown(marked or (db.junk and item.quality == 0 and not item.hasNoValue) or false)
+        if marked then button.muscaJunk:SetVertexColor(1, 0.35, 0.35) else button.muscaJunk:SetVertexColor(1, 1, 1) end
         local itemLevel = db.upgrade and item.link and NS.GetItemLevel(item.link)
         button.muscaUpgrade:SetShown(itemLevel and Bags.IsUpgrade(item, itemLevel) or false)
+        local kind = db.bindText and Bags.BindKind(item)
+        local bindLabel = (kind == "boe" or kind == "boa") and L["BAGS_BIND_" .. kind:upper()]
+        button.muscaBind:SetText(bindLabel or "")
+        button.muscaBind:SetTextColor(NS.QualityColor(item.quality))
+        button.muscaBind:SetShown(bindLabel and true or false)
         if item.quality and item.quality >= 2 then r, g, b = NS.QualityColor(item.quality)
         else local c = NS.db.theme.border r, g, b = c.r, c.g, c.b end
     end
     for _, edge in pairs(button.muscaBorder) do NS.SetSolidColor(edge, r, g, b, 1) end
-    Bags.ApplySearch(button)
+    Bags.ApplySearch(button, query)
 end
 
---- Recherche : objets qui ne correspondent pas atténués.
-function Bags.ApplySearch(button)
-    local query = window and window.search and window.search:GetText() or ""
-    query = NS.Modules.SortKey(query):match("^%s*(.-)%s*$")
-    local match = query == "" or (button.muscaItem and ItemName(button.muscaItem):find(query, 1, true) ~= nil)
-    button:SetAlpha(match and 1 or 0.25)
+--- Recherche : objets qui ne correspondent pas atténués. `query` : texte de la fenêtre des sacs par défaut.
+function Bags.ApplySearch(button, query)
+    query = query or (window and window.search and window.search:GetText()) or ""
+    button:SetAlpha(Bags.MatchesSearch(button.muscaItem, query) and 1 or 0.25)
 end
 
 --------------------------------------------------------------------------------
@@ -529,7 +601,8 @@ function Bags:UpdatePass()
         local detached = db.detachReagents and NS.REAGENT_BAG ~= nil and button:GetBagID() == NS.REAGENT_BAG
         if detached then reagents[#reagents + 1] = button else main[#main + 1] = button end
     end
-    local free = 0
+    -- Pied : sacs généraux seulement (un carquois ou un sac d'âme n'accepte pas tout).
+    local free, total, general = 0, 0, {}
     -- Sections posées l'une sous l'autre, chacune sur des rangées neuves ; titre au besoin.
     -- Mêmes boutons, mêmes sections, même taille : rien n'est replacé, sauf un bouton que Blizzard
     -- a réancré sur son cadre (réouverture, mise en page de ses sacs).
@@ -577,7 +650,11 @@ function Bags:UpdatePass()
                         -top - row * (size + S(SPACING)))
                 end
                 Bags.UpdateButton(button, bag, slot)
-                if not button.muscaItem then free = free + 1 end
+                if general[bag] == nil then general[bag] = NS.IsGeneralBag(bag) end
+                if general[bag] then
+                    total = total + 1
+                    if not button.muscaItem then free = free + 1 end
+                end
             end
             top = top + math.max(1, math.ceil(#section.buttons / columns)) * (size + S(SPACING))
         end
@@ -586,11 +663,11 @@ function Bags:UpdatePass()
         if #sections == 0 then top = top + size + S(SPACING) end
         parent:SetSize(S(16) + columns * (size + S(SPACING)) - S(SPACING), top + S(22))
     end
-    if db.layout == "categories" then Place(Bags.Sections(main), window)
+    if db.layout == "categories" then Place(Bags.Sections(main, general), window)
     else Place({ { buttons = main } }, window) end
     Place({ { buttons = reagents } }, reagentWindow)
     reagentWindow:SetShown(window:IsShown() and #reagents > 0)
-    window.footer:SetText(string.format(L.BAGS_FREE, free, #list))
+    window.footer:SetText(string.format(L.BAGS_FREE, free, total))
     window.money:SetText(NS.FormatMoney(GetMoney()))
 end
 
@@ -699,8 +776,12 @@ function Bags:BuildOptions(o)
     if NS.REAGENT_BAG then o:Check("detachReagents", L.OPT_BAGS_DETACH_REAGENTS) end
     o:Check("upgrade", L.OPT_BAGS_UPGRADE)
     o:Check("newFirst", L.OPT_BAGS_NEW_FIRST)
+    o:Check("bindText", L.OPT_BAGS_BIND_TEXT)
+    o:Hint(L.OPT_BAGS_SEARCH_HINT)
     o:Advanced()
     o:EditBox("pinned", L.OPT_BAGS_PINNED, 1)
+    o:EditBox("junkMarked", L.OPT_BAGS_JUNK_MARKED, 1)
+    o:Hint(L.OPT_BAGS_JUNK_MARKED_HINT)
     o:EndAdvanced()
     o:Title(L.OPT_BAGS_CATEGORIES_TITLE)
     o:Dropdown("layout", L.OPT_BAGS_LAYOUT, {

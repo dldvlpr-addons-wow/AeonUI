@@ -189,3 +189,55 @@ test("minimap : rendu forcé par un zoom décalé, rendu l'image suivante (sinon
     Minimap.SetZoom = original
     Disable()
 end)
+
+test("minimap : suivi, courrier, difficulté, horloge et zoom réglés un par un ; courrier réancré après Blizzard", function()
+    reset()
+    local db = NS.db.modules.minimap
+    local mail, clock = MinimapCluster.IndicatorFrame.MailFrame, TimeManagerClockButton
+    Mock.newMail = true
+    mail:Show()
+    Enable()
+    truthy(MinimapCluster.Tracking:IsShown() and mail:IsShown(), "suivi et courrier affichés par défaut")
+    eq(clock:IsShown(), false, "horloge cachée par défaut")
+    truthy(NS.IsRegionHidden(Minimap.ZoomIn), "zoom caché par défaut")
+    eq(MinimapCluster.BorderTop:IsShown(), false, "décor caché")
+    MiniMapIndicatorFrame_UpdatePosition()
+    local point, relTo = MinimapCluster.IndicatorFrame:GetPoint()
+    eq(point, "BOTTOMRIGHT", "Blizzard replace l'indicateur : remis au coin de la carte")
+    eq(relTo, Minimap)
+    db.showMail, db.showClock, db.showZoom, db.showTracking = false, true, true, false
+    NS.Modules:Refresh("minimap")
+    eq(mail:IsShown(), false)
+    eq(MinimapCluster.Tracking:IsShown(), false)
+    truthy(clock:IsShown(), "horloge rendue")
+    eq(Minimap.ZoomIn:IsShown(), false, "zoom rendu à Blizzard : affiché au survol seulement")
+    eq(NS.IsRegionHidden(Minimap.ZoomIn), false)
+    Mock.newMail = false
+    db.showMail = true
+    NS.Modules:Refresh("minimap")
+    eq(mail:IsShown(), false, "courrier rendu selon le courrier en attente")
+    db.compactDifficulty = true
+    NS.Modules:Refresh("minimap")
+    truthy(_G.MuscaUI_Minimap.difficulty:IsShown(), "difficulté compacte")
+    db.showDifficulty = false
+    NS.Modules:Refresh("minimap")
+    eq(_G.MuscaUI_Minimap.difficulty:IsShown(), false, "difficulté cachée, compacte comprise")
+    db.compactDifficulty = false
+    Disable()
+    truthy(MinimapCluster.Tracking:IsShown(), "suivi rendu au disable")
+    db.showMail, db.showClock, db.showZoom, db.showTracking, db.showDifficulty = true, false, false, true, true
+    Mock.newMail = nil
+end)
+
+test("migration v8 -> v9 : décor Blizzard gardé, horloge et zoom restent affichés", function()
+    local db = { version = 8, profiles = {
+        A = { modules = { minimap = { hideDecor = false } } },
+        B = { modules = { minimap = { hideDecor = true } } },
+        C = { modules = { minimap = { hideDecor = false, showClock = false } } },
+    } }
+    NS.Database.Migrate(db)
+    eq(db.profiles.A.modules.minimap.showClock, true)
+    eq(db.profiles.A.modules.minimap.showZoom, true)
+    eq(db.profiles.B.modules.minimap.showClock, nil, "décor caché : défauts")
+    eq(db.profiles.C.modules.minimap.showClock, false, "choix déjà fait gardé")
+end)

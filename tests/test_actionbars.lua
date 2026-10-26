@@ -373,6 +373,16 @@ test("barres d'action : visibilité commune dans le driver, survol lié entre ba
     local bar1, bar2, bar3 = AB:GetBar(1), AB:GetBar(2), AB:GetBar(3)
     eq(Mock.stateDrivers[bar2].visibility, "[petbattle] hide; [combat] show; hide")
     truthy(Mock.stateDrivers[bar1].visibility:find("^%[overridebar%]"), "barre 1 : barres spéciales d'abord")
+    Mock.FireEvent("ACTIONBAR_SHOWGRID")
+    eq(Mock.stateDrivers[bar2].visibility, "[petbattle] hide; show", "glisser : conditions retirées, préfixe gardé")
+    Mock.FireEvent("ACTIONBAR_HIDEGRID")
+    eq(Mock.stateDrivers[bar2].visibility, "[petbattle] hide; [combat] show; hide", "relâcher : conditions rendues")
+    Mock.SetCombat(true)
+    Mock.FireEvent("ACTIONBAR_SHOWGRID")
+    eq(Mock.stateDrivers[bar2].visibility, "[petbattle] hide; [combat] show; hide", "en combat : rien ne change")
+    Mock.FireEvent("ACTIONBAR_HIDEGRID")
+    Mock.SetCombat(false)
+    eq(Mock.stateDrivers[bar2].visibility, "[petbattle] hide; [combat] show; hide", "sortie de combat : état gardé")
     Mock.mouseOver = bar2
     Mock.Advance(0.2)
     eq(bar2:GetAlpha(), 1, "survolée")
@@ -458,4 +468,26 @@ test("barres : inscription Blizzard hors dispatch retirée aussitôt, jumeaux ca
     for i = #ActionBarButtonEventsFrame.frames, 1, -1 do
         if ActionBarButtonEventsFrame.frames[i] == twin then tremove(ActionBarButtonEventsFrame.frames, i) end
     end
+end)
+
+test("barres : page par modificateur sur la barre 1, après véhicule et formes, pages libres seulement", function()
+    reset()
+    local db = NS.db.modules.actionbars
+    eq(table.concat(AB.FreePages(db.bars), ","), "3,4,13,14,15", "barres 2 et 3 allumées : pages 6 et 5 prises")
+    local driver = AB.PageDriver(db.bars)
+    eq(driver:find("mod:", 1, true), nil, "aucun modificateur par défaut")
+    truthy(driver:find("; 1$"), "page 1 en dernier")
+    db.bars[1].pageAlt, db.bars[1].pageShift, db.bars[1].pageCtrl = 13, 6, 3
+    driver = AB.PageDriver(db.bars)
+    truthy(driver:find("[bonusbar:5] 11; [mod:alt] 13; [mod:ctrl] 3; 1", 1, true), "après les formes, page prise ignorée")
+    eq(db.bars[1].pageShift, 0, "page prise remise à aucune : le menu suit")
+    eq(db.bars[1].pageAlt, 13)
+    truthy(driver:find("^%[overridebar%]%[vehicleui%]%[possessbar%] 12;"), "véhicule d'abord")
+    Enable()
+    eq(Mock.attributeDrivers[AB:GetBar(1).buttons[1]].actionpage, driver, "pilote posé sur les boutons")
+    db.bars[1].pageAlt = 0
+    NS.Modules:Refresh("actionbars")
+    eq(Mock.attributeDrivers[AB:GetBar(1).buttons[1]].actionpage:find("mod:alt", 1, true), nil, "réglage repris")
+    Disable()
+    db.bars[1].pageAlt, db.bars[1].pageShift, db.bars[1].pageCtrl = 0, 0, 0
 end)

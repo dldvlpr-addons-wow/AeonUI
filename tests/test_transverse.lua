@@ -309,3 +309,23 @@ test("barres d'auras : la plus courte en tête, débuff au type, permanentes éc
     NS.db.modules.aurabars.show = "both"
     C_UnitAuras.GetAuraDataByIndex, _G.DebuffTypeColor = previous, previousColors
 end)
+
+test("barres d'auras : imprégnations d'arme en tête, relues à WEAPON_ENCHANT_CHANGED, secret écarté", function()
+    reset()
+    Mock.now = math.ceil(Mock.now)   -- horloge entière : « 10m » ne dépend pas des pas flottants des tests précédents
+    local AuraBars = NS.Modules:Get("aurabars")
+    Mock.equipped[16] = { link = "|cffffffff|Hitem:1|h[Poison instantané]|h|r" }
+    Mock.weaponEnchants[0] = { { hasEnchant = true, enchantType = 0, timeLeft = 600000, charges = 0,
+                                 enchantID = 7, enchantIconID = 99 } }
+    NS.Modules:SetEnabled("aurabars", true)
+    local first = _G.MuscaUIAuraBars:GetChildren()
+    eq(first.name.text, "Poison instantané", "nom repris du lien de l'arme")
+    eq(first.icon.texture, 99)
+    eq(first.time.text, "10m")
+    Mock.weaponEnchants[0] = { { hasEnchant = true, timeLeft = Mock.SetSecret(123456), charges = 0, enchantID = 7 } }
+    Mock.FireEvent("WEAPON_ENCHANT_CHANGED")
+    eq(#NS.GetWeaponEnchants(), 0, "champ secret : entrée écartée")
+    eq(first:IsShown(), false)
+    NS.Modules:SetEnabled("aurabars", false)
+    Mock.equipped[16] = nil
+end)

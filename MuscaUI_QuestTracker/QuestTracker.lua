@@ -6,6 +6,8 @@
 -- Le cadre Blizzard n'est pas reparenté (système Edit Mode) : réancré seulement, un hook de
 -- SetPoint reprend la main si Blizzard le replace. Les API de repli changent selon le moteur :
 -- SetCollapsed, sinon ObjectiveTracker_Collapse/Expand, sinon rien (tout en pcall).
+-- Tri, filtres et suivi automatique réécrivent la liste de suivi Blizzard (Add/RemoveQuestWatch),
+-- hors combat, hors rencontre et carte fermée, seulement quand l'ordre voulu diffère.
 local NS = MuscaUI
 local L = NS.L
 local Media = NS.Media
@@ -31,6 +33,14 @@ local QuestTracker = NS.Modules:Register("questtracker", {
         objectiveColor = { r = 0.8, g = 0.8, b = 0.8 },
         completeColor = { r = 0.25, g = 1, b = 0.35 },   -- quête terminée : titre et objectifs
         questItemKey = "",        -- touche qui utilise l'objet de quête (suivie d'abord), vide = aucune
+        sortMode = "proximity",   -- "proximity" (Blizzard, distance) | "log" | "level" | "name"
+        completedPosition = "mixed", -- quêtes terminées : "mixed" | "top" | "bottom"
+        filterActive = true,      -- bouton du suivi : filtres appliqués ou tout montré
+        filterZone = true,        -- quêtes de la carte courante seulement
+        hideComplete = false,
+        hideTrivial = true,       -- quêtes grises (niveau trop bas)
+        hideRepeatable = false,   -- journalières et hebdomadaires
+        autoTrackZone = true,     -- suit les quêtes de la zone ou du donjon (25 au plus)
     },
 })
 
@@ -44,6 +54,7 @@ local autoCollapsed = false      -- replié par nous (combat ou instance) : à r
 local headerBackgrounds = {}     -- fonds cachés
 local originalFonts = setmetatable({}, { __mode = "k" })   -- [FontString] = { police d'origine }
 local inEncounter = false
+local UpdateFilterButton
 
 local function Tracker()
     return _G.ObjectiveTrackerFrame or _G.WatchFrame or _G.QuestWatchFrame
@@ -260,6 +271,7 @@ function QuestTracker:Apply()
     self:UpdateCollapse()
     self:UpdateVisibility()
     self:StyleBlocks()
+    UpdateFilterButton()
 end
 
 --------------------------------------------------------------------------------
@@ -300,16 +312,270 @@ end
 
 function QuestTracker:GetQuestItemButton() return questItemButton end
 
+--------------------------------------------------------------------------------
+-- Tri, filtres, suivi automatique
+--------------------------------------------------------------------------------
+
+local MAX_WATCHES = 25   -- MAX_QUEST_WATCHES
+local NO_FACTS = { logIndex = 0, level = 0, title = "", complete = false }
+local SORT_KEYS = {
+    log = function(facts) return facts.logIndex end,
+    level = function(facts) return facts.level end,
+    name = function(facts) return facts.title:lower() end,
+}
+
+local function Filtered(facts, db)
+    if not (facts and db.filterActive) then return false end
+    return (db.filterZone and not facts.onMap) or (db.hideComplete and facts.complete)
+        or (db.hideTrivial and facts.trivial) or (db.hideRepeatable and (facts.frequency == 1 or facts.frequency == 2))
+        or false
+end
+
+--- Liste de suivi voulue et vrai si son ordre compte. `watched` : quêtes suivies, dans l'ordre ;
+-- `zone` : quêtes de la carte (journal) ; `facts[questID]` : NS.GetQuestFacts, false si hors journal ;
+-- `memory` (par personnage, mis à jour ici) : { removed = retirées par un filtre, auto = suivies par
+-- nous } ; `session` : { exempt = suivies à la main, untracked = retirées à la main }.
+function QuestTracker.WantedWatches(watched, zone, facts, db, memory, session)
+    local wanted, listed, inZone = {}, {}, {}
+    local function add(questID)
+        listed[questID] = true
+        wanted[#wanted + 1] = questID
+    end
+    for _, questID in ipairs(zone) do inZone[questID] = true end
+    for _, questID in ipairs(watched) do
+        if memory.auto[questID] and not (db.autoTrackZone and inZone[questID]) then
+            memory.auto[questID] = nil
+        elseif not session.exempt[questID] and Filtered(facts[questID], db) then
+            memory.removed[questID] = true
+        else
+            add(questID)
+        end
+    end
+    local restored = {}
+    for questID in pairs(memory.removed) do
+        if not facts[questID] then memory.removed[questID] = nil
+        elseif not Filtered(facts[questID], db) then restored[#restored + 1] = questID end
+    end
+    table.sort(restored)
+    for _, questID in ipairs(restored) do
+        if #wanted >= MAX_WATCHES then break end
+        memory.removed[questID] = nil
+        add(questID)
+    end
+    if db.autoTrackZone then
+        for _, questID in ipairs(zone) do
+            if #wanted >= MAX_WATCHES then break end
+            if not listed[questID] and not session.untracked[questID] and not memory.removed[questID]
+                and facts[questID] and not Filtered(facts[questID], db) then
+                memory.auto[questID] = true
+                add(questID)
+            end
+        end
+    end
+    local key, completed = SORT_KEYS[db.sortMode], db.completedPosition
+    local ordered = key ~= nil or completed == "top" or completed == "bottom"
+    if ordered then
+        local rank = {}
+        for index, questID in ipairs(wanted) do rank[questID] = index end
+        table.sort(wanted, function(a, b)
+            local fa, fb = facts[a] or NO_FACTS, facts[b] or NO_FACTS
+            local doneA, doneB = fa.complete == true, fb.complete == true
+            if completed ~= "mixed" and doneA ~= doneB then return doneA == (completed == "top") end
+            if key and key(fa) ~= key(fb) then return key(fa) < key(fb) end
+            return rank[a] < rank[b]
+        end)
+    end
+    return wanted, ordered
+end
+
+local session = { exempt = {}, untracked = {} }
+local lastWatched              -- liste après notre dernière passe : tout écart vient du joueur
+local insertAtHead = true      -- AddQuestWatch insère en tête (non vérifié) ; inversé si l'ordre relu diffère
+local orderFailures = 0        -- deux échecs : plus de réordonnancement jusqu'au prochain changement de zone
+local passQueued = false
+local mapHooked = false
+local blizzardAdded = {}       -- suivies d'office par Blizzard (QUEST_ACCEPTED, QUEST_WATCH_UPDATE) : pas exemptées
+local logReady = false         -- un QUEST_LOG_UPDATE reçu : le journal est chargé
+
+local function MapShown() return _G.WorldMapFrame and WorldMapFrame:IsShown() end
+
+local function Memory()
+    NS.global.questWatches = NS.global.questWatches or {}
+    local key = NS.Database.CharacterKey()
+    local memory = NS.global.questWatches[key] or { removed = {}, auto = {} }
+    NS.global.questWatches[key] = memory
+    return memory
+end
+
+local function NoteManualChanges(watched, memory)
+    local now = {}
+    for _, questID in ipairs(watched) do
+        now[questID] = true
+        if lastWatched and not lastWatched[questID] and not blizzardAdded[questID] then
+            session.exempt[questID], session.untracked[questID], memory.removed[questID] = true, nil, nil
+        end
+    end
+    for questID in pairs(lastWatched or {}) do
+        if not now[questID] then session.untracked[questID], memory.auto[questID] = true, nil end
+    end
+end
+
+--- Écritures minimales : retraits, puis seulement les quêtes hors de la plus longue fin (insertion
+-- en tête) ou du plus long début (insertion en fin) déjà à leur place.
+local function Rewrite(watched, wanted, ordered)
+    local keep, current = {}, {}
+    for _, questID in ipairs(wanted) do keep[questID] = true end
+    for _, questID in ipairs(watched) do
+        if keep[questID] then current[#current + 1] = questID else NS.SetQuestWatched(questID, false) end
+    end
+    local present = {}
+    for _, questID in ipairs(current) do present[questID] = true end
+    if not ordered then
+        for _, questID in ipairs(wanted) do
+            if not present[questID] then NS.SetQuestWatched(questID, true) end
+        end
+        return
+    end
+    local count, kept = #wanted, 0
+    if insertAtHead then
+        while kept < count and current[#current - kept] == wanted[count - kept] do kept = kept + 1 end
+        for index = count - kept, 1, -1 do
+            if present[wanted[index]] then NS.SetQuestWatched(wanted[index], false) end
+            NS.SetQuestWatched(wanted[index], true)
+        end
+    else
+        while kept < count and current[kept + 1] == wanted[kept + 1] do kept = kept + 1 end
+        for index = kept + 1, count do
+            if present[wanted[index]] then NS.SetQuestWatched(wanted[index], false) end
+            NS.SetQuestWatched(wanted[index], true)
+        end
+    end
+end
+
+local function SameList(a, b)
+    if #a ~= #b then return false end
+    for index = 1, #a do if a[index] ~= b[index] then return false end end
+    return true
+end
+
+function QuestTracker:SortPass()
+    if not active or NS.InCombat() or inEncounter or MapShown() then return end
+    -- Journal pas encore chargé : rien lu, rien écrit, rien purgé.
+    if not logReady or NS.GetNumQuestLogEntries() == 0 then return end
+    local db, memory = self.db, Memory()
+    local watched = NS.GetWatchedQuestIDs()
+    NoteManualChanges(watched, memory)
+    local zone, facts = NS.GetQuestIDsOnMap(), {}
+    local function read(questID)
+        if facts[questID] == nil then facts[questID] = NS.GetQuestFacts(questID) or false end
+    end
+    for _, questID in ipairs(watched) do read(questID) end
+    for questID in pairs(memory.removed) do read(questID) end
+    if db.autoTrackZone then for _, questID in ipairs(zone) do read(questID) end end
+    local wasRemoved = {}
+    for questID in pairs(memory.removed) do wasRemoved[questID] = true end
+    local wanted, ordered = QuestTracker.WantedWatches(watched, zone, facts, db, memory, session)
+    ordered = ordered and orderFailures < 2
+    Rewrite(watched, wanted, ordered)
+    local after = NS.GetWatchedQuestIDs()
+    lastWatched = {}
+    for _, questID in ipairs(after) do lastWatched[questID] = true end
+    -- Ajout refusé par le client : ni suivie par nous, ni sortie de la mémoire des retirées.
+    for questID in pairs(memory.auto) do if not lastWatched[questID] then memory.auto[questID] = nil end end
+    for _, questID in ipairs(wanted) do
+        if wasRemoved[questID] and not lastWatched[questID] then memory.removed[questID] = true end
+    end
+    blizzardAdded = {}
+    if not ordered then return end
+    if SameList(after, wanted) then
+        orderFailures = 0
+    else
+        orderFailures, insertAtHead = orderFailures + 1, not insertAtHead
+    end
+end
+
+-- Une passe 0,2 s après la dernière mise à jour : Blizzard retrie par distance au changement de
+-- zone (SortQuestWatches), notre ordre passe après le sien.
+local function QueueSort()
+    if passQueued or not active then return end
+    passQueued = true
+    C_Timer.After(0.2, function()
+        passQueued = false
+        QuestTracker:SortPass()
+    end)
+end
+
+--- Filtres coupés (module éteint) : les quêtes retirées reviennent au suivi, 25 au plus. Rencontre,
+-- carte ouverte ou journal vide : nouvel essai 2 s plus tard, la mémoire reste intacte.
+local function RestoreRemoved()
+    if active then return end   -- réactivé entre-temps : la passe de tri s'en charge
+    if NS.IsEncounterInProgress() or MapShown() or NS.GetNumQuestLogEntries() == 0 then
+        C_Timer.After(2, function() NS:RunOutOfCombat(RestoreRemoved) end)
+        return
+    end
+    local memory = Memory()
+    local list = {}
+    for questID in pairs(memory.removed) do list[#list + 1] = questID end
+    table.sort(list)
+    local count = #NS.GetWatchedQuestIDs()
+    for _, questID in ipairs(list) do
+        if count >= MAX_WATCHES then break end
+        if not NS.GetQuestFacts(questID) then
+            memory.removed[questID] = nil
+        elseif NS.SetQuestWatched(questID, true) then
+            memory.removed[questID], count = nil, count + 1
+        end
+    end
+end
+
+local filterButton
+function UpdateFilterButton()
+    local db = QuestTracker.db
+    if not filterButton then
+        filterButton = CreateFrame("Button", "MuscaUI_QuestTrackerFilter", holder)
+        filterButton:SetFrameStrata("MEDIUM")
+        filterButton:SetSize(16, 16)
+        filterButton:SetPoint("TOPRIGHT", holder, "TOPRIGHT", -28, -2)
+        filterButton.icon = filterButton:CreateTexture(nil, "ARTWORK")
+        filterButton.icon:SetAllPoints(filterButton)
+        filterButton.icon:SetTexture("Interface\\Icons\\INV_Misc_Map_01")
+        Media:CreateBorder(filterButton)
+        filterButton:SetScript("OnClick", function(self)
+            QuestTracker.db.filterActive = not QuestTracker.db.filterActive
+            UpdateFilterButton()
+            QueueSort()
+            if self:IsMouseOver() then self:GetScript("OnEnter")(self) end
+        end)
+        filterButton:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetText(QuestTracker.db.filterActive and L.QT_FILTER_ON or L.QT_FILTER_OFF)
+            GameTooltip:Show()
+        end)
+        filterButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    filterButton.icon:SetDesaturated(not db.filterActive)
+    filterButton:SetShown(active and (db.filterZone or db.hideComplete or db.hideTrivial or db.hideRepeatable) and true or false)
+end
+
 local events = CreateFrame("Frame")
+local SORT_EVENTS = { QUEST_WATCH_LIST_CHANGED = true, QUEST_LOG_UPDATE = true, QUEST_ACCEPTED = true,
+                      ZONE_CHANGED = true, ZONE_CHANGED_NEW_AREA = true, PLAYER_REGEN_ENABLED = true,
+                      ENCOUNTER_END = true, PLAYER_ENTERING_WORLD = true, QUEST_WATCH_UPDATE = true }
 local VISIBILITY_EVENTS = { PLAYER_TARGET_CHANGED = true, PLAYER_MOUNT_DISPLAY_CHANGED = true,
                             ENCOUNTER_START = true, ENCOUNTER_END = true, GROUP_ROSTER_UPDATE = true }
 
-events:SetScript("OnEvent", function(_, event)
+events:SetScript("OnEvent", function(_, event, questID)
     if not active then return end
+    if event == "QUEST_LOG_UPDATE" then logReady = true end
+    if (event == "QUEST_ACCEPTED" or event == "QUEST_WATCH_UPDATE") and questID then blizzardAdded[questID] = true end
     if event == "ENCOUNTER_START" then inEncounter = true
     elseif event == "ENCOUNTER_END" or event == "PLAYER_ENTERING_WORLD" then inEncounter = false end
     QuestTracker:UpdateVisibility(event)
-    if VISIBILITY_EVENTS[event] then return end
+    if event == "ZONE_CHANGED" or event == "ZONE_CHANGED_NEW_AREA" then orderFailures = 0 end
+    if SORT_EVENTS[event] then QueueSort() end
+    if VISIBILITY_EVENTS[event] or event == "ZONE_CHANGED" or event == "QUEST_ACCEPTED" or event == "QUEST_WATCH_UPDATE" then
+        return
+    end
     if event == "QUEST_LOG_UPDATE" or event == "QUEST_WATCH_LIST_CHANGED" or event == "PLAYER_REGEN_ENABLED" then
         QuestTracker:UpdateQuestItem()
     end
@@ -335,9 +601,14 @@ function QuestTracker:OnEnable()
     for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_ENTERING_WORLD",
                              "ZONE_CHANGED_NEW_AREA", "QUEST_WATCH_LIST_CHANGED", "QUEST_LOG_UPDATE",
                              "PLAYER_TARGET_CHANGED", "PLAYER_MOUNT_DISPLAY_CHANGED", "ENCOUNTER_START", "ENCOUNTER_END",
-                             "GROUP_ROSTER_UPDATE" }) do
+                             "GROUP_ROSTER_UPDATE", "ZONE_CHANGED", "QUEST_ACCEPTED", "QUEST_WATCH_UPDATE" }) do
         NS.RegisterEventSafe(events, event)
     end
+    if not mapHooked and _G.WorldMapFrame then
+        mapHooked = true
+        WorldMapFrame:HookScript("OnHide", QueueSort)   -- passe refusée carte ouverte : reprise à la fermeture
+    end
+    QueueSort()
 end
 
 function QuestTracker:OnDisable()
@@ -346,6 +617,9 @@ function QuestTracker:OnDisable()
     events:UnregisterAllEvents()
     self:BindQuestItem(false)
     if autoCollapsed then autoCollapsed = false self.SetCollapsed(false) end
+    NS:RunOutOfCombat(RestoreRemoved)
+    lastWatched = nil
+    if filterButton then filterButton:Hide() end
     for background in pairs(headerBackgrounds) do NS.ShowRegion(background) end
     for _, header in ipairs(Headers()) do
         if header.foreverOriginalFont and header.Text then header.Text:SetFont(unpack(header.foreverOriginalFont)) end
@@ -358,7 +632,11 @@ function QuestTracker:OnDisable()
 end
 
 function QuestTracker:OnRefresh()
-    if active then self:Apply() self:BindQuestItem(true) end
+    if not active then return end
+    self:Apply()
+    self:BindQuestItem(true)
+    orderFailures = 0
+    QueueSort()
 end
 
 NS:On("PIXEL_CHANGED", function()
@@ -382,6 +660,19 @@ function QuestTracker:BuildOptions(o)
         { name = L.OPT_QT_RAID_NEVER, value = "never" }, { name = L.OPT_QT_RAID_ALWAYS, value = "always" },
         { name = L.OPT_QT_RAID_BOSS, value = "boss" },
     })
+    o:Dropdown("sortMode", L.OPT_QT_SORT, {
+        { name = L.QT_SORT_PROXIMITY, value = "proximity" }, { name = L.QT_SORT_LOG, value = "log" },
+        { name = L.QT_SORT_LEVEL, value = "level" }, { name = L.QT_SORT_NAME, value = "name" },
+    })
+    o:Dropdown("completedPosition", L.OPT_QT_COMPLETED, {
+        { name = L.QT_COMPLETED_MIXED, value = "mixed" }, { name = L.QT_COMPLETED_TOP, value = "top" },
+        { name = L.QT_COMPLETED_BOTTOM, value = "bottom" },
+    })
+    o:Check("filterZone", L.OPT_QT_FILTER_ZONE)
+    o:Check("hideComplete", L.OPT_QT_HIDE_COMPLETE)
+    o:Check("hideTrivial", L.OPT_QT_HIDE_TRIVIAL)
+    o:Check("hideRepeatable", L.OPT_QT_HIDE_REPEATABLE)
+    o:Check("autoTrackZone", L.OPT_QT_AUTO_TRACK)
     o:Check("styleText", L.OPT_QT_STYLE_TEXT)
     o:Advanced()
     o:Slider("titleFontSize", L.OPT_QT_TITLE_FONT_SIZE, 8, 20, 1, 36)

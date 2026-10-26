@@ -119,6 +119,7 @@ loader:SetScript("OnEvent", function(self, event, name)
         if MuscaUIDB ~= NS.global then BindSaved() end
         -- Les addons MuscaUI_* enregistrent leurs modules après ADDON_LOADED du cœur : leurs défauts ici.
         for _, profile in pairs(NS.global.profiles) do NS.Database.FillProfile(profile) end
+        NS.Database:SyncVariants(nil)   -- variantes refaites de leur parent plus leur écart
         NS.db = NS.Database:ActiveProfile()
         NS:Fire("PROFILE_READY")
         NS:Fire("LOGIN")
@@ -139,6 +140,7 @@ loader:SetScript("OnEvent", function(self, event, name)
             NS.Database:HostGlobal()
             if NS.InCombat() or not (dirty or sinceWrite >= 60) then return end
             dirty, sinceWrite = false, 0
+            NS.Database:SyncVariants(NS.db)
             NS.Database:WriteMirror()
         end)
     end
@@ -153,6 +155,7 @@ end)
 -- Faux si différé à la fin du combat.
 local function Reload(getProfile)
     return NS:RunOutOfCombat(function()
+        NS.Database:SyncVariants(NS.db)   -- écart de la variante quittée gardé avant la bascule
         NS.Modules:DisableAll()
         NS.db = getProfile()
         NS.Modules:EnableAll()
@@ -293,6 +296,7 @@ function NS:Uninstall(silent)
                 end
                 if profile.theme then profile.theme.pixelPerfect, profile.theme.uiScale = false, 1 end
             end
+            NS.Database:CaptureVariants()   -- sinon l'écart d'une variante rallumerait ses modules
         end
         if not silent then NS.Pixel:Apply() end   -- rend l'échelle d'UIParent (inutile à la déconnexion)
         NS.CVars:RestoreAll(silent)
@@ -363,7 +367,11 @@ watch:SetScript("OnEvent", function(_, event)
             end
         end
     end
-    if event == "PLAYER_LOGOUT" then NS.Database:WriteMirror() end
+    if event == "PLAYER_LOGOUT" then
+        -- Tables seulement : pas de condition de combat, sinon l'écart d'un combat final serait perdu.
+        if NS.db then NS.Database:SyncVariants(NS.db) end
+        NS.Database:WriteMirror()
+    end
 end)
 
 --- Icône du compartiment d'addons (minimap) : clic gauche = options, clic droit = déverrouiller.

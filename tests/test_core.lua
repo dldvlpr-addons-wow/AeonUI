@@ -142,6 +142,17 @@ test("CVars : valeur d'origine gardée puis rendue, CVar inconnue ignorée", fun
     eq(NS.CVars:Set("cvarInexistante", 1), false)
 end)
 
+test("CVars : changée par l'utilisateur après nous = son choix gardé à la restauration", function()
+    reset()
+    Mock.cvars.autoLootDefault = "0"
+    NS.CVars:Set("autoLootDefault", 1)
+    Mock.cvars.autoLootDefault = "2"   -- réglage manuel
+    NS.CVars:Restore("autoLootDefault")
+    eq(Mock.cvars.autoLootDefault, "2", "pas écrasée")
+    eq(MuscaUIDB.cvarBackup.autoLootDefault, nil, "plus rien à rendre")
+    Mock.cvars.autoLootDefault = "0"
+end)
+
 test("CVars : écriture différée en combat", function()
     reset()
     Mock.SetCombat(true)
@@ -449,6 +460,20 @@ test("migration v6 -> v7 : réglages des modules renommés repris sous le nouvea
     eq(profile.theme.moduleMedia.radialmenu.font, "F")
 end)
 
+test("migration v7 -> v8 : les plaques reprennent les listes d'auras communes une fois", function()
+    local db = { version = 7, profiles = {
+        A = { auraLists = { whitelist = "139", blacklist = "123" }, modules = { nameplateframes = { enabled = true } } },
+        B = { auraLists = { whitelist = "139" }, modules = { nameplateframes = { auraLists = { whitelist = "5", blacklist = "" } } } },
+    } }
+    NS.Database.Migrate(db)
+    eq(db.profiles.A.modules.nameplateframes.auraLists.whitelist, "139")
+    eq(db.profiles.A.modules.nameplateframes.auraLists.blacklist, "123")
+    eq(db.profiles.B.modules.nameplateframes.auraLists.whitelist, "5", "listes de plaque déjà remplies : gardées")
+    db.profiles.A.modules.nameplateframes.auraLists = { whitelist = "", blacklist = "" }
+    NS.Database.Migrate(db)
+    eq(db.profiles.A.modules.nameplateframes.auraLists.whitelist, "", "pas de seconde copie")
+end)
+
 test("migration en échec : table rendue telle qu'avant, version gardée, erreur dans /musca diag", function()
     local Database = NS.Database
     local db = { version = 1, theme = {}, anchors = {}, modules = {}, profiles = "abîmé" }
@@ -708,4 +733,118 @@ test("thème : textures maison, exception par module, préréglages d'accent, mo
     eq(bar.barColor[1], 1)
     eq(bar.bg.color[1], theme.backdrop.r, "fond du thème rendu")
     eq(bar.bg:GetAlpha(), 1)
+end)
+
+test("profil dérivé : fusion, écart, retour au parent, parent renommé puis supprimé", function()
+    reset()
+    local Database = NS.Database
+    NS:SwitchProfile("Base", "Default")
+    NS.db.theme.fontSize = 14
+    eq(Database:CreateVariant("Base", "Base - Feu"), "Base - Feu")
+    eq(Database:CreateVariant("Base - Feu", "Autre"), nil, "pas de variante d'une variante")
+    NS:SwitchProfile("Base - Feu")
+    -- Écart : seul le réglage changé, recalculé avant la bascule.
+    NS.db.modules.automation.sellJunk = false
+    NS:SwitchProfile("Base")
+    local entry = NS.global.profileVariants["Base - Feu"]
+    eq(entry.diff.modules.automation.sellJunk, false, "écart noté")
+    eq(entry.diff.theme, nil, "valeur du parent hors de l'écart")
+    -- Fusion : un changement du parent suit dans la variante.
+    NS.db.theme.fontSize = 16
+    NS:SwitchProfile("Base - Feu")
+    eq(NS.db.theme.fontSize, 16, "parent repris")
+    eq(NS.db.modules.automation.sellJunk, false, "écart gardé")
+    -- Export : un profil lisible, sans champ de variante.
+    local exported = Database.Deserialize(Database.Export(NS.db))
+    eq(exported.parent, nil); eq(exported.diff, nil)
+    truthy(not Database.Serialize(Database:AccountExport()):find("profileVariants", 1, true), "export du compte sans variante")
+    -- Retour au parent.
+    local list = Database:VariantOverrides("Base - Feu")
+    eq(#list, 1); eq(list[1].module, "automation"); eq(list[1].key, "sellJunk")
+    truthy(Database:RevertVariant("Base - Feu", list[1]))
+    eq(NS.db.modules.automation.sellJunk, true, "valeur du parent rendue")
+    eq(#Database:VariantOverrides("Base - Feu"), 0, "écart vide")
+    -- Parent renommé : la variante suit.
+    NS.db.modules.automation.sellJunk = false
+    NS:SwitchProfile("Base")
+    eq(Database:RenameProfile("Base", "Socle"), "Socle")
+    eq(Database:VariantParent("Base - Feu"), "Socle")
+    -- Parent supprimé : variante matérialisée, profil simple.
+    NS.db.theme.fontSize = 13
+    NS:SwitchProfile("Default")
+    truthy(Database:DeleteProfile("Socle"))
+    eq(NS.global.profileVariants["Base - Feu"], nil, "plus une variante")
+    eq(NS.global.profiles["Base - Feu"].theme.fontSize, 13, "dernière valeur du parent gardée")
+    eq(NS.global.profiles["Base - Feu"].modules.automation.sellJunk, false, "écart gardé")
+    -- Parent manquant : aucune erreur, profil laissé tel quel.
+    NS.global.profileVariants["Base - Feu"] = { parent = "Absent" }
+    Database:SyncVariants(NS.db)
+    eq(Database:VariantParent("Base - Feu"), nil)
+    eq(#Database:VariantOverrides("Base - Feu"), 0)
+    eq(NS.global.profiles["Base - Feu"].theme.fontSize, 13)
+    truthy(Database:DeleteProfile("Base - Feu"))
+    eq(NS.global.profileVariants["Base - Feu"], nil)
+end)
+
+test("profil dérivé : import du compte = profil simple, écart repris à la déconnexion", function()
+    reset()
+    local Database = NS.Database
+    NS:SwitchProfile("Base", "Default")
+    Database:CreateVariant("Base", "Base - Givre")
+    NS:SwitchProfile("Base - Givre")
+    NS.db.theme.fontSize = 15
+    Mock.FireEvent("PLAYER_LOGOUT")
+    eq(NS.global.profileVariants["Base - Givre"].diff.theme.fontSize, 15, "écart écrit à la déconnexion")
+    NS:SwitchProfile("Default")
+    local text = Database.Export({ account = true, profiles = { ["Base - Givre"] = { theme = { fontSize = 11 } } } })
+    truthy(NS:ImportProfile(text, true))
+    eq(NS.global.profileVariants["Base - Givre"], nil, "profil importé : plus une variante")
+    Database:SyncVariants(NS.db)
+    eq(NS.global.profiles["Base - Givre"].theme.fontSize, 11, "import non écrasé par le parent")
+    Database:DeleteProfile("Base - Givre")
+    Database:DeleteProfile("Base")
+end)
+
+test("profil dérivé : clé retirée gardée, restauration et import du parent sans perte", function()
+    reset()
+    local Database = NS.Database
+    NS:SwitchProfile("Base", "Default")
+    NS.db.anchors.testMover = { point = "TOP", relPoint = "TOP", x = 10, y = 0 }
+    NS.db.modules.automation.testList = { "a", "b", "c", "d" }
+    Database:SaveBackup("reset")   -- sauvegarde d'avant la variante
+    Database:CreateVariant("Base", "Base - Arcane")
+    NS:SwitchProfile("Base - Arcane")
+    NS.db.anchors.testMover = nil
+    table.remove(NS.db.modules.automation.testList, 2)
+    NS:SwitchProfile("Base")
+    NS:SwitchProfile("Base - Arcane")
+    Database:SyncVariants(nil)
+    NS.db = Database:ActiveProfile()
+    eq(NS.db.anchors.testMover, nil, "position retirée gardée")
+    eq(table.concat(NS.db.modules.automation.testList, ","), "a,c,d", "liste raccourcie gardée")
+    -- Retour au parent d'une clé retirée.
+    local found
+    for _, override in ipairs(Database:VariantOverrides("Base - Arcane")) do
+        if override.section == "anchors" and override.key == "testMover" then found = override end
+    end
+    truthy(found, "position retirée listée")
+    truthy(Database:RevertVariant("Base - Arcane", found))
+    eq(NS.db.anchors.testMover.x, 10, "position du parent rendue")
+    -- Import du compte qui remplace le parent : la variante active suit le nouveau parent.
+    NS.db.theme.fontSize = 17
+    local text = Database.Export({ account = true, profiles = { Base = { theme = { fontSize = 20, fontOutline = "OUTLINE" } } } })
+    truthy(NS:ImportProfile(text, true))
+    eq(NS.db, NS.global.profiles["Base - Arcane"], "variante toujours active")
+    eq(NS.db.theme.fontOutline, "OUTLINE", "nouveau parent repris")
+    eq(NS.db.theme.fontSize, 17, "écart gardé")
+    -- Restauration d'une sauvegarde sans la variante : aucune erreur, modules rebranchés.
+    NS:SwitchProfile("Default")
+    Database:SaveBackup("reset")
+    NS.global.profileBackup.profiles["Base - Arcane"] = nil
+    NS:RestoreBackup()
+    eq(NS.Modules:Get("topbar").enabled, true, "modules rebranchés")
+    Database:SyncVariants(NS.db)
+    eq(NS.global.profileVariants["Base - Arcane"], nil, "variante sans profil retirée")
+    Database:DeleteProfile("Base")
+    NS.global.profileBackup = nil
 end)

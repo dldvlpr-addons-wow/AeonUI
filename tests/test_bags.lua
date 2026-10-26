@@ -217,39 +217,111 @@ test("sacs : sections par catégorie, ordre, groupe libre, renommage, catégorie
     CloseAllBags()
 end)
 
-test("banque : fenêtre au thème à l'ouverture du guichet, onglets retail, cases décorées, Blizzard rendu", function()
+test("banque : onglets personnage et bataillon par ID, « Tous », recherche, tri et dépôt", function()
     reset()
     local Bank = NS.Modules:Get("bank")
     local bankFrame = _G.BankFrame or CreateFrame("Frame", "BankFrame", UIParent)
-    local previousIndex, previousBank, previousType = Enum.BagIndex, _G.C_Bank, Enum.BankType
-    Enum.BagIndex = { CharacterBankTab_1 = 6, CharacterBankTab_2 = 7 }
-    local closed = 0
+    local previousBank, previousType, previousInteraction = _G.C_Bank, Enum.BankType, Enum.PlayerInteractionType
+    local previousManager = _G.C_PlayerInteractionManager
+    local closed, deposited, banker = 0, nil, false
+    Enum.BankType = { Character = 0, Account = 2 }
+    Enum.PlayerInteractionType = { AccountBanker = 68 }
+    _G.C_PlayerInteractionManager = { IsInteractingWithNpcOfType = function(kind) return banker and kind == 68 end }
     _G.C_Bank = {
-        FetchPurchasedBankTabData = function() return { { name = "Métiers" }, { name = "Divers" } } end,
+        CanViewBank = function() return true end,
+        FetchBankLockedReason = function() return nil end,
+        -- Onglets non contigus : le sac vient de l'ID, pas de la position.
+        FetchPurchasedBankTabData = function(bankType)
+            if bankType == 0 then return { { ID = 6, name = "Métiers" }, { ID = 8, name = "" } } end
+            return { { ID = 15, name = "Commun" } }
+        end,
         CloseBankFrame = function() closed = closed + 1 end,
+        DoesBankTypeSupportAutoDeposit = function() return true end,
+        AutoDepositItemsIntoBank = function(bankType) deposited = bankType end,
+        DoesBankTypeSupportMoneyTransfer = function(bankType) return bankType == 2 end,
+        FetchDepositedMoney = function() return 12345 end,
     }
-    Enum.BankType = Enum.BankType or { Character = 0 }
-    Mock.bags[6], Mock.bags[7] = { [1] = { itemID = 10, quality = 0 } }, { [2] = { itemID = 20, quality = 3 } }
-    Mock.items[10] = { sellPrice = 5 }
+    Mock.bags[6], Mock.bags[8], Mock.bags[15] = { [1] = { itemID = 10, quality = 0 } }, { [2] = { itemID = 20, quality = 3 } }, {}
+    Mock.items[10], Mock.items[20] = { sellPrice = 5 }, { sellPrice = 5 }
     NS.Modules:SetEnabled("bank", true)
     local tabs = Bank.Tabs()
-    eq(#tabs, 2); eq(tabs[1].name, "Métiers"); eq(tabs[2].bag, 7)
+    eq(#tabs, 4)
+    eq(tabs[1].name, L.BANK_ALL); eq(table.concat(tabs[1].bags, ","), "6,8")
+    eq(tabs[2].name, "Métiers"); eq(tabs[3].name, string.format(L.BANK_TAB, 2)); eq(tabs[3].bags[1], 8)
+    eq(tabs[4].name, "Commun"); eq(tabs[4].bankType, 2)
     Mock.FireEvent("BANKFRAME_OPENED")
     local window, slots, tabButtons = Bank:GetWindow()
     truthy(window:IsShown(), "notre banque ouverte")
     truthy(bankFrame:GetParent() ~= UIParent, "banque Blizzard mise de côté")
-    eq(#slots, Mock.bagSize)
+    eq(#slots, 2 * Mock.bagSize, "« Tous » : les deux coffres empilés")
     eq(slots[1]:GetParent():GetID(), 6, "sac porté par le parent")
-    eq(slots[1]:GetID(), 1)
+    eq(slots[Mock.bagSize + 2]:GetParent():GetID(), 8)
+    eq(slots[Mock.bagSize + 2]:GetID(), 2)
     truthy(slots[1].muscaJunk:IsShown(), "camelote signalée comme dans les sacs")
-    tabButtons[2]:GetScript("OnClick")(tabButtons[2])
-    eq(slots[2]:GetParent():GetID(), 7, "second onglet")
-    eq(slots[1].muscaJunk:IsShown(), false)
+    window.search:Type("item20")
+    eq(slots[1]:GetAlpha(), 0.25, "recherche propre à la banque")
+    eq(slots[Mock.bagSize + 2]:GetAlpha(), 1)
+    window.search:Type("")
+    eq(slots[1]:GetAlpha(), 1)
+    tabButtons[4]:GetScript("OnClick")(tabButtons[4])
+    eq(slots[1]:GetParent():GetID(), 15, "onglet de bataillon")
+    truthy(window.footer:GetText():find(NS.FormatMoney(12345), 1, true), "or de bataillon au pied")
+    window.deposit:GetScript("OnClick")(window.deposit)
+    eq(deposited, 2, "dépôt du type affiché")
+    window.sort:GetScript("OnClick")(window.sort)
+    eq(Mock.sortedBank, 2, "tri du type affiché")
+    eq(window.sort:IsEnabled(), false, "verrou pendant le rangement")
+    Mock.Advance(0.6)
+    Mock.FireEvent("BAG_UPDATE_DELAYED")
+    Mock.Advance(0.6)
+    eq(window.sort:IsEnabled(), false, "réarmé par le dernier BAG_UPDATE_DELAYED")
+    Mock.Advance(0.6)
+    truthy(window.sort:IsEnabled(), "rendu quand les sacs se taisent")
+    banker = true
+    tabs = Bank.Tabs()
+    eq(#tabs, 1, "banquier de bataillon : onglets de compte seuls"); eq(tabs[1].bankType, 2)
+    banker = false
     window:Hide()
     eq(closed, 1, "fermer la nôtre ferme le guichet")
     Mock.FireEvent("BANKFRAME_CLOSED")
     NS.Modules:SetEnabled("bank", false)
     eq(bankFrame:GetParent(), UIParent, "banque Blizzard rendue")
-    Mock.bags[6], Mock.bags[7] = nil, nil
-    Enum.BagIndex, _G.C_Bank, Enum.BankType = previousIndex, previousBank, previousType
+    Mock.bags[6], Mock.bags[8], Mock.bags[15], Mock.items[10], Mock.items[20], Mock.sortedBank = nil, nil, nil, nil, nil, nil
+    _G.C_Bank, Enum.BankType, Enum.PlayerInteractionType = previousBank, previousType, previousInteraction
+    _G.C_PlayerInteractionManager = previousManager
+end)
+
+test("sacs : liaison non faite (texte, recherche localisée) et section des sacs spéciaux", function()
+    reset()
+    Mock.items[30], Mock.items[31], Mock.items[32] = { bindType = 2 }, { bindType = 9 }, { bindType = 1 }
+    Mock.bags[0][1], Mock.bags[0][2], Mock.bags[0][3] = { itemID = 30 }, { itemID = 31 }, { itemID = 32, isBound = true }
+    local boe, boa = NS.GetBagItem(0, 1), NS.GetBagItem(0, 2)
+    local bound = NS.GetBagItem(0, 3)
+    eq(Bags.BindKind(boe), "boe"); eq(Bags.BindKind(boa), "boa"); eq(Bags.BindKind(bound), nil, "déjà lié")
+    truthy(Bags.MatchesSearch(boe, "bo"), "mot-clé anglais")
+    truthy(Bags.MatchesSearch(boe, L.BAGS_SEARCH_BOE:upper()), "mot-clé localisé, casse ignorée")
+    eq(Bags.MatchesSearch(boa, "boe"), false)
+    eq(Bags.MatchesSearch(bound, "bop"), false, "lié : plus de mot-clé")
+    eq(Bags.MatchesSearch(boe, "b"), false, "une lettre : nom seulement")
+    truthy(Bags.MatchesSearch(boe, "item30"), "nom")
+    -- Texte sous l'icône : option activée par défaut.
+    eq(Bags.defaults.bindText, true)
+    -- Sac spécial : toutes ses cases dans « special », groupe libre gardé.
+    local custom = { [30] = "Perso" }
+    eq(Bags.Category(boa, 1, 2, {}, {}, false), "special")
+    eq(Bags.Category(nil, 1, 3, {}, {}, false), "special", "case vide d'un sac spécial")
+    eq(Bags.Category(boe, 1, 1, {}, custom, false), "custom:Perso")
+    eq(Bags.Category(nil, 0, 3, {}, {}, true), "empty")
+    NS.db.modules.bags.categoryShown.special = false
+    eq(Bags.Category(nil, 1, 3, {}, {}, false), "empty", "section décochée")
+    NS.db.modules.bags.categoryShown.special = true
+    Mock.bagFamily[1] = 1
+    eq(NS.IsGeneralBag(1), false); eq(NS.IsGeneralBag(0), true)
+    Mock.bagFamily[1] = nil
+    Mock.items[30], Mock.items[31], Mock.items[32] = nil, nil, nil
+end)
+
+test("sacs : « special » absent d'un ordre enregistré, inséré avant « other »", function()
+    local order = table.concat(Bags.CategoryOrder("pinned, junk, other, empty"), ",")
+    truthy(order:find("junk,special,other,empty", 1, true), order)
 end)

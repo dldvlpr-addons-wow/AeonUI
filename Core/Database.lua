@@ -6,6 +6,7 @@
 --   specProfiles["Perso - Royaume"][index de spé] = nom      -- prime sur profileKeys
 --   lastSpec["Perso - Royaume"] = index de spé                -- la spé n'est pas lisible dès la connexion
 --   contextProfiles["Perso - Royaume"][contexte] = nom       -- donjon, raid, pvp, world : prime sur la spé
+--   profileVariants[nom] = { parent = nom, diff }             -- profil dérivé : parent + écart (jamais exporté)
 --   cvarBackup[cvar] = valeur d'origine, avant que MuscaUI ne la change
 --   profileBackup = { reason, version, time, profiles, defaults } : profils d'avant la dernière migration,
 --     import, remise à zéro ou restauration (un seul emplacement, ni exporté ni recopié dans le miroir CVar ;
@@ -19,7 +20,7 @@ local _, NS = ...
 local Database = {}
 NS.Database = Database
 
-Database.VERSION = 7
+Database.VERSION = 10
 Database.DEFAULT_PROFILE = "Default"
 
 Database.GLOBAL_DEFAULTS = {
@@ -31,12 +32,17 @@ Database.GLOBAL_DEFAULTS = {
     specProfiles = {},
     lastSpec = {},
     contextProfiles = {},
+    profileVariants = {},     -- [nom] = { parent, diff } : voir Database:SyncVariants
     goldLedger = {},          -- [« Perso - Royaume »] = or en cuivre, relevé à la connexion et à chaque gain
+    flightTimes = {},         -- [« départ:arrivée » en nodeID] = durée de vol lissée, en secondes
+    -- flightInProgress (hors défauts : MergeDefaults remplacerait la table sauvegardée par le défaut) :
+    -- vol en cours { from, to, name, start = GetServerTime }, repris après /reload.
     profileHotkeys = {},      -- [nom de profil] = touche qui bascule sur ce profil
     cvarBackup = {},
     chatClassColors = {},     -- [personnage] = { [chatType] = couleur de classe d'origine }
     tipsSeen = {},            -- [clé] = true : bulle d'aide de la fenêtre d'options déjà vue
     optionsMode = "simple",   -- fenêtre d'options : "simple" masque les réglages avancés, "advanced" les montre
+    questWatches = {},        -- [personnage] = { removed = { [questID] = true }, auto = { [questID] = true } } : suivi de quêtes
 }
 
 Database.PROFILE_DEFAULTS = {
@@ -186,6 +192,61 @@ Database.MIGRATIONS = {
     -- v6 -> v7 : modules renommés, réglages et police propre suivent le nouveau nom.
     [7] = function(db)
         for _, profile in pairs(db.profiles or {}) do Database.RenameModules(profile) end
+    end,
+    -- v7 -> v8 : les plaques ont leurs propres listes d'auras ; jamais remplies, elles reprennent
+    -- les listes communes.
+    [8] = function(db)
+        for _, profile in pairs(db.profiles or {}) do
+            local common = type(profile.auraLists) == "table" and profile.auraLists
+            local plates = type(profile.modules) == "table" and profile.modules.nameplateframes
+            if common and type(plates) == "table" then
+                local own = type(plates.auraLists) == "table" and plates.auraLists or {}
+                if (own.whitelist or "") == "" and (own.blacklist or "") == "" then
+                    plates.auraLists = { whitelist = common.whitelist or "", blacklist = common.blacklist or "" }
+                end
+            end
+        end
+    end,
+    -- v8 -> v9 : horloge et zoom de la minimap sortent du décor. Décor Blizzard gardé : ils restent affichés.
+    [9] = function(db)
+        for _, profile in pairs(db.profiles or {}) do
+            local minimap = type(profile.modules) == "table" and profile.modules.minimap
+            if type(minimap) == "table" and minimap.hideDecor == false then
+                if minimap.showClock == nil then minimap.showClock = true end
+                if minimap.showZoom == nil then minimap.showZoom = true end
+            end
+        end
+    end,
+    -- v9 -> v10 : cadres de groupe. Les quatre coins deviennent les quatre premiers indicateurs ; une
+    -- taille de raid modifiée vaut pour les paliers 10 et 25 ; le filtre unique coche ses groupes de débuffs.
+    [10] = function(db)
+        for _, profile in pairs(db.profiles or {}) do
+            local group = type(profile.modules) == "table" and profile.modules.groupframes
+            if type(group) == "table" then
+                local old = group.indicators
+                if type(old) == "table" then
+                    local list = {}
+                    for index, corner in ipairs({ "TOPLEFT", "TOPRIGHT", "BOTTOMLEFT", "BOTTOMRIGHT" }) do
+                        list[index] = { spells = type(old[corner]) == "string" and old[corner] or "", point = corner }
+                    end
+                    group.indicators = list
+                end
+                local width, height, columns = group.raidWidth, group.raidHeight, group.raidColumns
+                if (width ~= nil and width ~= 96) or (height ~= nil and height ~= 44)
+                    or (columns ~= nil and columns ~= 8) then
+                    local function Tier() return { width = width or 96, height = height or 44, columns = columns or 8 } end
+                    group.raidTiers = { Tier(), Tier() }
+                end
+                local wanted = ({ important = { boss = true, dispellable = true }, dispellable = { dispellable = true },
+                                  boss = { boss = true } })[group.auraFilter]
+                if wanted then
+                    group.debuffGroups = {}
+                    for _, key in ipairs({ "control", "boss", "dispellable", "nonPlayer", "duration" }) do
+                        group.debuffGroups[key] = { enabled = wanted[key] == true }
+                    end
+                end
+            end
+        end
     end,
 }
 
@@ -441,6 +502,13 @@ end
 --- Supprime un profil (jamais "Default"). Les personnages qui l'utilisaient reviennent à "Default".
 function Database:DeleteProfile(name)
     if name == self.DEFAULT_PROFILE or not self.global.profiles[name] then return false end
+    -- Variantes de ce profil : refaites sur sa dernière version, puis profils simples.
+    self:SyncVariants(NS.db)
+    local variants = self.global.profileVariants
+    variants[name] = nil
+    for variant, entry in pairs(variants) do
+        if type(entry) == "table" and entry.parent == name then variants[variant] = nil end
+    end
     self.global.profiles[name] = nil
     self.global.profileHotkeys[name] = nil
     for key, value in pairs(self.global.profileKeys) do
@@ -488,6 +556,11 @@ function Database:RenameProfile(old, new)
     end
     local hotkeys = self.global.profileHotkeys
     hotkeys[new], hotkeys[old] = hotkeys[old], nil
+    local variants = self.global.profileVariants
+    variants[new], variants[old] = variants[old], nil
+    for _, entry in pairs(variants) do
+        if type(entry) == "table" and entry.parent == old then entry.parent = new end
+    end
     return new
 end
 
@@ -593,6 +666,7 @@ function Database:RestoreBackup()
     end
     profiles[self.DEFAULT_PROFILE] = profiles[self.DEFAULT_PROFILE] or {}
     for _, profile in pairs(profiles) do self.FillProfile(profile) end
+    self:CaptureVariants()   -- profils rendus tels quels : l'écart de chaque variante est repris d'eux
     return true, defaultsLost
 end
 
@@ -602,6 +676,135 @@ function Database:ResetActiveProfile()
     local name = self:ActiveProfileName()
     self.global.profiles[name] = self.FillProfile({})
     return self.global.profiles[name]
+end
+
+--------------------------------------------------------------------------------
+-- Profil dérivé (variante) : un parent plus l'écart, rangés dans la base du compte
+--------------------------------------------------------------------------------
+-- profiles[variante] reste un profil complet (la table que lisent les modules, l'export, le
+-- miroir) ; profileVariants[variante].diff = Diff(variante, parent) est la seule vérité durable :
+-- la variante est refaite du parent plus l'écart, et suit donc les changements du parent.
+
+-- Clé présente chez le parent, retirée dans la variante (position remise à zéro, entrée de liste).
+local REMOVED = "\001removed"
+
+--- Comme Prune (valeurs égales au parent écartées), plus REMOVED pour chaque clé retirée.
+local function Diff(value, base)
+    local out = {}
+    base = type(base) == "table" and base or {}
+    for key, child in pairs(value) do
+        if type(child) == "table" then
+            local sub = Diff(child, base[key])
+            if next(sub) ~= nil then out[key] = sub end
+        elseif child ~= base[key] then
+            out[key] = child
+        end
+    end
+    for key in pairs(base) do
+        if value[key] == nil then out[key] = REMOVED end
+    end
+    return out
+end
+
+local function Overlay(target, diff)
+    for key, value in pairs(diff) do
+        if value == REMOVED then target[key] = nil
+        elseif type(value) == "table" and type(target[key]) == "table" then Overlay(target[key], value)
+        else target[key] = Database.DeepCopy(value) end
+    end
+    return target
+end
+
+--- Parent existant de la variante `name`, ou nil (pas une variante, parent supprimé ou absent).
+function Database:VariantParent(name)
+    local entry = self.global.profileVariants[name]
+    local parent = type(entry) == "table" and entry.parent
+    if type(parent) == "string" and parent ~= name and self.global.profiles[parent] then return parent end
+    return nil
+end
+
+--- Crée la variante `name` du profil `parent` (qui n'en est pas une). Rend le nom, ou nil.
+function Database:CreateVariant(parent, name)
+    name = self.ValidProfileName(name)
+    local profiles = self.global.profiles
+    if not name or profiles[name] or not profiles[parent] or self:VariantParent(parent) then return nil end
+    profiles[name] = self.DeepCopy(profiles[parent])
+    self.global.profileVariants[name] = { parent = parent, diff = {} }
+    return name
+end
+
+--- `live` : table du profil en cours (NS.db, nil à la connexion). Variante en cours : son écart
+-- est recalculé ; les autres sont refaites de leur parent plus leur écart. Variante sans profil
+-- ou sans parent : redevient un profil simple. Tables seulement.
+function Database:SyncVariants(live)
+    local profiles, variants = self.global.profiles, self.global.profileVariants
+    for name, entry in pairs(variants) do
+        local parent = self:VariantParent(name)
+        if not parent or not profiles[name] then
+            variants[name] = nil
+        elseif profiles[name] == live then
+            entry.diff = Diff(live, profiles[parent])
+        else
+            -- Le miroir retire les tables vides : écart absent = aucun écart.
+            profiles[name] = Overlay(self.DeepCopy(profiles[parent]), type(entry.diff) == "table" and entry.diff or {})
+        end
+    end
+end
+
+--- Écart de chaque variante repris de son profil complet (profils remplacés d'un bloc :
+-- restauration, désinstallation).
+function Database:CaptureVariants()
+    local profiles = self.global.profiles
+    for name, entry in pairs(self.global.profileVariants) do
+        local parent = self:VariantParent(name)
+        if parent and profiles[name] then entry.diff = Diff(profiles[name], profiles[parent]) end
+    end
+end
+
+--- Réglages surchargés de la variante `name` : { section, module, key } triés (section
+-- "modules" -> module et clé ; sinon "theme", "anchors", "auraLists" et clé). Vide hors variante.
+function Database:VariantOverrides(name)
+    local parent, list = self:VariantParent(name), {}
+    if not parent or not self.global.profiles[name] then return list end
+    local diff = Diff(self.global.profiles[name], self.global.profiles[parent])
+    for section, values in pairs(diff) do
+        if section == "modules" and type(values) == "table" then
+            for module, settings in pairs(values) do
+                if type(settings) == "table" then
+                    for key in pairs(settings) do list[#list + 1] = { section = section, module = module, key = key } end
+                else
+                    list[#list + 1] = { section = section, module = module }
+                end
+            end
+        elseif type(values) == "table" then
+            for key in pairs(values) do list[#list + 1] = { section = section, key = key } end
+        else
+            list[#list + 1] = { section = section }
+        end
+    end
+    table.sort(list, function(a, b)
+        local ka = a.section .. "\001" .. tostring(a.module) .. "\001" .. tostring(a.key)
+        local kb = b.section .. "\001" .. tostring(b.module) .. "\001" .. tostring(b.key)
+        return ka < kb
+    end)
+    return list
+end
+
+--- Remet le réglage `override` (voir VariantOverrides) de la variante `name` à la valeur du parent.
+function Database:RevertVariant(name, override)
+    local parent = self:VariantParent(name)
+    local mine, theirs = self.global.profiles[name], parent and self.global.profiles[parent]
+    if not (mine and theirs) then return false end
+    local path = { override.section }
+    if override.module ~= nil then path[#path + 1] = override.module end
+    if override.key ~= nil then path[#path + 1] = override.key end
+    for i = 1, #path - 1 do
+        mine, theirs = mine[path[i]], type(theirs) == "table" and theirs[path[i]] or nil
+        if type(mine) ~= "table" then return false end
+    end
+    mine[path[#path]] = self.DeepCopy(type(theirs) == "table" and theirs[path[#path]] or nil)
+    self.global.profileVariants[name].diff = Diff(self.global.profiles[name], self.global.profiles[parent])
+    return true
 end
 
 --------------------------------------------------------------------------------
@@ -882,10 +1085,13 @@ function Database:ImportProfile(text, allowAccount, sections, anchorKeys)
                 DropNonFinite(profile, 0, report)
                 self.RenameModules(profile)
                 local mine = self.global.profiles[valid] or current
+                self.global.profileVariants[valid] = nil   -- profil importé : profil simple
                 local given = self.SensitiveGiven(profile)
                 self.global.profiles[valid] = self.Sanitize(self.FillProfile(profile, report), mine, report, given)
             end
         end
+        -- Parent remplacé : ses variantes (l'active comprise, écart gardé par Reload) refaites dessus.
+        self:SyncVariants(nil)
         return self.global.profiles[name], report
     end
     if sections then

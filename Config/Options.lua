@@ -734,6 +734,68 @@ local function BuildProfiles()
             end)
     end
 
+    -- Variante : le profil actif plus les seuls réglages changés pour la spé en cours.
+    layout:Title(L.OPT_PROFILE_VARIANT)
+    layout:Note(L.OPT_PROFILE_VARIANT_HINT)
+    layout:Button(L.OPT_PROFILE_VARIANT_CREATE, function()
+        local spec = NS.GetActiveSpec()
+        local specName
+        for _, entry in ipairs(specs) do
+            if entry.index == spec then specName = entry.name end
+        end
+        if not specName then NS.Print(L.OPT_PROFILE_BY_SPEC_NONE) return end
+        local active = NS.Database:ActiveProfileName()
+        local parent = NS.Database:VariantParent(active) or active   -- variante d'une variante : celle du parent
+        NS:RunOutOfCombat(function()
+            NS.Database:SyncVariants(NS.db)
+            local name = NS.Database:CreateVariant(parent, parent .. " - " .. specName)
+            if not name then NS.Print(L.MSG_PROFILE_NAME_INVALID) return end
+            NS.Database:SetSpecProfile(spec, name)
+            NS:CheckSpecProfile()
+        end)
+    end)
+    -- Réglages surchargés : choisis dans la liste, puis rendus au parent un par un.
+    local overridePick = {}
+    layout:Dropdown(L.OPT_PROFILE_VARIANT_OVERRIDES, function()
+            local list = {}
+            for index, override in ipairs(NS.Database:VariantOverrides(NS.Database:ActiveProfileName())) do
+                local module = override.module and NS.Modules:Get(override.module)
+                local section = (override.section == "theme" and L.OPT_PROFILE_EXPORT_THEME)
+                    or (override.section == "auraLists" and L.OPT_PROFILE_EXPORT_AURAS)
+                    or (override.section == "anchors" and L.OPT_MOVERS)
+                    or (module and module.title) or override.module or override.section
+                local label = override.key ~= nil and (section .. " : " .. tostring(override.key)) or section
+                list[#list + 1] = { name = label, value = index }
+                overridePick[index] = override
+            end
+            if #list == 0 then list[1] = { name = L.OPT_PROFILE_VARIANT_NONE, value = false } end
+            return list
+        end,
+        function() return overridePick.selected or false end,
+        function(value) overridePick.selected = value end)
+    layout:Button(L.OPT_PROFILE_VARIANT_REVERT, function()
+        local override = overridePick.selected and overridePick[overridePick.selected]
+        if not override then return end
+        local name = NS.Database:ActiveProfileName()
+        NS:RunOutOfCombat(function()
+            overridePick.selected = nil
+            -- Rebranchement complet : positions et cadres sécurisés relisent la valeur du parent.
+            if NS.Database:RevertVariant(name, override) then NS:SwitchProfile(name) end
+        end)
+    end)
+    layout:Button(L.OPT_PROFILE_VARIANT_DELETE, function()
+        local name = NS.Database:ActiveProfileName()
+        local parent = NS.Database:VariantParent(name)
+        if not parent then return end
+        Confirm("MUSCAUI_VARIANT_DELETE", string.format(L.MSG_PROFILE_DELETE_CONFIRM, name), function()
+            NS:SwitchProfile(parent)   -- le lien de la spé passe au parent
+            NS:RunOutOfCombat(function()
+                NS.Database:DeleteProfile(name)
+                NS:BindProfileHotkeys()
+            end)
+        end)
+    end)
+
     -- Un profil par contexte : prime sur la spé, bascule à l'écran de chargement, hors combat.
     layout:Title(L.OPT_PROFILE_BY_CONTEXT)
     layout:Note(L.OPT_PROFILE_BY_CONTEXT_HINT)
@@ -1230,7 +1292,7 @@ local MODULE_GROUPS = {
     frames = { "unitframes", "frames", "groupframes", "nameplateframes", "nameplates", "resourcebars", "gcdbar",
                "swingtimer", "cotank", "clickcast" },
     combat = { "actionbars", "cooldownmanager", "cooldownbars", "aurabars", "tracker", "raidcooldowns", "reminders",
-               "alerts", "movementalert", "radialmenu" },
+               "alerts", "threatwarning", "movementalert", "radialmenu" },
     interface = { "topbar", "datapanels", "databars", "minimap", "chat", "chatbubbles", "questtracker", "bags", "bank",
                   "loot", "cursor", "blizzardframes", "movablewindows", "skin", "interface", "gear" },
     qol = { "automation", "afk", "groupfinder", "raidutility" },

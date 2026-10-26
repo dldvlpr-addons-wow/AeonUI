@@ -128,6 +128,7 @@ function _G.UnitIsUnit(a, b) return Mock.units[a] ~= nil and Mock.units[a] == Mo
 function _G.UnitIsDead(unit) local u = Mock.units[unit] return u ~= nil and u.dead == true end
 function _G.UnitIsDeadOrGhost(unit) return UnitIsDead(unit) end
 function _G.UnitIsConnected(unit) local u = Mock.units[unit] return not (u and u.offline == true) end
+function _G.UnitIsVisible(unit) local u = Mock.units[unit] return u ~= nil and u.hidden ~= true end
 function _G.UnitAffectingCombat(unit) local u = Mock.units[unit] return u ~= nil and u.combat == true end
 function _G.UnitClassification(unit) local u = Mock.units[unit] return u and u.classification or "normal" end
 function _G.UnitIsPVP(unit) local u = Mock.units[unit] return u ~= nil and u.pvp == true end
@@ -146,6 +147,11 @@ function _G.GetShapeshiftFormID() return Mock.formID end
 Mock.groupSize = 0
 function _G.IsInGroup() return Mock.groupSize > 0 end
 function _G.GetNumGroupMembers() return Mock.groupSize end
+-- name, rank, subgroup : groupe de l'unité simulée, sinon 5 membres par groupe.
+function _G.GetRaidRosterInfo(index)
+    local unit = Mock.units["raid" .. index]
+    return unit and unit.name, 0, unit and unit.subgroup or math.ceil(index / 5)
+end
 
 Mock.instanceType = "none"
 function _G.IsInInstance() return Mock.instanceType ~= "none", Mock.instanceType end
@@ -154,6 +160,7 @@ function _G.IsInInstance() return Mock.instanceType ~= "none", Mock.instanceType
 -- Sorts et auras
 --------------------------------------------------------------------------------
 
+Mock.spellCosts = {}
 Mock.spells = {
     [168] = "Frost Armor", [7302] = "Ice Armor", [6117] = "Mage Armor",
     [588] = "Inner Fire", [1784] = "Stealth", [8679] = "Instant Poison", [2823] = "Deadly Poison", [2842] = "Poisons",
@@ -176,6 +183,8 @@ _G.C_Spell = {
         if type(identifier) == "string" and not Mock.knownSpells[id] then return nil end
         return { name = Mock.spells[id], spellID = id, iconID = 1 }
     end,
+    -- Mock.spellCosts[id] = { { type = 0, cost = 120 } } (0 : mana).
+    GetSpellPowerCost = function(id) return Mock.spellCosts[id] end,
 }
 function _G.IsPlayerSpell(id) return Mock.knownSpells[id] == true end
 
@@ -190,16 +199,10 @@ _G.C_UnitAuras = {
     end,
 }
 
+-- Enchantements d'arme (C_Item.GetWeaponEnchantInfo) : Mock.weaponEnchants[weaponSlot] = liste de
+-- WeaponEnchantInfo. Mock.mainHandEnchant = true : une imprégnation de 30 min sur l'arme principale.
 Mock.mainHandEnchant = false
-function _G.GetWeaponEnchantInfo() return Mock.mainHandEnchant end
-_G.ITEM_ENCHANT_TIME_LEFT_MIN = "%s (%d min)"
-Mock.mainHandTooltip = {}
-_G.C_TooltipInfo = _G.C_TooltipInfo or {}
-function _G.C_TooltipInfo.GetInventoryItem(unit, slot)
-    local lines = {}
-    for _, text in ipairs(Mock.mainHandTooltip) do lines[#lines + 1] = { leftText = text } end
-    return { lines = lines }
-end
+Mock.weaponEnchants = {}
 
 --------------------------------------------------------------------------------
 -- Sacs, objets, marchand
@@ -208,7 +211,8 @@ end
 -- Mock.bags[bag][slot] = { itemID, quality, stackCount, hasNoValue, isLocked }
 Mock.bags = { [0] = {}, {}, {}, {}, {} }
 Mock.bagSize = 16
-Mock.items = {}            -- [itemID] = { sellPrice = }
+Mock.items = {}            -- [itemID] = { sellPrice =, bindType = (Enum.ItemBind) }
+Mock.bagFamily = {}        -- [bag] = famille de sac (0 ou absent : sac général)
 Mock.used = {}             -- cases utilisées : { bag, slot }
 
 _G.C_Container = {
@@ -216,13 +220,14 @@ _G.C_Container = {
     GetContainerNumFreeSlots = function(bag)
         local used = 0
         for _ in pairs(Mock.bags[bag] or {}) do used = used + 1 end
-        return Mock.bagSize - used
+        return Mock.bagSize - used, Mock.bagFamily[bag] or 0
     end,
     GetContainerItemInfo = function(bag, slot)
         local item = Mock.bags[bag] and Mock.bags[bag][slot]
         if not item then return nil end
         return { itemID = item.itemID, quality = item.quality, stackCount = item.stackCount or 1,
-                 hasNoValue = item.hasNoValue, isLocked = item.isLocked, hyperlink = item.itemID }
+                 hasNoValue = item.hasNoValue, isLocked = item.isLocked, hyperlink = item.itemID,
+                 isBound = item.isBound == true }
     end,
     UseContainerItem = function(bag, slot)
         Mock.used[#Mock.used + 1] = { bag = bag, slot = slot }
@@ -231,6 +236,7 @@ _G.C_Container = {
     GetItemCooldown = function() return 0, 0, 1 end,
     GetContainerItemCooldown = function() return 0, 0, 1 end,
     SortBags = function() Mock.sorted = (Mock.sorted or 0) + 1 end,
+    SortBank = function(bankType) Mock.sortedBank = bankType end,
     -- Prise puis pose : la pose remplit la pile cible jusqu'à Mock.items[id].maxStack, le reste
     -- reste au curseur (Mock.cursorItem).
     PickupContainerItem = function(bag, slot)
@@ -256,7 +262,7 @@ _G.C_Item = {
     GetItemInfo = function(item)
         local info = Mock.items[item]
         if not info then return nil end
-        return "item" .. item, nil, 0, 1, 1, "Junk", "Junk", 20, "", 1, info.sellPrice
+        return "item" .. item, nil, 0, 1, 1, "Junk", "Junk", 20, "", 1, info.sellPrice, nil, nil, info.bindType
     end,
     GetItemCount = function(itemID) return itemID == 6948 and 1 or 0 end,
     GetItemMaxStackSizeByID = function(itemID) return Mock.items[itemID] and Mock.items[itemID].maxStack or 1 end,
@@ -266,6 +272,12 @@ _G.C_Item = {
         return item, nil, nil, info and info.equipLoc or "", nil, info and info.classID
     end,
 }
+function C_Item.GetWeaponEnchantInfo(weaponSlot)
+    if weaponSlot == 0 and Mock.mainHandEnchant then
+        return { { hasEnchant = true, enchantType = 3, timeLeft = 1800000, charges = 0, enchantID = 1, enchantIconID = 136018 } }
+    end
+    return Mock.weaponEnchants[weaponSlot] or {}
+end
 
 Mock.money = 100000
 Mock.repairCost = 0
@@ -685,6 +697,15 @@ function Minimap:SetMaskTexture(mask) self.mask = mask end
 MinimapCluster.BorderTop = Minimap:CreateTexture()
 MinimapCluster.ZoneTextButton = CreateFrame("Button", nil, MinimapCluster)
 MinimapCluster.Tracking = CreateFrame("Button", nil, MinimapCluster)
+MinimapCluster.IndicatorFrame = CreateFrame("Frame", nil, MinimapCluster)
+MinimapCluster.IndicatorFrame.MailFrame = CreateFrame("Frame", nil, MinimapCluster.IndicatorFrame)
+Minimap.ZoomIn = CreateFrame("Button", nil, Minimap)
+Minimap.ZoomOut = CreateFrame("Button", nil, Minimap)
+_G.TimeManagerClockButton = CreateFrame("Button", "TimeManagerClockButton", Minimap)
+function _G.HasNewMail() return Mock.newMail == true end
+function _G.MiniMapIndicatorFrame_UpdatePosition()
+    MinimapCluster.IndicatorFrame:SetPoint("TOPRIGHT", MinimapCluster.Tracking, "BOTTOMRIGHT", 2, -1)
+end
 _G.MinimapCompassTexture = Minimap:CreateTexture()
 _G.GameTimeFrame = CreateFrame("Button", "GameTimeFrame", MinimapCluster)
 function _G.GetMinimapZoneText() return Mock.zoneText or "Durotar" end
@@ -1164,6 +1185,7 @@ function FrameMeta:SetStatusBarDesaturated(v) self.desaturated = v end
 function FrameMeta:SetStatusBarTexture() end
 function FrameMeta:SetMinMaxValues(lo, hi) self.min, self.max = lo, hi end
 function FrameMeta:SetOrientation(o) self.orientation = o end
+function FrameMeta:SetReverseFill(reverse) self.reverseFill = reverse end
 function FrameMeta:GetOrientation() return self.orientation or "HORIZONTAL" end
 function FrameMeta:StartMoving() end
 function FrameMeta:SetCooldown(start, duration) self.cooldownStart, self.cooldownDuration = start, duration end
@@ -1334,6 +1356,10 @@ function _G.UnregisterUnitWatch(frame) Mock.unitWatch[frame] = nil end
 function Mock.RefreshUnitWatch()
     for frame in pairs(Mock.unitWatch) do
         local unit = frame:GetAttribute("unit")
+        if not unit and frame:GetAttribute("useparent-unit") and frame:GetParent() then
+            local base = frame:GetParent():GetAttribute("unit")
+            unit = base and base .. (frame:GetAttribute("unitsuffix") or "")
+        end
         if unit and UnitExists(unit) then frame:Show() else frame:Hide() end
     end
 end
@@ -1427,6 +1453,19 @@ function FrameMeta:SetID(id) self.id = id end
 function FrameMeta:GetID() return self.id or 0 end
 Mock.bindings = { ACTIONBUTTON1 = "1", ACTIONBUTTON2 = "2", MULTIACTIONBAR1BUTTON1 = "F1" }
 function _G.GetBindingKey(command) return Mock.bindings[command] end
+function _G.GetBindingText(key) return key end
+-- Recharge d'objet porté : Mock.equipped[slot].cooldown = { début, durée }
+function _G.GetInventoryItemCooldown(_, slot)
+    local cd = Mock.equipped[slot] and Mock.equipped[slot].cooldown or { 0, 0 }
+    return cd[1], cd[2], 1, false
+end
+function FrameMeta:SetReverse(reverse) self.reverse = reverse end
+function _G.GetBindingAction(key)
+    for command, bound in pairs(Mock.bindings) do if bound == key then return command end end
+    return ""
+end
+Mock.macros = {}   -- [nom] = icône
+function _G.GetMacroInfo(name) if Mock.macros[name] then return name, Mock.macros[name], "" end end
 Mock.overrideBindings = {}
 function _G.SetOverrideBindingClick(owner, _, key, buttonName)
     if Mock.combat then error("ADDON_ACTION_BLOCKED: SetOverrideBindingClick en combat") end
@@ -1488,6 +1527,11 @@ for i = 1, NUM_CHAT_WINDOWS do
     frame.font, frame.fontSize, frame.fontFlags = "Fonts\\FRIZQT__.TTF", 14, ""
     frame.messages, frame.maxLines = {}, 128
     function frame:AddMessage(text, r, g, b) self.messages[#self.messages + 1] = { text = text, r = r, g = g, b = b } end
+    function frame:TransformMessages(predicate, transform)
+        for _, m in ipairs(self.messages) do
+            if predicate(m.text, m.r, m.g, m.b) then m.text, m.r, m.g, m.b = transform(m.text, m.r, m.g, m.b) end
+        end
+    end
     function frame:GetNumMessages() return #self.messages end
     function frame:GetMessageInfo(index) local m = self.messages[index] return m and m.text, m and m.r, m and m.g, m and m.b end
     function frame:SetFading(fading) self.fading = fading end

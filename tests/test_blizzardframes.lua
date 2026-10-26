@@ -139,3 +139,141 @@ test("barres de recharges personnalisées : sorts connus dans l'ordre, grisés e
     Mock.spells[1953], Mock.spells[122], Mock.spells[2139] = nil, nil, nil
     Mock.knownSpells[1953], Mock.knownSpells[2139] = nil, nil
 end)
+
+local function Pool(items)
+    return { EnumerateActive = function() local i = 0 return function() i = i + 1 return items[i] end end }
+end
+
+local function CooldownItems(viewer, ids)
+    local items = {}
+    for i, id in ipairs(ids) do
+        local item = CreateFrame("Frame", nil, viewer)
+        item.layoutIndex, item.cooldownID = i, id
+        items[i] = item
+    end
+    viewer.itemFramePool = Pool(items)
+    return items
+end
+
+test("gestionnaire de recharges : effets d'état, lueur au maximum de charges, proc, bijou reconnu par emplacement", function()
+    reset()
+    local items = CooldownItems(EssentialCooldownViewer, { 100, 200, 300, 400, 500, 600 })
+    _G.C_CooldownViewer = { GetCooldownViewerCooldownInfo = function(id) return id == 500 and { equipSlot = 13 } or { spellID = id } end }
+    local cooling = { [100] = true, [300] = true }
+    C_Spell.GetSpellCooldown = function(id) return { isActive = cooling[id] == true, isOnGCD = false } end
+    C_Spell.GetSpellCharges = function(id) if id == 400 then return { currentCharges = 1, maxCharges = 2, isActive = true } end end
+    C_Spell.IsSpellUsable = function(id) return id ~= 600 end
+    _G.C_SpellActivationOverlay = { IsSpellOverlayed = function(id) return id == 100 end }
+    items[1].SpellActivationAlert = CreateFrame("Frame", nil, items[1])
+    NS.db.modules.cooldownmanager.spells = { [100] = { state = "dim" }, [200] = { state = "hideReady" },
+        [300] = { state = "hideCooldown" }, [400] = { glow = "maxcharges" }, slot13 = { hidden = true },
+        [600] = { state = "hideUnusable" } }
+    NS.Modules:SetEnabled("cooldownmanager", true)
+    eq(items[1]:GetAlpha(), 0.5, "en recharge : estompé")
+    eq(items[2]:GetAlpha(), 0, "prêt : masqué")
+    eq(items[3]:GetAlpha(), 0, "en recharge : masqué")
+    eq(items[5]:GetAlpha(), 0, "bijou 13 reconnu par son emplacement")
+    eq(items[6]:GetAlpha(), 0, "inutilisable : masqué")
+    eq(NS.Glow.Current(items[4]), nil, "une charge sur deux : pas au maximum")
+    eq(NS.Glow.Current(items[1]), "button", "proc : lueur de proc")
+    eq(items[1].SpellActivationAlert:GetAlpha(), 0, "alerte Blizzard effacée")
+    cooling[300] = nil
+    C_Spell.GetSpellCharges = function(id) if id == 400 then return { currentCharges = 2, maxCharges = 2, isActive = false } end end
+    _G.C_SpellActivationOverlay = nil
+    Mock.FireEvent("SPELL_UPDATE_COOLDOWN")
+    Mock.Advance(0.1)
+    eq(items[3]:GetAlpha(), 1, "prêt : rendu")
+    eq(NS.Glow.Current(items[4]), "classic", "charges au maximum : lueur")
+    eq(NS.Glow.Current(items[1]), nil, "proc fini")
+    eq(items[1].SpellActivationAlert:GetAlpha(), 1, "alerte Blizzard rendue")
+    NS.Modules:SetEnabled("cooldownmanager", false)
+    eq(items[1]:GetAlpha(), 1, "rendu au disable")
+    EssentialCooldownViewer.itemFramePool, _G.C_CooldownViewer = nil, nil
+    C_Spell.GetSpellCooldown, C_Spell.GetSpellCharges, C_Spell.IsSpellUsable = nil, nil, nil
+end)
+
+test("gestionnaire de recharges : raccourci de nos barres, lueur de buff actif, fenêtre après lancement, visibilité", function()
+    reset()
+    NS.Modules:SetEnabled("actionbars", true)
+    local essential = CooldownItems(EssentialCooldownViewer, { 100, 400 })
+    local buffs = CooldownItems(BuffIconCooldownViewer, { 700 })
+    _G.C_CooldownViewer = { GetCooldownViewerCooldownInfo = function(id) return { spellID = id } end }
+    _G.C_ActionBar = { FindSpellActionButtons = function(id) if id == 100 then return { 1 } end end }
+    NS.db.modules.cooldownmanager.spells = { [100] = { window = 5 }, [400] = { window = 5 }, [700] = { buffGlow = 100 } }
+    NS.Modules:SetEnabled("cooldownmanager", true)
+    eq(essential[1].muscaOverlay.text.text, "1", "touche du bouton de nos barres qui porte le sort")
+    eq(essential[2].muscaOverlay, nil, "sort absent des barres : rien")
+    eq(NS.Glow.Current(essential[1]), nil, "buff absent : aucune lueur")
+    buffs[1].auraInstanceID = 5
+    Mock.FireEvent("UNIT_AURA", "player")
+    Mock.Advance(0.1)
+    eq(NS.Glow.Current(essential[1]), "pixel", "buff actif : lueur sur le sort lié")
+    local button = NS.Modules:Get("actionbars").bars[1].buttons[1]
+    eq(NS.Glow.Current(button.muscaBuffGlow), "pixel", "et sur notre bouton qui le porte")
+    buffs[1].auraInstanceID = nil
+    Mock.FireEvent("UNIT_AURA", "player")
+    Mock.Advance(0.1)
+    eq(NS.Glow.Current(button.muscaBuffGlow), nil, "buff fini : éteint")
+    Mock.FireEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 100)
+    truthy(essential[1].muscaWindow:IsShown(), "fenêtre ouverte au lancement")
+    eq(essential[1].muscaWindow.cooldown.cooldownDuration, 5)
+    eq(NS.Glow.Current(essential[1].muscaWindow), "classic", "lueur de fenêtre par défaut")
+    NS.db.modules.cooldownmanager.spells[100].windowNoGlow = true
+    Mock.FireEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 100)
+    eq(NS.Glow.Current(essential[1].muscaWindow), nil, "lueur coupée par le réglage")
+    Mock.FireEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", Mock.SetSecret(400))
+    eq(essential[2].muscaWindow, nil, "identifiant secret : rien")
+    Mock.secret = {}
+    NS.db.modules.cooldownmanager.visibility.essential = NS.Visibility.Spec({ combat = "yes" })
+    NS.Modules:Refresh("cooldownmanager")
+    eq(EssentialCooldownViewer:GetAlpha(), 0, "hors combat : viewer caché")
+    NS.db.modules.cooldownmanager.visibility.essential = NS.Visibility.Spec()
+    NS.Modules:Refresh("cooldownmanager")
+    eq(EssentialCooldownViewer:GetAlpha(), 1)
+    NS.Modules:SetEnabled("cooldownmanager", false)
+    eq(essential[1].muscaWindow:IsShown(), false, "fenêtre fermée au disable")
+    NS.Modules:SetEnabled("actionbars", false)
+    EssentialCooldownViewer.itemFramePool, BuffIconCooldownViewer.itemFramePool, _G.C_CooldownViewer = nil, nil, nil
+end)
+
+test("barres de recharges : bijou par emplacement, liste par clic, son à la fin de recharge, visibilité", function()
+    reset()
+    local Bars = NS.Modules:Get("cooldownbars")
+    eq(Bars.Toggle("2139 slot13", 2139), "slot13", "clic sur un sort présent : retiré")
+    eq(Bars.Toggle("slot13", "slot14"), "slot13 slot14", "clic sur un absent : ajouté")
+    Mock.equipped[13] = { link = "[Bijou]", texture = "bijou", cooldown = { Mock.now, 30 } }
+    local cfg = NS.db.modules.cooldownbars.bars.bar1
+    cfg.spells = "slot13, slot14"
+    NS.Modules:SetEnabled("cooldownbars", true)
+    local holder = _G.MuscaUICooldownBar1
+    local first, second = holder:GetChildren()
+    truthy(holder:IsShown())
+    eq(first.texture.texture, "bijou", "bijou porté affiché")
+    eq(first.cooldown.cooldownDuration, 30, "recharge de l'emplacement")
+    truthy(not (second and second:IsShown()), "emplacement vide : rien")
+    eq(#Mock.sounds, 0)
+    Mock.Advance(31)
+    Mock.FireEvent("SPELL_UPDATE_COOLDOWN")
+    eq(#Mock.sounds, 1, "recharge terminée : son")
+    Mock.equipped[13].cooldown = { Mock.now, 30 }
+    Mock.FireEvent("LOADING_SCREEN_ENABLED")
+    Mock.Advance(31)
+    Mock.FireEvent("SPELL_UPDATE_COOLDOWN")
+    eq(#Mock.sounds, 1, "pendant un chargement : aucun son")
+    Mock.FireEvent("LOADING_SCREEN_DISABLED")
+    cfg.visibility = NS.Visibility.Spec({ combat = "yes" })
+    NS.Modules:Refresh("cooldownbars")
+    eq(holder:IsShown(), false, "hors combat : barre cachée")
+    cfg.visibility = NS.Visibility.Spec()
+    NS.Modules:Refresh("cooldownbars")
+    truthy(holder:IsShown())
+    NS.Modules:SetEnabled("cooldownbars", false)
+    cfg.spells = ""
+end)
+
+test("barres de recharges : clic droit avance le sort d'une place", function()
+    local Bars = NS.Modules:Get("cooldownbars")
+    eq(Bars.MoveEarlier("2139 slot13 1953", 1953), "2139 1953 slot13")
+    eq(Bars.MoveEarlier("2139 slot13", "slot13"), "slot13 2139")
+    eq(Bars.MoveEarlier("2139 slot13", 2139), "2139 slot13", "premier : inchangé")
+end)

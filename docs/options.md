@@ -9,6 +9,7 @@ Généré par `tools/generate_options_doc.lua` depuis la fenêtre d'options (`/m
 - [Modules](#modules)
 - [Profils](#profils)
 - [Maintenance](#maintenance)
+- [Alerte de menace](#alerte-de-menace)
 - [Alertes](#alertes)
 - [Alertes de mouvement](#alertes-de-mouvement)
 - [Autre tank](#autre-tank)
@@ -34,12 +35,14 @@ Généré par `tools/generate_options_doc.lua` depuis la fenêtre d'options (`/m
 - [Écran d'absence](#écran-dabsence)
 - [Fenêtres déplaçables](#fenêtres-déplaçables)
 - [Fiche de personnage](#fiche-de-personnage)
+- [Flux de butin](#flux-de-butin)
 - [Gestionnaire de recharges](#gestionnaire-de-recharges)
 - [Habillage](#habillage)
 - [Interface épurée](#interface-épurée)
 - [Menu radial](#menu-radial)
 - [Minimap MuscaUI](#minimap-muscaui)
 - [Minuteur d'attaque](#minuteur-dattaque)
+- [Minuteur de vol](#minuteur-de-vol)
 - [Panneaux de données](#panneaux-de-données)
 - [Plaques de nom MuscaUI](#plaques-de-nom-muscaui)
 - [Rappels](#rappels)
@@ -105,6 +108,8 @@ Police et texture de barre pour tout MuscaUI, puis par module quand l'un doit se
 
 Active ou coupe chaque module ici. Chacun a sa propre page dans la liste de gauche. Survole un module pour lire ce qu'il fait.
 
+- **Alerte de menace** — case, défaut **cochée**  
+  _Son et texte bref quand votre menace sur la cible approche de la reprise d'agro. Les tanks en sont exemptés._
 - **Alertes** — case, défaut **cochée**  
   _Grands messages à l'écran : entrée et sortie de combat, mort d'un membre du groupe, et chronomètre de combat._
 - **Alertes de mouvement** — case, défaut **décochée**  
@@ -114,7 +119,7 @@ Active ou coupe chaque module ici. Chacun a sa propre page dans la liste de gauc
 - **Banque** — case, défaut **décochée**  
   _Fenêtre de banque au thème, un onglet par coffre, cases habillées comme les sacs._
 - **Barre de recharge globale** — case, défaut **décochée**  
-  _Une barre fine qui se remplit pendant votre recharge globale, cachée le reste du temps._
+  _Une barre fine qui se remplit pendant ta recharge globale, cachée le reste du temps._
 - **Barre du haut** — case, défaut **cochée**  
   _Une fine barre en haut de l'écran : amis et guilde en ligne, heure, or, durabilité, places libres dans les sacs, FPS et latence, et un bouton pierre de foyer._
 - **Barres d'action MuscaUI** — case, défaut **décochée**  
@@ -128,7 +133,7 @@ Active ou coupe chaque module ici. Chacun a sa propre page dans la liste de gauc
 - **Barres de recharges personnalisées** — case, défaut **décochée**  
   _Jusqu'à trois rangées d'icônes de sorts au choix, avec recharge et charges._
 - **Barres de ressources** — case, défaut **décochée**  
-  _Votre vie, puissance, points de combo et mana de druide en barres séparées, placées et ancrées où vous voulez._
+  _Ta vie, ta puissance, tes points de combo et ta mana de druide en barres séparées, placées et ancrées où tu veux._
 - **Bulles de dialogue** — case, défaut **décochée**  
   _Bulles au thème, bordure à la couleur du canal, canaux affichés un par un._
 - **Butin** — case, défaut **décochée**  
@@ -155,6 +160,8 @@ Active ou coupe chaque module ici. Chacun a sa propre page dans la liste de gauc
   _Déplacer les fenêtres Blizzard à la souris : Maj pour garder la place, Ctrl pour cette fois seulement._
 - **Fiche de personnage** — case, défaut **cochée**  
   _Niveau d'objet sur chaque emplacement de la fiche, à la couleur de qualité, le niveau moyen, et un repère sur les pièces enchantables sans enchantement. Mêmes niveaux sur la fenêtre d'inspection, et niveau moyen des joueurs dans leur infobulle._
+- **Flux de butin** — case, défaut **cochée**  
+  _Objets, or, monnaies et réputation gagnés, en lignes brèves qui s'effacent._
 - **Gestionnaire de recharges** — case, défaut **décochée**  
   _Réglages sort par sort du gestionnaire de recharges Blizzard : afficher ou masquer chaque sort sur sa barre, lueur quand il est prêt ou en permanence._
 - **Habillage** — case, défaut **cochée**  
@@ -162,11 +169,13 @@ Active ou coupe chaque module ici. Chacun a sa propre page dans la liste de gauc
 - **Interface épurée** — case, défaut **cochée**  
   _Moins d'encombrement et un accès direct à des réglages Blizzard. Tout réglage Blizzard changé ici est rendu quand tu coupes l'option._
 - **Menu radial** — case, défaut **décochée**  
-  _Maintenir une touche : un anneau de sorts, objets, macros et montures s'ouvre autour du curseur ; relâcher sur l'un le lance. Hors combat seulement._
+  _Maintenir une touche : un anneau de sorts, objets, macros et montures s'ouvre autour du curseur ; relâcher sur l'un le lance._
 - **Minimap MuscaUI** — case, défaut **décochée**  
   _Minimap carrée (ou ronde) à la taille voulue, bordure au thème, nom de zone et coordonnées, zoom à la molette, boutons d'addons regroupés en rangée sous la carte. Déplaçable avec /musca unlock._
 - **Minuteur d'attaque** — case, défaut **décochée**  
-  _Une barre par arme jusqu'à votre prochaine attaque automatique. Demande l'événement PLAYER_SWING du client._
+  _Une barre par arme jusqu'à ta prochaine attaque automatique. Demande l'événement PLAYER_SWING du client._
+- **Minuteur de vol** — case, défaut **cochée**  
+  _Une barre de compte à rebours pendant les vols, apprise pour chaque trajet._
 - **Panneaux de données** — case, défaut **décochée**  
   _Bandeaux d'informations libres sur les movers : coordonnées, quêtes, régénération, vitesse, DPS et les textes de la barre du haut._
 - **Plaques de nom MuscaUI** — case, défaut **décochée**  
@@ -174,7 +183,7 @@ Active ou coupe chaque module ici. Chacun a sa propre page dans la liste de gauc
 - **Rappels** — case, défaut **cochée**  
   _Hors combat uniquement : te prévient quand un buff de classe manque (seulement pour les sorts que tu connais), quand la durabilité est basse, quand tes sacs sont pleins, ou quand tu as oublié de te camoufler._
 - **Recharges de raid** — case, défaut **décochée**  
-  _Charges de rez en combat du groupe et verrou de Furie sanguinaire / Héroïsme sur vous._
+  _Charges de rez en combat du groupe et verrou de Furie sanguinaire / Héroïsme sur toi._
 - **Recherche de groupe** — case, défaut **décochée**  
   _Raccourcis de l'outil de recherche de groupe : inscription en un clic quand ton rôle est évident, et note de candidature mémorisée._
 - **Sacs** — case, défaut **décochée**  
@@ -210,6 +219,7 @@ Un profil contient tous les réglages de MuscaUI. « Default » est partagé par
 
 - **Thème** — case, défaut **cochée**
 - **Listes d'auras** — case, défaut **cochée**
+- **Alerte de menace** — case, défaut **cochée**
 - **Alertes** — case, défaut **cochée**
 - **Alertes de mouvement** — case, défaut **cochée**
 - **Autre tank** — case, défaut **cochée**
@@ -235,12 +245,14 @@ Un profil contient tous les réglages de MuscaUI. « Default » est partagé par
 - **Écran d'absence** — case, défaut **cochée**
 - **Fenêtres déplaçables** — case, défaut **cochée**
 - **Fiche de personnage** — case, défaut **cochée**
+- **Flux de butin** — case, défaut **cochée**
 - **Gestionnaire de recharges** — case, défaut **cochée**
 - **Habillage** — case, défaut **cochée**
 - **Interface épurée** — case, défaut **cochée**
 - **Menu radial** — case, défaut **cochée**
 - **Minimap MuscaUI** — case, défaut **cochée**
 - **Minuteur d'attaque** — case, défaut **cochée**
+- **Minuteur de vol** — case, défaut **cochée**
 - **Panneaux de données** — case, défaut **cochée**
 - **Plaques de nom MuscaUI** — case, défaut **cochée**
 - **Rappels** — case, défaut **cochée**
@@ -260,6 +272,15 @@ Un profil contient tous les réglages de MuscaUI. « Default » est partagé par
 > Chaque spécialisation peut avoir son profil : changer de spé change de profil. « Aucun » : le profil du personnage ci-dessus.
 
 > Ce client n'expose aucune spécialisation.
+
+### Variante de spé
+
+> Une variante garde le profil actif comme parent et ne retient que les réglages changés pour la spé en cours : les changements du parent la suivent. Jamais exportée.
+
+- **Créer une variante de ce profil pour la spé en cours** — bouton
+- **Réglages surchargés** — liste, défaut **Aucun réglage surchargé**
+- **Revenir à la valeur du parent** — bouton
+- **Supprimer la variante (retour au parent)** — bouton
 
 ### Profil par contexte
 
@@ -294,6 +315,19 @@ Le diagnostic liste ce que ce client de jeu propose, pour signaler un problème.
 - **Revoir la fenêtre de bienvenue** — bouton
 - **Lancer le diagnostic (/musca diag)** — bouton
 - **Désinstaller proprement (/musca uninstall)** — bouton
+
+## Alerte de menace
+
+Son et texte bref quand votre menace sur la cible approche de la reprise d'agro. Les tanks en sont exemptés.
+
+- **Seuil (% de menace)** — curseur, défaut **80**, 50 – 100, pas 5
+- **Jouer un son** — case, défaut **cochée**
+- **Son** — liste, défaut **Avertissement de raid**
+- **Son importé (vide = son par défaut)** — zone de texte
+
+> Fichier .ogg ou .mp3, chemin depuis le dossier du jeu, ex. Interface\AddOns\MesSons\alerte.ogg. Relancer le jeu après avoir ajouté le fichier.
+
+- **Écouter** — bouton
 
 ## Alertes
 
@@ -361,7 +395,7 @@ Fenêtre de banque au thème, un onglet par coffre, cases habillées comme les s
 
 ## Barre de recharge globale
 
-Une barre fine qui se remplit pendant votre recharge globale, cachée le reste du temps.
+Une barre fine qui se remplit pendant ta recharge globale, cachée le reste du temps.
 
 - **Longueur** — curseur, défaut **220**, 60 – 500, pas 2
 - **Épaisseur** — curseur, défaut **4**, 2 – 30, pas 1
@@ -439,6 +473,9 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 
 - **Afficher cette barre** — case, défaut **cochée**
 - **Copier les réglages depuis** — liste
+- **Page avec Alt** — liste, défaut **Aucune**
+- **Page avec Ctrl** — liste, défaut **Aucune**
+- **Page avec Maj** — liste, défaut **Aucune**
 - **Boutons** — curseur, défaut **12**, 1 – 12, pas 1
 - **Boutons par ligne** — curseur, défaut **12**, 1 – 12, pas 1
 - **Taille des boutons** — curseur, défaut **36**, 20 – 64, pas 1
@@ -601,6 +638,7 @@ Tes buffs et débuffs en barres horizontales avec le temps restant, les plus cou
 
 - **Afficher** — liste, défaut **Buffs et débuffs**
 - **Masquer les auras sans durée** — case, défaut **cochée**
+- **Enchantements d'arme (poisons, imprégnations)** — case, défaut **cochée**
 - **Nombre de barres maximum** — curseur, défaut **12**, 1 – 40, pas 1
 - **Longueur** — curseur, défaut **220**, 100 – 500, pas 2
 - **Épaisseur** — curseur, défaut **18**, 10 – 40, pas 1
@@ -653,36 +691,93 @@ Jusqu'à trois rangées d'icônes de sorts au choix, avec recharge et charges.
 ### Barre de recharges 1
 
 - **Afficher cette barre** — case, défaut **cochée**
-- **Identifiants des sorts, dans l'ordre** — zone de texte
+
+> Sorts de la barre : clic pour ajouter ou retirer, clic droit pour avancer
+
 - **Taille des icônes** — curseur, défaut **36**, 16 – 64, pas 1
 - **Espacement** — curseur, défaut **4**, 0 – 12, pas 1
 - **Icônes par rangée** — curseur, défaut **12**, 1 – 24, pas 1
 - **Masquer les sorts prêts** — case, défaut **décochée**
 - **Icônes grisées pendant la recharge** — case, défaut **cochée**
+- **Son quand une recharge se termine** — case, défaut **cochée**
+  - **Son** — liste, défaut **Clic**
+  - **Son importé (vide = son par défaut)** — zone de texte
+
+> Fichier .ogg ou .mp3, chemin depuis le dossier du jeu, ex. Interface\AddOns\MesSons\alerte.ogg. Relancer le jeu après avoir ajouté le fichier.
+
+  - **Écouter** — bouton
+
+### Visibilité : barre 1
+
+- **Afficher quand** — liste, défaut **Toutes les conditions sont remplies**
+- **En combat** — liste, défaut **Indifférent**
+- **En groupe** — liste, défaut **Indifférent**
+- **En raid** — liste, défaut **Indifférent**
+- **En instance** — liste, défaut **Indifférent**
+- **Sur une monture** — liste, défaut **Indifférent**
+- **Avec une cible** — liste, défaut **Indifférent**
 
 ### Barre de recharges 2
 
 - **Afficher cette barre** — case, défaut **décochée**
-- **Identifiants des sorts, dans l'ordre** — zone de texte
+
+> Sorts de la barre : clic pour ajouter ou retirer, clic droit pour avancer
+
 - **Taille des icônes** — curseur, défaut **36**, 16 – 64, pas 1
 - **Espacement** — curseur, défaut **4**, 0 – 12, pas 1
 - **Icônes par rangée** — curseur, défaut **12**, 1 – 24, pas 1
 - **Masquer les sorts prêts** — case, défaut **décochée**
 - **Icônes grisées pendant la recharge** — case, défaut **cochée**
+- **Son quand une recharge se termine** — case, défaut **cochée**
+  - **Son** — liste, défaut **Clic**
+  - **Son importé (vide = son par défaut)** — zone de texte
+
+> Fichier .ogg ou .mp3, chemin depuis le dossier du jeu, ex. Interface\AddOns\MesSons\alerte.ogg. Relancer le jeu après avoir ajouté le fichier.
+
+  - **Écouter** — bouton
+
+### Visibilité : barre 2
+
+- **Afficher quand** — liste, défaut **Toutes les conditions sont remplies**
+- **En combat** — liste, défaut **Indifférent**
+- **En groupe** — liste, défaut **Indifférent**
+- **En raid** — liste, défaut **Indifférent**
+- **En instance** — liste, défaut **Indifférent**
+- **Sur une monture** — liste, défaut **Indifférent**
+- **Avec une cible** — liste, défaut **Indifférent**
 
 ### Barre de recharges 3
 
 - **Afficher cette barre** — case, défaut **décochée**
-- **Identifiants des sorts, dans l'ordre** — zone de texte
+
+> Sorts de la barre : clic pour ajouter ou retirer, clic droit pour avancer
+
 - **Taille des icônes** — curseur, défaut **36**, 16 – 64, pas 1
 - **Espacement** — curseur, défaut **4**, 0 – 12, pas 1
 - **Icônes par rangée** — curseur, défaut **12**, 1 – 24, pas 1
 - **Masquer les sorts prêts** — case, défaut **décochée**
 - **Icônes grisées pendant la recharge** — case, défaut **cochée**
+- **Son quand une recharge se termine** — case, défaut **cochée**
+  - **Son** — liste, défaut **Clic**
+  - **Son importé (vide = son par défaut)** — zone de texte
+
+> Fichier .ogg ou .mp3, chemin depuis le dossier du jeu, ex. Interface\AddOns\MesSons\alerte.ogg. Relancer le jeu après avoir ajouté le fichier.
+
+  - **Écouter** — bouton
+
+### Visibilité : barre 3
+
+- **Afficher quand** — liste, défaut **Toutes les conditions sont remplies**
+- **En combat** — liste, défaut **Indifférent**
+- **En groupe** — liste, défaut **Indifférent**
+- **En raid** — liste, défaut **Indifférent**
+- **En instance** — liste, défaut **Indifférent**
+- **Sur une monture** — liste, défaut **Indifférent**
+- **Avec une cible** — liste, défaut **Indifférent**
 
 ## Barres de ressources
 
-Votre vie, puissance, points de combo et mana de druide en barres séparées, placées et ancrées où vous voulez.
+Ta vie, ta puissance, tes points de combo et ta mana de druide en barres séparées, placées et ancrées où tu veux.
 
 - **Orientation** — liste, défaut **Horizontale**
 - **Longueur** — curseur, défaut **220**, 60 – 500, pas 2
@@ -714,6 +809,8 @@ Votre vie, puissance, points de combo et mana de druide en barres séparées, pl
 
 - **Afficher** — case, défaut **cochée**
 - **Épaisseur** — curseur, défaut **12**, 4 – 40, pas 1
+- **Étincelle de la règle des 5 secondes sur la barre de mana** — case, défaut **décochée**
+- **Coût en mana du sort en cours d'incantation** — case, défaut **cochée**
 - **Texte** — liste, défaut **Valeur courante**
 - **Repère à (%, 0 = aucun)** — curseur, défaut **0**, 0 – 100, pas 5
 - **Couleur sous (%)** — curseur, défaut **0**, 0 – 90, pas 5
@@ -814,7 +911,7 @@ Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du
 
 ### Listes d'auras (partagées)
 
-> Identifiants de sorts séparés par des virgules. Partagées par les cadres d'unité, les plaques et la barre co-tank. Liste blanche : toujours montrés. Liste noire : toujours cachés.
+> Identifiants de sorts séparés par des virgules. Partagées par les cadres d'unité et la barre co-tank ; les plaques ont leurs propres listes. Liste blanche : toujours montrés. Liste noire : toujours cachés.
 
 - **Liste blanche** — zone de texte
 - **Liste noire** — zone de texte
@@ -844,6 +941,8 @@ Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du
   - **Taille des totems** — curseur, défaut **30**, 16 – 60, pas 2
 - **Barre de puissance** — case, défaut **cochée**
   - **Hauteur de la barre de puissance** — curseur, défaut **6**, 0 – 16, pas 1
+  - **Étincelle de la règle des 5 secondes sur la barre de mana** — case, défaut **décochée**
+  - **Coût en mana du sort en cours d'incantation** — case, défaut **cochée**
 - **Barre d'incantation** — case, défaut **cochée**
   - **Hauteur de la barre d'incantation** — curseur, défaut **18**, 8 – 30, pas 1
   - **Barre d'incantation détachée (son propre mover)** — case, défaut **décochée**
@@ -880,6 +979,7 @@ Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du
 - **Icône élite ou rare** — case, défaut **cochée**
 - **Écusson de faction si marqué JcJ** — case, défaut **cochée**
 - **Bordure à la couleur de la menace** — case, défaut **décochée**
+- **Pourcentage de menace au-dessus du cadre** — case, défaut **décochée**
 - **Barre de puissance** — case, défaut **cochée**
   - **Hauteur de la barre de puissance** — curseur, défaut **6**, 0 – 16, pas 1
 - **Barre d'incantation** — case, défaut **cochée**
@@ -955,6 +1055,7 @@ Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du
 - **Icône élite ou rare** — case, défaut **cochée**
 - **Écusson de faction si marqué JcJ** — case, défaut **décochée**
 - **Bordure à la couleur de la menace** — case, défaut **décochée**
+- **Pourcentage de menace au-dessus du cadre** — case, défaut **décochée**
 - **Barre de puissance** — case, défaut **cochée**
   - **Hauteur de la barre de puissance** — curseur, défaut **6**, 0 – 16, pas 1
 - **Barre d'incantation** — case, défaut **cochée**
@@ -1108,6 +1209,11 @@ Remplace les cadres Blizzard de groupe et de raid par des grilles MuscaUI : vie,
 - **Largeur** — curseur, défaut **120**, 40 – 200, pas 2
 - **Hauteur** — curseur, défaut **56**, 12 – 80, pas 1
 - **Trier par rôle (tanks, soigneurs, dégâts)** — case, défaut **cochée**
+- **Position du joueur dans le groupe** — liste, défaut **En premier**  
+  _Sans effet quand le groupe est trié par rôle._
+- **Cible de chaque membre** — case, défaut **cochée**
+- **Côté** — liste, défaut **À droite**
+- **Largeur** — curseur, défaut **80**, 40 – 160, pas 2
 - **T'afficher dans le groupe** — case, défaut **cochée**
 - **Afficher le cadre de groupe en solo (pour le régler)** — case, défaut **décochée**
 - **Groupe en ligne plutôt qu'en colonne** — case, défaut **décochée**
@@ -1115,11 +1221,25 @@ Remplace les cadres Blizzard de groupe et de raid par des grilles MuscaUI : vie,
 
 ### Raid
 
+> Raid jusqu'à 10 joueurs
+
+- **Largeur** — curseur, défaut **120**, 40 – 200, pas 2
+- **Hauteur** — curseur, défaut **52**, 12 – 80, pas 1
+- **Colonnes** — curseur, défaut **2**, 1 – 8, pas 1
+
+> Raid jusqu'à 25 joueurs
+
+- **Largeur** — curseur, défaut **104**, 40 – 200, pas 2
+- **Hauteur** — curseur, défaut **46**, 12 – 80, pas 1
+- **Colonnes** — curseur, défaut **5**, 1 – 8, pas 1
+
+> Raid au-delà de 25 joueurs
+
 - **Largeur** — curseur, défaut **96**, 40 – 200, pas 2
 - **Hauteur** — curseur, défaut **44**, 12 – 80, pas 1
+- **Colonnes** — curseur, défaut **8**, 1 – 8, pas 1
 - **Trier par** — liste, défaut **Rôle (tank, soigneur, dégâts)**
 - **Unités par colonne** — curseur, défaut **5**, 1 – 10, pas 1
-- **Colonnes** — curseur, défaut **8**, 1 – 8, pas 1
 - **Croissance des membres** — liste, défaut **Vers le bas**
 - **Croissance des colonnes** — liste, défaut **Vers la droite**  
   _Les colonnes croissent toujours en travers des membres : une colonne sur le même axe est corrigée._
@@ -1177,7 +1297,28 @@ Remplace les cadres Blizzard de groupe et de raid par des grilles MuscaUI : vie,
 - **Position des auras** — liste, défaut **Dans le cadre, en bas à droite**
 - **Taille des icônes d'auras** — curseur, défaut **18**, 10 – 32, pas 1
 - **Nombre d'auras** — curseur, défaut **3**, 1 – 16, pas 1
-- **Filtre des débuffs** — liste, défaut **Tous**
+- **Filtre des débuffs** — liste, défaut **Tous**  
+  _Le filtre coche les cases ci-dessous ; chaque case ajoute ses propres débuffs._
+- **Contrôle** — case, défaut **cochée**
+  - **Position** — liste, défaut **Au centre**
+  - **Taille des icônes d'auras** — curseur, défaut **22**, 10 – 32, pas 1
+  - **Nombre d'auras** — curseur, défaut **1**, 1 – 8, pas 1
+- **Boss** — case, défaut **cochée**
+  - **Position** — liste, défaut **En haut**
+  - **Taille des icônes d'auras** — curseur, défaut **20**, 10 – 32, pas 1
+  - **Nombre d'auras** — curseur, défaut **1**, 1 – 8, pas 1
+- **Dissipables par moi** — case, défaut **cochée**
+  - **Position** — liste, défaut **Dans la rangée des débuffs**
+  - **Taille des icônes d'auras** — curseur, défaut **18**, 10 – 32, pas 1
+  - **Nombre d'auras** — curseur, défaut **3**, 1 – 8, pas 1
+- **Pas d'un joueur** — case, défaut **cochée**
+  - **Position** — liste, défaut **Dans la rangée des débuffs**
+  - **Taille des icônes d'auras** — curseur, défaut **18**, 10 – 32, pas 1
+  - **Nombre d'auras** — curseur, défaut **3**, 1 – 8, pas 1
+- **Avec une durée** — case, défaut **cochée**
+  - **Position** — liste, défaut **Dans la rangée des débuffs**
+  - **Taille des icônes d'auras** — curseur, défaut **18**, 10 – 32, pas 1
+  - **Nombre d'auras** — curseur, défaut **3**, 1 – 8, pas 1
 - **Afficher aussi les buffs** — case, défaut **décochée**
 
 ### Alertes
@@ -1195,15 +1336,32 @@ Remplace les cadres Blizzard de groupe et de raid par des grilles MuscaUI : vie,
 
 ### Sorts suivis
 
-> Identifiants de sorts par coin, séparés par des virgules : le premier buff trouvé s'affiche. Tous les rangs d'un sort comptent.
+> Identifiants de sorts par indicateur, séparés par des virgules : le premier buff trouvé s'affiche. Tous les rangs d'un sort comptent.
 
-- **En haut à gauche** — zone de texte
-- **En haut à droite** — zone de texte
-- **En bas à gauche** — zone de texte
-- **En bas à droite** — zone de texte
+- **Indicateur 1 : identifiants de sorts** — zone de texte
+- **Position** — liste, défaut **En haut à gauche**
+- **Indicateur 2 : identifiants de sorts** — zone de texte
+- **Position** — liste, défaut **En haut à droite**
+- **Indicateur 3 : identifiants de sorts** — zone de texte
+- **Position** — liste, défaut **En bas à gauche**
+- **Indicateur 4 : identifiants de sorts** — zone de texte
+- **Position** — liste, défaut **En bas à droite**
+- **Indicateur 5 : identifiants de sorts** — zone de texte
+- **Position** — liste, défaut **En haut**
+- **Indicateur 6 : identifiants de sorts** — zone de texte
+- **Position** — liste, défaut **En bas**
+- **Indicateur 7 : identifiants de sorts** — zone de texte
+- **Position** — liste, défaut **À gauche**
+- **Indicateur 8 : identifiants de sorts** — zone de texte
+- **Position** — liste, défaut **À droite**
 - **Taille des icônes** — curseur, défaut **10**, 6 – 20, pas 1
 - **Seulement mes propres sorts** — case, défaut **cochée**
-- **Remplir avec le préréglage de ma classe** — bouton
+- **Ajouter : soins sur la durée** — bouton
+- **Ajouter : défensifs** — bouton
+- **Ajouter : protections externes** — bouton
+- **Ajouter : temps de recharge de raid** — bouton
+- **Ajouter : déplacement** — bouton
+- **Buffs de groupe manquants sur les cadres** — case, défaut **cochée**
 
 ## Chat MuscaUI
 
@@ -1270,55 +1428,96 @@ Lance un sort sur un membre du groupe ou du raid d'un clic de souris et d'un mod
 
 > S'applique aux cadres de groupe et de raid MuscaUI, hors combat. Les clics sans liaison gardent cible (gauche) et menu (droit). Nom du sort sans rang : le rang le plus haut part.
 
+- **Aussi sur les cadres d'unité (joueur, cible, focus…)** — case, défaut **cochée**
 - **Remplir avec le préréglage de ma classe** — bouton
 
 ### Liaison 1
 
-- **Nom du sort** — zone de texte
+- **Action** — liste, défaut **Sort**
+- **Nom du sort, de la macro ou de l'objet** — zone de texte
+
+>  
+
 - **Bouton de souris** — liste, défaut **Gauche**
 - **Modificateur** — liste, défaut **Maj**
+- **Touche au survol : aucune** — bouton
 
 ### Liaison 2
 
-- **Nom du sort** — zone de texte
+- **Action** — liste, défaut **Sort**
+- **Nom du sort, de la macro ou de l'objet** — zone de texte
+
+>  
+
 - **Bouton de souris** — liste, défaut **Gauche**
 - **Modificateur** — liste, défaut **Maj**
+- **Touche au survol : aucune** — bouton
 
 ### Liaison 3
 
-- **Nom du sort** — zone de texte
+- **Action** — liste, défaut **Sort**
+- **Nom du sort, de la macro ou de l'objet** — zone de texte
+
+>  
+
 - **Bouton de souris** — liste, défaut **Gauche**
 - **Modificateur** — liste, défaut **Maj**
+- **Touche au survol : aucune** — bouton
 
 ### Liaison 4
 
-- **Nom du sort** — zone de texte
+- **Action** — liste, défaut **Sort**
+- **Nom du sort, de la macro ou de l'objet** — zone de texte
+
+>  
+
 - **Bouton de souris** — liste, défaut **Gauche**
 - **Modificateur** — liste, défaut **Maj**
+- **Touche au survol : aucune** — bouton
 
 ### Liaison 5
 
-- **Nom du sort** — zone de texte
+- **Action** — liste, défaut **Sort**
+- **Nom du sort, de la macro ou de l'objet** — zone de texte
+
+>  
+
 - **Bouton de souris** — liste, défaut **Gauche**
 - **Modificateur** — liste, défaut **Maj**
+- **Touche au survol : aucune** — bouton
 
 ### Liaison 6
 
-- **Nom du sort** — zone de texte
+- **Action** — liste, défaut **Sort**
+- **Nom du sort, de la macro ou de l'objet** — zone de texte
+
+>  
+
 - **Bouton de souris** — liste, défaut **Gauche**
 - **Modificateur** — liste, défaut **Maj**
+- **Touche au survol : aucune** — bouton
 
 ### Liaison 7
 
-- **Nom du sort** — zone de texte
+- **Action** — liste, défaut **Sort**
+- **Nom du sort, de la macro ou de l'objet** — zone de texte
+
+>  
+
 - **Bouton de souris** — liste, défaut **Gauche**
 - **Modificateur** — liste, défaut **Maj**
+- **Touche au survol : aucune** — bouton
 
 ### Liaison 8
 
-- **Nom du sort** — zone de texte
+- **Action** — liste, défaut **Sort**
+- **Nom du sort, de la macro ou de l'objet** — zone de texte
+
+>  
+
 - **Bouton de souris** — liste, défaut **Gauche**
 - **Modificateur** — liste, défaut **Maj**
+- **Touche au survol : aucune** — bouton
 
 ## Confort automatique
 
@@ -1334,6 +1533,7 @@ Les petites corvées faites pour toi : réparation et vente des objets gris chez
 
 - **Butin rapide : tout ramasser d'un coup (Maj pour ramasser à la main)** — case, défaut **cochée**
 - **Accepter et rendre les quêtes automatiquement (Maj pour suspendre ; tu choisis toujours toi-même la récompense)** — case, défaut **décochée**
+- **Repérer la récompense de quête la plus chère (prix de revente ; le choix reste le tien)** — case, défaut **cochée**
 
 ### À la mort
 
@@ -1347,6 +1547,8 @@ Les petites corvées faites pour toi : réparation et vente des objets gris chez
 - **Pré-remplir le mot de confirmation à la suppression d'un objet** — case, défaut **cochée**
 - **Passer les cinématiques et vidéos** — case, défaut **décochée**
 - **Prévenir le groupe quand tu réinitialises les instances** — case, défaut **décochée**
+- **Remplacer les rangs inférieurs sur les barres d'action** — case, défaut **cochée**  
+  _Quand vous apprenez un nouveau rang, ses rangs inférieurs sur vos barres d'action sont remplacés, hors combat._
 
 ## Curseur et réticule
 
@@ -1393,14 +1595,34 @@ Niveau d'objet sur chaque emplacement de la fiche, à la couleur de qualité, le
 - **Niveaux d'objet sur la fenêtre d'inspection** — case, défaut **cochée**
 - **Niveau d'objet moyen des joueurs dans leur infobulle (inspection hors combat)** — case, défaut **cochée**
 
+## Flux de butin
+
+Objets, or, monnaies et réputation gagnés, en lignes brèves qui s'effacent.
+
+- **Taille des lignes** — curseur, défaut **20**, 14 – 32, pas 1
+- **Durée d'affichage (secondes)** — curseur, défaut **5**, 2 – 15, pas 1
+- **Afficher les gains de réputation** — case, défaut **cochée**
+
 ## Gestionnaire de recharges
 
 Réglages sort par sort du gestionnaire de recharges Blizzard : afficher ou masquer chaque sort sur sa barre, lueur quand il est prêt ou en permanence.
 
 > Choisis une barre, clique sur un sort, puis règle-le. Un sort masqué libère sa place : les suivants remontent. La liste suit la spécialisation en cours ; les réglages valent pour toutes.
 
+- **Ouvrir les réglages du gestionnaire de recharges** — bouton
 - **Style de lueur** — liste, défaut **Halo pulsé**
 - **Couleur de la lueur** — couleur, défaut **#FFD133**
+- **Lueur de proc** — liste, défaut **Bouton d'action**
+- **Couleur de la lueur de proc** — couleur, défaut **#FFD133**
+- **Lueur de buff actif** — liste, défaut **Traits pixel**
+- **Couleur de la lueur de buff** — couleur, défaut **#4CE566**
+
+### Raccourci clavier
+
+- **Afficher le raccourci (lu sur nos barres d'action)** — case, défaut **cochée**
+- **Police du raccourci** — liste, défaut **Comme le thème**
+- **Taille du raccourci** — curseur, défaut **12**, 8 – 24, pas 1
+- **Position du raccourci** — liste, défaut **En haut à droite**
 
 ### Apparence, barre par barre
 
@@ -1418,6 +1640,46 @@ Réglages sort par sort du gestionnaire de recharges Blizzard : afficher ou masq
 - **Afficher le temps restant** — case, défaut **cochée**
 
 ### Sort par sort
+
+### Visibilité : Recharges : essentiel
+
+- **Afficher quand** — liste, défaut **Toutes les conditions sont remplies**
+- **En combat** — liste, défaut **Indifférent**
+- **En groupe** — liste, défaut **Indifférent**
+- **En raid** — liste, défaut **Indifférent**
+- **En instance** — liste, défaut **Indifférent**
+- **Sur une monture** — liste, défaut **Indifférent**
+- **Avec une cible** — liste, défaut **Indifférent**
+
+### Visibilité : Recharges : utilitaire
+
+- **Afficher quand** — liste, défaut **Toutes les conditions sont remplies**
+- **En combat** — liste, défaut **Indifférent**
+- **En groupe** — liste, défaut **Indifférent**
+- **En raid** — liste, défaut **Indifférent**
+- **En instance** — liste, défaut **Indifférent**
+- **Sur une monture** — liste, défaut **Indifférent**
+- **Avec une cible** — liste, défaut **Indifférent**
+
+### Visibilité : Recharges : icônes de buff
+
+- **Afficher quand** — liste, défaut **Toutes les conditions sont remplies**
+- **En combat** — liste, défaut **Indifférent**
+- **En groupe** — liste, défaut **Indifférent**
+- **En raid** — liste, défaut **Indifférent**
+- **En instance** — liste, défaut **Indifférent**
+- **Sur une monture** — liste, défaut **Indifférent**
+- **Avec une cible** — liste, défaut **Indifférent**
+
+### Visibilité : Recharges : barres de buff
+
+- **Afficher quand** — liste, défaut **Toutes les conditions sont remplies**
+- **En combat** — liste, défaut **Indifférent**
+- **En groupe** — liste, défaut **Indifférent**
+- **En raid** — liste, défaut **Indifférent**
+- **En instance** — liste, défaut **Indifférent**
+- **Sur une monture** — liste, défaut **Indifférent**
+- **Avec une cible** — liste, défaut **Indifférent**
 
 ## Habillage
 
@@ -1529,9 +1791,9 @@ Moins d'encombrement et un accès direct à des réglages Blizzard. Tout réglag
 
 ## Menu radial
 
-Maintenir une touche : un anneau de sorts, objets, macros et montures s'ouvre autour du curseur ; relâcher sur l'un le lance. Hors combat seulement.
+Maintenir une touche : un anneau de sorts, objets, macros et montures s'ouvre autour du curseur ; relâcher sur l'un le lance.
 
-> Hors combat seulement : ce client ne peut pas exécuter le code sécurisé qu'un menu radial demande en combat. En combat, la touche ne fait rien.
+> En combat : sorts, objets et macros fonctionnent ; montures, marqueurs de cible et sous-menus, hors combat seulement.
 
 - **Touche (ex. SHIFT-Q)** — zone de texte
 - **Disposition** — liste, défaut **Anneau**
@@ -1542,9 +1804,9 @@ Maintenir une touche : un anneau de sorts, objets, macros et montures s'ouvre au
 
 ### Entrées
 
-> Une par ligne : spell:ID, item:ID, macro:Nom, mount:ID, mount:0, marker:0-8 (16 au plus). Ou prenez un sort, objet, macro ou monture sur le curseur et cliquez le bouton ci-dessous.
+> Une par ligne : spell:ID, item:ID, macro:Nom, mount:ID, mount:0, marker:0-8 (16 au plus). Ou prends un sort, objet, macro ou monture sur le curseur et clique le bouton ci-dessous.
 
-> menu:2 ouvre la palette 2 en sous-menu : survolez l'entrée un instant. Une palette sans touche ne sert que de sous-menu.
+> menu:2 ouvre la palette 2 en sous-menu : survole l'entrée un instant. Une palette sans touche ne sert que de sous-menu.
 
 - **Entrées** — zone de texte
 - **Ajouter ce qui est sur le curseur** — bouton
@@ -1575,13 +1837,18 @@ Minimap carrée (ou ronde) à la taille voulue, bordure au thème, nom de zone e
 
 - **Taille** — curseur, défaut **180**, 100 – 400, pas 2
 - **Carte carrée** — case, défaut **cochée**
-- **Cacher le décor Blizzard (bordure, boussole, horloge, boutons de zoom)** — case, défaut **cochée**
+- **Cacher le décor Blizzard (bordure, boussole)** — case, défaut **cochée**
 - **Nom de zone au-dessus de la carte** — case, défaut **cochée**
 - **Coordonnées sous la carte** — case, défaut **décochée**
 - **Affichage des coordonnées** — liste, défaut **Rangée sous la carte, toujours**
 - **Décimales des coordonnées** — curseur, défaut **1**, 0 – 2, pas 1
 - **Images par seconde et latence sous la carte** — case, défaut **décochée**
+- **Bouton de suivi** — case, défaut **cochée**
+- **Indicateur de courrier** — case, défaut **cochée**
+- **Difficulté d'instance** — case, défaut **cochée**
 - **Difficulté d'instance compacte (« 5 », « 10H »)** — case, défaut **décochée**
+- **Horloge** — case, défaut **décochée**
+- **Boutons de zoom** — case, défaut **décochée**
 - **La molette zoome** — case, défaut **cochée**
 - **Boutons d'addons** — liste, défaut **Un bouton dans la carte**
 - **Taille des boutons d'addons** — curseur, défaut **24**, 16 – 40, pas 1
@@ -1589,7 +1856,7 @@ Minimap carrée (ou ronde) à la taille voulue, bordure au thème, nom de zone e
 
 ## Minuteur d'attaque
 
-Une barre par arme jusqu'à votre prochaine attaque automatique. Demande l'événement PLAYER_SWING du client.
+Une barre par arme jusqu'à ta prochaine attaque automatique. Demande l'événement PLAYER_SWING du client.
 
 > Ce client ne signale pas les coups d'arme (pas de C_SwingTimer) : le module reste inactif.
 
@@ -1618,6 +1885,10 @@ Une barre par arme jusqu'à votre prochaine attaque automatique. Demande l'évé
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
 - **Au survol seulement** — case, défaut **décochée**
+
+## Minuteur de vol
+
+Une barre de compte à rebours pendant les vols, apprise pour chaque trajet.
 
 ## Panneaux de données
 
@@ -1680,6 +1951,12 @@ Remplace l'habillage Blizzard des plaques de nom par des barres MuscaUI : vie (c
 - **Buffs aussi (ligne au-dessus des débuffs)** — case, défaut **cochée**
 - **Taille des icônes d'auras** — curseur, défaut **18**, 12 – 32, pas 1
 - **Filtre des débuffs** — liste, défaut **Les miens**
+- **Liste blanche** — zone de texte
+- **Liste noire** — zone de texte
+- **Liste blanche : sorts de tout lanceur, pas seulement les tiens** — case, défaut **décochée**
+
+> Listes propres aux plaques, identifiants de sorts séparés par des virgules. Elles n'agissent que hors contenu restreint.
+
 - **Barre de vie sur les plaques alliées (nom seul sinon)** — case, défaut **décochée**
 - **Plaques sur les PNJ alliés** — case, défaut **cochée**
 - **Plaques sur les familiers et gardiens** — case, défaut **cochée**
@@ -1821,6 +2098,7 @@ Hors combat uniquement : te prévient quand un buff de classe manque (seulement 
 - **Chasseur / démoniste : familier non invoqué** — case, défaut **cochée**
 - **Pas « Bien nourri » en donjon et en raid** — case, défaut **décochée**
 - **Membres du groupe sans mon buff de groupe** — case, défaut **cochée**
+- **Intelligence des Arcanes** — case, défaut **cochée**
 - **Buffs à garder (identifiants : 1234, 5678)** — zone de texte
 - **Icône cliquable qui lance le sort manquant (hors combat)** — case, défaut **cochée**
 - **Camouflage oublié (voleur, druide félin ; donjons et raids)** — case, défaut **décochée**
@@ -1848,9 +2126,9 @@ Hors combat uniquement : te prévient quand un buff de classe manque (seulement 
 
 ## Recharges de raid
 
-Charges de rez en combat du groupe et verrou de Furie sanguinaire / Héroïsme sur vous.
+Charges de rez en combat du groupe et verrou de Furie sanguinaire / Héroïsme sur toi.
 
-> Affiché seulement si le client fournit les données : charges de rez partagées en instance de groupe, affaiblissement sur vous.
+> Affiché seulement si le client fournit les données : charges de rez partagées en instance de groupe, affaiblissement sur toi.
 
 - **Charges de rez en combat** — case, défaut **cochée**
 - **Verrou Furie sanguinaire / Héroïsme** — case, défaut **cochée**
@@ -1875,13 +2153,17 @@ Une seule fenêtre pour le sac à dos et les sacs équipés, sur son mover : rec
 - **Pièce sur les objets gris (camelote)** — case, défaut **cochée**
 - **Flèche sur l'équipement de niveau supérieur** — case, défaut **cochée**
 - **Objets récents en tête** — case, défaut **cochée**
+- **Afficher LqE / LqB sous les objets non liés** — case, défaut **cochée**  
+  _La recherche trouve aussi les objets non liés : lqe, lqr, lqb (ou boe, bop, wue)._
 - **Objets épinglés, identifiants (toujours en tête)** — zone de texte
+- **Objets marqués comme camelote (ID)** — zone de texte  
+  _Alt + clic gauche sur un objet des sacs pour le marquer ou le démarquer. Les objets marqués sont vendus avec les gris._
 
 ### Catégories
 
 - **Disposition** — liste, défaut **Grille unique (ordre des sacs)**
 - **Ordre des sections** — zone de texte  
-  _Mots : pinned, custom, new, equipment, consumable, tradegoods, quest, recipe, junk, other, empty._
+  _Mots : pinned, custom, new, equipment, consumable, tradegoods, quest, recipe, junk, special, other, empty._
 - **Épinglés** — case, défaut **cochée**
 - **Récents** — case, défaut **cochée**
 - **Équipement** — case, défaut **cochée**
@@ -1890,6 +2172,7 @@ Une seule fenêtre pour le sac à dos et les sacs équipés, sur son mover : rec
 - **Quête** — case, défaut **cochée**
 - **Recettes** — case, défaut **cochée**
 - **Camelote** — case, défaut **cochée**
+- **Sacs spéciaux** — case, défaut **cochée**
 - **Groupes libres** — zone de texte  
   _Une ligne par groupe : Potions = 118, 858_
 - **Nom de « Épinglés »** — zone de texte
@@ -1900,6 +2183,7 @@ Une seule fenêtre pour le sac à dos et les sacs équipés, sur son mover : rec
 - **Nom de « Quête »** — zone de texte
 - **Nom de « Recettes »** — zone de texte
 - **Nom de « Camelote »** — zone de texte
+- **Nom de « Sacs spéciaux »** — zone de texte
 - **Nom de « Divers »** — zone de texte
 - **Nom de « Cases libres »** — zone de texte
 - **Déverrouiller / verrouiller les cadres mobiles** — bouton
@@ -1916,6 +2200,13 @@ Le suivi d'objectifs Blizzard sur un support déplaçable, à la hauteur voulue,
 - **Replier en combat** — case, défaut **décochée**
 - **Replier en instance** — case, défaut **décochée**
 - **En raid** — liste, défaut **Toujours affiché**
+- **Ordre des quêtes** — liste, défaut **Blizzard (la plus proche d'abord)**
+- **Quêtes terminées** — liste, défaut **Mêlées aux autres**
+- **Quêtes de la zone actuelle seulement** — case, défaut **cochée**
+- **Cacher les quêtes terminées** — case, défaut **décochée**
+- **Cacher les quêtes grises (niveau trop bas)** — case, défaut **cochée**
+- **Cacher les journalières et hebdomadaires** — case, défaut **décochée**
+- **Suivre d'office les quêtes de la zone ou du donjon (25 au plus)** — case, défaut **cochée**
 - **Titres et objectifs : police du thème, tailles et couleurs par état** — case, défaut **décochée**
 - **Taille des titres de quête** — curseur, défaut **13**, 8 – 20, pas 1
 - **Taille des objectifs** — curseur, défaut **12**, 8 – 20, pas 1
@@ -1953,7 +2244,7 @@ Bouton « Raid » sur son mover, visible en groupe : appel prêt, vérification 
 
 - **Disposition** — liste, défaut **Bouton et panneau**
 - **Afficher** — liste, défaut **En groupe**  
-  _En raid, caché si vous n'êtes ni chef ni assistant : le serveur refuse alors marqueurs et appels._
+  _En raid, caché si tu n'es ni chef ni assistant : le serveur refuse alors marqueurs et appels._
 - **Échelle de la bande** — curseur, défaut **1.00**, 0.75 – 1.5, pas 0.05
 - **Touche d'ouverture du panneau (ex. CTRL-R)** — zone de texte
 - **Compte à rebours 1 (secondes)** — curseur, défaut **5**, 3 – 30, pas 1

@@ -61,6 +61,8 @@ local NamePlateFrames = NS.Modules:Register("nameplateframes", {
         healthText = "none",         -- préréglage : UnitFrameElements.TEXT_PRESETS
         healthFormat = "",           -- format à jetons, prime sur healthText
         auraFilter = "mine",         -- NS.AURA_FILTERS : sur une plaque, tes débuffs d'abord
+        auraLists = { whitelist = "", blacklist = "" }, -- ID de sorts propres aux plaques
+        whitelistAnyCaster = false,  -- liste blanche : sorts de tout lanceur, pas seulement les tiens
         fontDelta = -1,              -- taille des textes de plaque par rapport au thème (-4 à +4)
         classificationColors = false, -- ennemis colorés par type : boss, élite, rare, lanceur de sorts
         classificationColor = {
@@ -335,6 +337,7 @@ local function Config(unit)
         auras = db.showAuras and not friendly, auraSize = db.auraSize, aurasAbove = true,
         debuffsOnly = not db.showBuffs,
         auraFilter = db.auraFilter, healthFormat = db.healthFormat,
+        auraLists = db.auraLists, whitelistAnyCaster = db.whitelistAnyCaster,
         ccSlot = db.ccSlot and db.showAuras and not friendly,
         name = db.showName, level = db.showLevel,
         healthHidden = friendly and not db.friendlyHealth,
@@ -593,6 +596,8 @@ local function RegisterCombo()
     class = Known(class)
     if active and NamePlateFrames.db.comboPoints and class and COMBO_CLASSES[class] then
         NS.RegisterEventSafe(comboEvents, "UNIT_POWER_UPDATE", "player")
+        -- Points déplacés vers une autre cible : aucun événement de puissance.
+        NS.RegisterEventSafe(comboEvents, "COMBO_TARGET_CHANGED")
     end
 end
 
@@ -762,6 +767,10 @@ function NamePlateFrames:BuildOptions(o)
     o:Advanced()
     o:Slider("auraSize", L.OPT_UF_AURA_SIZE, 12, 32, 1, 36)
     o:Dropdown("auraFilter", L.OPT_AURA_FILTER, NS.AuraFilterChoices, 36)
+    o:EditBox("auraLists.whitelist", L.OPT_AURA_WHITELIST, 1, 36)
+    o:EditBox("auraLists.blacklist", L.OPT_AURA_BLACKLIST, 1, 36)
+    o:Check("whitelistAnyCaster", L.OPT_NPF_WHITELIST_ANY_CASTER, 36)
+    o:Note(L.NOTE_NPF_AURA_LISTS, 36)
     o:EndAdvanced()
     o:Check("friendlyHealth", L.OPT_NPF_FRIENDLY_HEALTH)
     o:Check("friendlyNpcs", L.OPT_NPF_FRIENDLY_NPCS)

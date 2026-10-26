@@ -29,6 +29,15 @@ local SNAP_THRESHOLD = 8
 local ARROWS = { LEFT = { -1, 0 }, RIGHT = { 1, 0 }, UP = { 0, 1 }, DOWN = { 0, -1 } }
 local MAX_GRID_LINES = 400
 
+-- Géométrie lue sans valeur secrète : un cadre Blizzard peut en rendre une (taille ou ancrage
+-- tirés d'une donnée restreinte). Secrète = inconnue pour l'appelant, comme un cadre non posé.
+local function Plain(value)
+    if NS.IsSecret(value) then return nil end
+    return value
+end
+local function Edges(region) return Plain(region:GetLeft()), Plain(region:GetBottom()) end
+local function Size(region) return Plain(region:GetWidth()) or 0, Plain(region:GetHeight()) or 0 end
+
 --------------------------------------------------------------------------------
 -- Fonctions pures (testées hors jeu)
 --------------------------------------------------------------------------------
@@ -141,9 +150,10 @@ end
 --- Rectangle rendu d'un mover, en unités d'UIParent : son calque s'il est affiché, sinon son cadre.
 local function Rect(entry)
     local region = entry.overlay and entry.overlay:IsShown() and entry.overlay or entry.frame
-    local left, bottom = region:GetLeft(), region:GetBottom()
+    local left, bottom = Edges(region)
     if not (left and bottom) then return nil end
-    return { left = left, bottom = bottom, width = region:GetWidth() or 0, height = region:GetHeight() or 0 }
+    local width, height = Size(region)
+    return { left = left, bottom = bottom, width = width, height = height }
 end
 
 --- Point d'écran et coin du cadre d'un rectangle posé à l'écran, puis le décalage du coin par
@@ -181,7 +191,7 @@ end
 local function Attach(entry)
     local overlay = entry.overlay
     if not overlay then return end
-    local width, height = entry.frame:GetWidth() or 0, entry.frame:GetHeight() or 0
+    local width, height = Size(entry.frame)
     overlay:SetSize(width > 0 and width or 40, height > 0 and height or 20)
     overlay:ClearAllPoints()
     overlay:SetPoint("TOPLEFT", entry.frame, "TOPLEFT", 0, 0)
@@ -229,7 +239,7 @@ function Movers:Adopt(key, frame, label, defaultPoint, defaultX, defaultY, ancho
     end
     entry.active = true
     entry.anchor = anchor or "TOPLEFT"
-    local width, height = frame:GetWidth() or 0, frame:GetHeight() or 0
+    local width, height = Size(frame)
     entry.holder:SetSize(width > 0 and width or 40, height > 0 and height or 20)
     entry.holder:Show()
     self:Register(key, entry.holder, label, defaultPoint, defaultX, defaultY)
@@ -291,7 +301,7 @@ end
 -- relancent pas le hook qui reprend la main quand le module redimensionne son cadre.
 local function ApplySize(entry, a, target)
     if not (target and (a.matchWidth or a.matchHeight)) then return end
-    local width, height = target.frame:GetWidth() or 0, target.frame:GetHeight() or 0
+    local width, height = Size(target.frame)
     entry.sizing = true
     local ok, err = pcall(function()
         if a.matchWidth and width > 0 then entry.frame:SetWidth(math.max(1, width + (a.widthOffset or 0))) end
@@ -305,7 +315,7 @@ end
 -- le bord gauche (edgeX) ou bas (edgeY) mémorisé. Recalculé à chaque pose.
 local function ApplyEdges(frame, a, targetFrame)
     if not (a.edgeX or a.edgeY) then return end
-    local left, bottom = frame:GetLeft(), frame:GetBottom()
+    local left, bottom = Edges(frame)
     if not (left and bottom) then return end
     local x = a.x + (a.edgeX and (a.edgeX - left) or 0)
     local y = a.y + (a.edgeY and (a.edgeY - bottom) or 0)
@@ -519,9 +529,10 @@ function Movers:CenterOnScreen(key)
         return (screenPixels - pixels) % 2 == 1 and -mult / 2 or 0
     end
     local old = NS.db.anchors[key]
+    local width, height = Size(entry.frame)
     NS.db.anchors[key] = { point = "CENTER", relPoint = "CENTER",
-                           x = half(entry.frame:GetWidth() or 0, UIParent:GetWidth()),
-                           y = half(entry.frame:GetHeight() or 0, UIParent:GetHeight()) }
+                           x = half(width, UIParent:GetWidth()),
+                           y = half(height, UIParent:GetHeight()) }
     self:Load(key)
     RefitIfMatched(entry, old)
     return true
@@ -798,8 +809,10 @@ local function SnapLines(entry)
     local yLines = { 0, UIParent:GetHeight() / 2, UIParent:GetHeight() }
     for _, other in pairs(Movers.registry) do
         local o = other.overlay
-        if other ~= entry and o and o:IsShown() and o:GetLeft() then
-            local l, b, w, h = o:GetLeft(), o:GetBottom(), o:GetWidth(), o:GetHeight()
+        local l, b
+        if other ~= entry and o and o:IsShown() then l, b = Edges(o) end
+        if l and b then
+            local w, h = Size(o)
             xLines[#xLines + 1] = l; xLines[#xLines + 1] = l + w / 2; xLines[#xLines + 1] = l + w
             yLines[#yLines + 1] = b; yLines[#yLines + 1] = b + h / 2; yLines[#yLines + 1] = b + h
         end
@@ -818,8 +831,8 @@ function Movers:Drop(key, left, bottom)
     local entry = self.registry[key]
     local overlay = entry and entry.overlay
     if not overlay then return end
-    if not (left and bottom) then left, bottom = overlay:GetLeft(), overlay:GetBottom() end
-    local width, height = overlay:GetWidth(), overlay:GetHeight()
+    if not (left and bottom) then left, bottom = Edges(overlay) end
+    local width, height = Size(overlay)
     if not left or not bottom then Attach(entry) return end
     if SnapEnabled() then
         local xLines, yLines = SnapLines(entry)
@@ -905,7 +918,7 @@ end
 
 local function DragUpdate(overlay)
     local cx, cy = CursorPosition()
-    local width, height = overlay:GetWidth() or 0, overlay:GetHeight() or 0
+    local width, height = Size(overlay)
     -- Gardé à l'écran : SetClampedToScreen ne vaut que pour StartMoving.
     local left = math.max(0, math.min(UIParent:GetWidth() - width, cx - overlay.grabX))
     local bottom = math.max(0, math.min(UIParent:GetHeight() - height, cy - overlay.grabY))
@@ -924,7 +937,8 @@ end
 
 local function StartDrag(overlay)
     local cx, cy = CursorPosition()
-    overlay.grabX, overlay.grabY = cx - (overlay:GetLeft() or cx), cy - (overlay:GetBottom() or cy)
+    local left, bottom = Edges(overlay)
+    overlay.grabX, overlay.grabY = cx - (left or cx), cy - (bottom or cy)
     overlay.dragLeft, overlay.dragBottom = nil, nil
     overlay:SetScript("OnUpdate", DragUpdate)
 end

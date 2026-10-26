@@ -35,13 +35,20 @@ local CLASS_RULES = {
 }
 NS.REMINDER_CLASS_RULES = CLASS_RULES
 
--- Buffs de groupe : membres vivants et connectés qui ne l'ont pas (version de groupe acceptée).
--- Intelligence des arcanes, Mot de pouvoir : Robustesse, Marque du fauve.
+-- Buffs de groupe, une famille par règle (interrupteur coverageRules[clé]) : membres vivants,
+-- connectés et en vue qui n'en ont aucun (version de groupe acceptée, tous rangs par le nom).
+-- Seulement si le joueur connaît un des sorts de `spells`. Bénédictions : n'importe laquelle suffit.
 local COVERAGE_RULES = {
     { key = "arcaneIntellect", class = "MAGE", spells = { 1459 }, accept = { 23028 } },
     { key = "fortitude", class = "PRIEST", spells = { 1243 }, accept = { 21562 } },
+    { key = "divineSpirit", class = "PRIEST", spells = { 14752 }, accept = { 27681 } },
     { key = "wildCoverage", class = "DRUID", spells = { 1126 }, accept = { 21849 } },
+    { key = "thorns", class = "DRUID", spells = { 467 } },
+    { key = "salvation", class = "PALADIN", spells = { 1038 }, accept = { 25895 } },
+    { key = "blessings", class = "PALADIN", spells = { 19740, 19742, 20217, 19977, 20911 },
+      accept = { 25782, 25894, 25898, 25890, 25899 } },
 }
+NS.REMINDER_COVERAGE_RULES = COVERAGE_RULES
 
 local STEALTH_SPELLS = { ROGUE = 1784, DRUID = 5215 }
 local CAT_FORM_ID = 1
@@ -82,6 +89,8 @@ local Reminders = NS.Modules:Register("reminders", {
         pet = true,
         wellFed = false,
         groupCoverage = true,      -- membres du groupe sans ton buff de groupe
+        coverageRules = { arcaneIntellect = true, fortitude = true, divineSpirit = true, wildCoverage = true,
+                          thorns = true, salvation = true, blessings = true },   -- par famille, pile et cadres
         customBuffs = "",          -- identifiants de buffs à garder (« 1234, 5678 »), si le sort est connu
         castButtons = true,        -- icône cliquable qui lance le sort manquant, hors combat
         shadowform = false,
@@ -205,48 +214,73 @@ local function WellFedReminder(db)
     return L.REM_WELL_FED
 end
 
---- Membres vivants et connectés du groupe (joueur compris) sans aucun buff de `names` : leur
--- nombre et le premier d'entre eux. Un membre illisible (secret) ne compte pas.
-local function MissingMembers(names)
+--- Buffs de groupe que `unit` n'a pas, parmi les familles cochées que le joueur sait lancer :
+-- liste de règles, vide si rien ne manque. nil quand la réponse est inconnue : combat, membre
+-- absent, mort, hors ligne ou hors de vue, aura secrète. Seule détection, pour la pile et les cadres.
+function Reminders.MissingBuffs(unit)
+    if NS.InCombat() or not UnitExists(unit) then return nil end
+    local dead = UnitIsDeadOrGhost(unit)
+    local connected = not _G.UnitIsConnected or UnitIsConnected(unit)
+    local visible = not _G.UnitIsVisible or UnitIsVisible(unit)
+    if NS.IsSecret(dead) or dead or NS.IsSecret(connected) or not connected
+        or NS.IsSecret(visible) or not visible then return nil end
+    local _, classFile = UnitClass("player")
+    local missing = {}
+    for _, rule in ipairs(COVERAGE_RULES) do
+        if rule.class == classFile and Reminders.db.coverageRules[rule.key] and KnownSpellName(rule) then
+            local has = NS.UnitHasBuff(unit, RuleNames(rule))
+            if has == nil then return nil end
+            if not has then missing[#missing + 1] = rule end
+        end
+    end
+    return missing
+end
+NS.MissingBuffs = Reminders.MissingBuffs
+
+--- Membres du groupe, joueur compris. En raid, le jeton raidN du joueur est sauté : ses
+-- UNIT_AURA arrivent sous « player ».
+local function GroupUnits()
     local units = { "player" }
     local prefix, count = "party", GetNumGroupMembers() - 1
-    if IsInRaid() then units, prefix, count = {}, "raid", GetNumGroupMembers() end
-    for i = 1, count do units[#units + 1] = prefix .. i end
-    local missing, first = 0, nil
-    for _, unit in ipairs(units) do
-        local dead = UnitIsDeadOrGhost(unit)
-        local connected = not _G.UnitIsConnected or UnitIsConnected(unit)
-        if UnitExists(unit) and not NS.IsSecret(dead) and not dead and not NS.IsSecret(connected) and connected
-            and NS.UnitHasBuff(unit, names) == false then
-            missing = missing + 1
-            first = first or unit
-        end
+    if IsInRaid() then prefix, count = "raid", GetNumGroupMembers() end
+    for i = 1, count do
+        local unit = prefix .. i
+        local isPlayer = prefix == "raid" and UnitIsUnit(unit, "player")
+        if NS.IsSecret(isPlayer) or not isPlayer then units[#units + 1] = unit end
     end
-    return missing, first
+    return units
 end
 
--- Parcourir tout le groupe coûte cher : le résultat est gardé, recalculé seulement quand le
--- groupe change (coverageDirty) ou après COVERAGE_REFRESH secondes, pas à chaque UNIT_AURA.
-local COVERAGE_REFRESH = 10
+-- Réponse gardée par membre, refaite pour le seul membre dont les auras changent (UNIT_AURA), ou
+-- pour tous quand le groupe, le grimoire ou les réglages changent : pas de scrutation. Une
+-- réponse inconnue (mort, hors de vue...) est relue à chaque évaluation.
+local groupUnits, missingByUnit, staleUnits = {}, {}, {}
 local coverageDirty = true
-local coverageEntries, coverageAt = {}, 0
 
-local function CoverageReminders(db, classFile, result)
+local function CoverageReminders(db, result)
     if not (db.groupCoverage and IsInGroupNow()) then return end
-    if coverageDirty or GetTime() - coverageAt >= COVERAGE_REFRESH then
-        coverageDirty, coverageAt, coverageEntries = false, GetTime(), {}
-        for _, rule in ipairs(COVERAGE_RULES) do
-            local known = rule.class == classFile and KnownSpellName(rule)
-            if known then
-                local missing, first = MissingMembers(RuleNames(rule))
-                if missing > 0 then
-                    coverageEntries[#coverageEntries + 1] = { key = "coverage:" .. rule.key, spell = known,
-                        unit = first, text = string.format(L.REM_COVERAGE, known, missing) }
-                end
+    if coverageDirty then
+        coverageDirty, groupUnits = false, GroupUnits()
+        wipe(missingByUnit)
+        for _, unit in ipairs(groupUnits) do staleUnits[unit] = true end
+    end
+    for _, unit in ipairs(groupUnits) do
+        if staleUnits[unit] or not missingByUnit[unit] then missingByUnit[unit] = Reminders.MissingBuffs(unit) end
+    end
+    wipe(staleUnits)
+    for _, rule in ipairs(COVERAGE_RULES) do
+        local missing, first = 0, nil
+        for _, unit in ipairs(groupUnits) do
+            for _, lacking in ipairs(missingByUnit[unit] or {}) do
+                if lacking == rule then missing, first = missing + 1, first or unit end
             end
         end
+        if missing > 0 then
+            local known = KnownSpellName(rule)
+            result[#result + 1] = { key = "coverage:" .. rule.key, spell = known, unit = first,
+                                    text = string.format(L.REM_COVERAGE, known, missing) }
+        end
     end
-    for _, entry in ipairs(coverageEntries) do result[#result + 1] = entry end
 end
 
 --- Buffs choisis par identifiant : rappel si le sort est connu et le buff absent.
@@ -281,7 +315,7 @@ function Reminders:Collect()
         end
     end
 
-    CoverageReminders(db, classFile, result)
+    CoverageReminders(db, result)
     CustomReminders(db, result)
 
     local stealth = StealthReminder(db, classFile)
@@ -305,7 +339,7 @@ function Reminders:Collect()
 
     if db.bagsFull then
         local free = 0
-        for bag = 0, NS.NUM_BAGS do free = free + NS.GetBagFreeSlots(bag) end
+        for bag = 0, NS.NUM_BAGS do free = free + NS.GetBagFreeSlots(bag, true) end
         if free == 0 then result[#result + 1] = { key = "bags", text = L.REM_BAGS_FULL } end
     end
     return result
@@ -458,7 +492,7 @@ local function ScheduleEvaluate()
     end)
 end
 
-events:SetScript("OnEvent", function(_, event)
+events:SetScript("OnEvent", function(_, event, unit)
     if event == "PLAYER_REGEN_ENABLED" then
         stealthSince = GetTime()
         -- Réévaluer après le délai du camouflage, sans ticker permanent.
@@ -466,8 +500,11 @@ events:SetScript("OnEvent", function(_, event)
     elseif event == "PLAYER_REGEN_DISABLED" then
         stealthSince = nil
     else
-        if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" or event == "SPELLS_CHANGED"
-            or event == "UNIT_AURA" then   -- joueur buffé : compté dans la couverture
+        if event == "UNIT_AURA" or event == "UNIT_CONNECTION" then
+            -- Auras d'un membre : lui seul est relu ; les autres unités (cible, plaques) n'en sont pas.
+            if not (unit == "player" or unit:find("^party%d") or unit:find("^raid%d")) then return end
+            staleUnits[unit] = true
+        elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" or event == "SPELLS_CHANGED" then
             coverageDirty = true
         end
         return ScheduleEvaluate()
@@ -488,7 +525,8 @@ function Reminders:OnEnable()
     active = true
     stealthSince = GetTime()
     for _, event in ipairs(EVENTS) do NS.RegisterEventSafe(events, event) end
-    NS.RegisterEventSafe(events, "UNIT_AURA", "player")
+    NS.RegisterEventSafe(events, "UNIT_AURA")
+    NS.RegisterEventSafe(events, "UNIT_CONNECTION")
     -- Mover lié au module : coupé, il n'apparaît plus au déverrouillage.
     NS.Movers:Register("reminders", frame, L.MOVER_REMINDERS, "TOP", 0, -140)
     NS.Movers:Load("reminders")
@@ -512,6 +550,7 @@ end
 
 function Reminders:OnRefresh()
     coverageDirty = true
+    NS:Fire("MISSING_BUFFS_CHANGED")   -- familles cochées : icônes des cadres
     self:Evaluate()
 end
 
@@ -536,6 +575,10 @@ function Reminders:BuildOptions(o)
     o:Check("pet", L.OPT_REM_PET)
     o:Check("wellFed", L.OPT_REM_WELL_FED)
     o:Check("groupCoverage", L.OPT_REM_COVERAGE)
+    local _, playerClass = UnitClass("player")
+    for _, rule in ipairs(COVERAGE_RULES) do
+        if rule.class == playerClass then o:Check("coverageRules." .. rule.key, L["REM_RULE_" .. rule.key], 36) end
+    end
     o:Advanced()
     o:EditBox("customBuffs", L.OPT_REM_CUSTOM, 1)
     o:EndAdvanced()

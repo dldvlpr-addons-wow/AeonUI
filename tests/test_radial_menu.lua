@@ -69,9 +69,33 @@ test("menu radial : touche liée, appui ouvre, relâcher arme le sort survolé, 
     post(button, "LeftButton", false)
     eq(palette:IsShown(), false, "fermée")
     eq(button:GetAttribute("type"), nil, "action effacée")
+    eq(button:GetAttribute("*type-musca1-2"), "item", "action de l'emplacement 2 posée d'avance")
+    eq(button:GetAttribute("*item-musca1-2"), "item:6948")
     Mock.SetCombat(true)
     pre(button, "LeftButton", true)
-    eq(palette:IsShown(), false, "combat : rien")
+    truthy(palette:IsShown(), "combat : palette affichée")
+    pre(button, "LeftButton", false)
+    eq(button:GetAttribute("type"), nil, "combat : aucun attribut écrit hors extrait sécurisé")
+    post(button, "LeftButton", false)
+    -- Extrait sécurisé exécuté dans un environnement restreint simulé : curseur en fractions de l'écran.
+    local fx, fy, inCombat = 0.5, 0.5, true
+    local env = { tonumber = tonumber, strmatch = string.match, abs = math.abs, min = math.min, math = math,
+                  atan2 = function(y, x) return math.deg((math.atan2 or math.atan)(y, x)) end, SecureCmdOptionParse = function() return inCombat and "1" or nil end }
+    local handle = {
+        GetMousePosition = function() return fx, fy end,
+        GetWidth = function() return 1000 end, GetHeight = function() return 800 end,
+        GetAttribute = function(_, name) return button:GetAttribute(name) end,
+    }
+    local body = button.wrapped.OnClick
+    local snippet = setfenv and setfenv(assert(loadstring("local self, button, down = ...\n" .. body)), env)
+        or assert(load("local self, button, down = ...\n" .. body, "snippet", "t", env))
+    eq(snippet(handle, "LeftButton", true), false, "appui : clic annulé, origine notée")
+    fx = 0.3   -- 200 à gauche : entrée 4
+    eq(snippet(handle, "LeftButton", false), "musca1-4", "relâcher : clic renommé vers l'emplacement visé")
+    snippet(handle, "LeftButton", true)
+    eq(snippet(handle, "LeftButton", false), false, "zone morte : rien")
+    inCombat = false
+    eq(snippet(handle, "LeftButton", false), nil, "hors combat : chemin insecure inchangé")
     Mock.SetCombat(false)
     NS.Modules:SetEnabled("radialmenu", false)
     eq(Mock.overrideBindings[button], nil, "touche rendue")

@@ -184,6 +184,58 @@ DataTexts:Register("speed", {
 })
 
 --------------------------------------------------------------------------------
+-- Statistiques du personnage (NS.GetStat, côté choisi par la classe, le rôle et la forme)
+--------------------------------------------------------------------------------
+
+local STAT_EVENTS = { "UNIT_STATS", "UNIT_ATTACK_POWER", "UNIT_SPELL_HASTE", "COMBAT_RATING_UPDATE",
+                      "PLAYER_EQUIPMENT_CHANGED", "UNIT_AURA" }
+local STAT_SIDES = { { "melee", "DATATEXT_SIDE_MELEE" }, { "ranged", "DATATEXT_SIDE_RANGED" },
+                     { "spell", "DATATEXT_SIDE_SPELL" } }
+
+-- Pourcentage (crit, hâte, toucher) ou nombre entier (puissance, armure).
+local function FormatStat(key, value)
+    if key == "power" or key == "armor" then return tostring(math.floor(value + 0.5)) end
+    return string.format("%.1f%%", value)
+end
+
+for _, key in ipairs({ "crit", "haste", "hit", "power", "armor" }) do
+    local upper = key:upper()
+    DataTexts:Register(key, {
+        text = function()
+            local value = NS.GetStat(key)
+            if not value then return Dim(L["DATATEXT_" .. upper .. "_SHORT"]) .. " -" end
+            return Dim(L["DATATEXT_" .. upper .. "_SHORT"]) .. " " .. FormatStat(key, value)
+        end,
+        tooltip = function(tt)
+            tt:AddLine(L["DATATEXT_" .. upper])
+            if key == "armor" then return end
+            for _, side in ipairs(STAT_SIDES) do
+                local value = NS.GetStat(key, side[1])
+                tt:AddDoubleLine(L[side[2]], value and FormatStat(key, value) or "-", 0.8, 0.8, 0.8, 1, 1, 1)
+            end
+        end,
+        events = STAT_EVENTS,
+    })
+end
+
+DataTexts:Register("avoidance", {
+    text = function()
+        local dodge, parry, block = NS.GetStat("avoidance")
+        if not dodge then return Dim(L.DATATEXT_AVOIDANCE_SHORT) .. " -" end
+        return Dim(L.DATATEXT_AVOIDANCE_SHORT) .. " " .. string.format("%.1f%%", dodge + parry + block)
+    end,
+    tooltip = function(tt)
+        tt:AddLine(L.DATATEXT_AVOIDANCE)
+        local dodge, parry, block = NS.GetStat("avoidance")
+        if not dodge then return end
+        tt:AddDoubleLine(L.DATATEXT_DODGE, string.format("%.1f%%", dodge), 0.8, 0.8, 0.8, 1, 1, 1)
+        tt:AddDoubleLine(L.DATATEXT_PARRY, string.format("%.1f%%", parry), 0.8, 0.8, 0.8, 1, 1, 1)
+        tt:AddDoubleLine(L.DATATEXT_BLOCK, string.format("%.1f%%", block), 0.8, 0.8, 0.8, 1, 1, 1)
+    end,
+    events = STAT_EVENTS,
+})
+
+--------------------------------------------------------------------------------
 -- DPS (compteur de dégâts natif)
 --------------------------------------------------------------------------------
 
