@@ -5,6 +5,7 @@
 -- Inspection : mêmes niveaux sur la fenêtre d'inspection, et niveau moyen d'un joueur survolé dans
 -- son infobulle (inspection demandée hors combat, résultat gardé deux minutes par GUID). La ligne
 -- d'infobulle s'efface quand un addon d'interface qui a la sienne est chargé.
+-- Option : niveau d'objet sur les boutons du menu d'équipement (Alt sur un emplacement).
 local _, NS = ...
 local L = NS.L
 local Media = NS.Media
@@ -37,6 +38,7 @@ local Gear = NS.Modules:Register("gear", {
         textSize = 11,
         inspect = true,         -- niveaux sur la fenêtre d'inspection
         tooltip = true,         -- niveau moyen d'un joueur dans son infobulle
+        flyout = false,         -- niveau d'objet dans le menu d'équipement
     },
 })
 
@@ -289,6 +291,33 @@ local function Hook()
     averageText:SetPoint("TOP", parent, "TOP", 0, -40)
 end
 
+--- Niveau d'objet d'un bouton du menu d'équipement, appelé après chaque affichage Blizzard.
+function Gear.UpdateFlyoutButton(button)
+    local level, quality
+    if active and Gear.db.flyout then level, quality = NS.GetFlyoutItemLevel(button.location) end
+    local text = button.muscaLevel
+    if not level then
+        if text then text:Hide() end
+        return
+    end
+    if not text then
+        text = button:CreateFontString(nil, "OVERLAY")
+        text:SetPoint("BOTTOM", button, "BOTTOM", 0, 2)
+        button.muscaLevel = text
+    end
+    text:SetFont(Media:Font(), Gear.db.textSize, "OUTLINE")
+    text:SetText(level)
+    text:SetTextColor(NS.QualityColor(quality))
+    text:Show()
+end
+
+local flyoutHooked = false
+local function HookFlyout()
+    if flyoutHooked or not _G.EquipmentFlyout_DisplayButton then return end
+    flyoutHooked = true
+    hooksecurefunc("EquipmentFlyout_DisplayButton", Gear.UpdateFlyoutButton)
+end
+
 local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event, arg1)
     if event == "INSPECT_READY" then OnInspectReady(arg1) return end
@@ -303,6 +332,7 @@ function Gear:OnEnable()
     NS.RegisterEventSafe(events, "UNIT_INVENTORY_CHANGED", "player")
     NS.RegisterEventSafe(events, "INSPECT_READY")
     HookTooltip()
+    HookFlyout()
     self:Update()
 end
 
@@ -322,6 +352,7 @@ function Gear:BuildOptions(o)
     o:Check("itemLevel", L.OPT_GEAR_ITEM_LEVEL)
     o:Check("average", L.OPT_GEAR_AVERAGE)
     o:Check("missingEnchant", L.OPT_GEAR_ENCHANT)
+    o:Check("flyout", L.OPT_M_QOL_GEAR_FLYOUT)
     o:Advanced()
     o:Slider("textSize", L.OPT_GEAR_TEXT_SIZE, 6, 20, 1)
     o:EndAdvanced()

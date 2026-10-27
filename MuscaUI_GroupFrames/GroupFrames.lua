@@ -1714,9 +1714,8 @@ function GroupFrames:UpdateHealerMana()
             count = count + 1
             local row = manaFrame.rows[count]
             local _, classFile = UnitClass(unit)
-            local color = Known(classFile) and RAID_CLASS_COLORS[classFile]
             row.name:SetText(UnitName(unit))   -- nom secret : affiché tel quel
-            if color then row.name:SetTextColor(color.r, color.g, color.b) else row.name:SetTextColor(1, 1, 1) end
+            row.name:SetTextColor(NS.ClassColor(Known(classFile)))
             manaUnits[unit] = row
             PaintMana(unit)
         end

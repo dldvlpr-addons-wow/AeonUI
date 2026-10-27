@@ -2,6 +2,7 @@
 -- Aides visuelles de visée :
 --   * un anneau autour du curseur (retrouver sa souris en plein combat) ;
 --   * un réticule au centre de l'écran.
+-- L'anneau peut porter la recharge globale et le sort en cours (objets durée, lisibles en combat).
 -- Chacun peut ne s'afficher qu'en combat. Aucune frame sécurisée : tout est permis en combat.
 local _, NS = ...
 local L = NS.L
@@ -19,6 +20,8 @@ local Cursor = NS.Modules:Register("cursor", {
         ringColor = { r = 0.25, g = 0.66, b = 0.96 },
         ringClassColor = false,   -- anneau à la couleur de la classe (prioritaire sur ringColor)
         ringOpacity = 1,
+        gcdRing = false,    -- recharge globale tracée sur l'anneau
+        castRing = false,   -- sort en cours tracé autour de l'anneau
         crosshair = false,
         crosshairSize = 20,
         crosshairThickness = 2,
@@ -45,6 +48,20 @@ local function Build()
         self:ClearAllPoints()
         self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x / scale, y / scale)
     end)
+    -- Cadrans en forme d'anneau : la texture de l'anneau sert de balayage.
+    local function Dial(inset)
+        local dial = CreateFrame("Cooldown", nil, ring, "CooldownFrameTemplate")
+        dial:SetPoint("TOPLEFT", -inset, inset)
+        dial:SetPoint("BOTTOMRIGHT", inset, -inset)
+        dial:SetSwipeTexture(RING)
+        dial:SetDrawEdge(false)
+        dial:SetDrawBling(false)
+        dial:SetHideCountdownNumbers(true)
+        dial:Hide()
+        return dial
+    end
+    ring.gcd = Dial(0)
+    ring.cast = Dial(8)
     ring:Hide()
 
     crosshair = CreateFrame("Frame", "MuscaUICrosshair", UIParent)
@@ -72,6 +89,11 @@ function Cursor:Update(event)
     end
     ring.texture:SetVertexColor(ringColor.r, ringColor.g, ringColor.b, db.ringOpacity)
     ring:SetShown(showRing and true or false)
+    -- Même taille et texture que l'anneau : un balayage sombre, sinon invisible par-dessus.
+    ring.gcd:SetSwipeColor(0, 0, 0, 0.6)
+    ring.cast:SetSwipeColor(ringColor.r, ringColor.g, ringColor.b, db.ringOpacity)
+    ring.gcd:SetShown(active and db.gcdRing and true or false)
+    if not (active and db.castRing) then ring.cast:Hide() end
 
     local showCross = active and db.crosshair and (inCombat or not db.crosshairCombatOnly)
     local c = db.crosshairColor
@@ -87,14 +109,38 @@ end
 
 function Cursor:GetFrames() return ring, crosshair end
 
+-- Fin d'incantation : le cadran se cache (un Cooldown nourri d'un secret ne se relit pas).
+local CAST_END = { UNIT_SPELLCAST_STOP = true, UNIT_SPELLCAST_FAILED = true,
+    UNIT_SPELLCAST_INTERRUPTED = true, UNIT_SPELLCAST_CHANNEL_STOP = true }
+local CAST_EVENTS = { "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_DELAYED", "UNIT_SPELLCAST_CHANNEL_START",
+    "UNIT_SPELLCAST_CHANNEL_UPDATE", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_FAILED",
+    "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_CHANNEL_STOP" }
+
+function Cursor:UpdateCast(event)
+    if not (ring and active and self.db.castRing) then return end
+    if CAST_END[event] then ring.cast:Hide() return end
+    local channeling = event == "UNIT_SPELLCAST_CHANNEL_START" or event == "UNIT_SPELLCAST_CHANNEL_UPDATE"
+    ring.cast:SetShown(NS.SetCastCooldown(ring.cast, "player", channeling))
+end
+
 local events = CreateFrame("Frame")
-events:SetScript("OnEvent", function(_, event) Cursor:Update(event) end)
+events:SetScript("OnEvent", function(_, event)
+    if event == "SPELL_UPDATE_COOLDOWN" then
+        if ring and active and Cursor.db.gcdRing then NS.SetGlobalCooldown(ring.gcd) end
+    elseif event:find("^UNIT_SPELLCAST") then
+        Cursor:UpdateCast(event)
+    else
+        Cursor:Update(event)
+    end
+end)
 
 function Cursor:OnEnable()
     if not ring then Build() end
     active = true
     NS.RegisterEventSafe(events, "PLAYER_REGEN_DISABLED")
     NS.RegisterEventSafe(events, "PLAYER_REGEN_ENABLED")
+    NS.RegisterEventSafe(events, "SPELL_UPDATE_COOLDOWN")
+    for _, event in ipairs(CAST_EVENTS) do NS.RegisterEventSafe(events, event, "player") end
     self:Update()
 end
 
@@ -114,6 +160,8 @@ function Cursor:BuildOptions(o)
     o:Color("ringColor", L.OPT_CURSOR_COLOR, 36)
     o:Check("ringClassColor", L.OPT_G_QOL_CURSOR_CLASS_COLOR, 36)
     o:Slider("ringOpacity", L.OPT_G_QOL_OPACITY, 0.1, 1, 0.05, 36, "%.2f")
+    o:Check("gcdRing", L.OPT_M_QOL_CURSOR_GCD, 36)
+    o:Check("castRing", L.OPT_M_QOL_CURSOR_CAST, 36)
     o:Title(L.OPT_CURSOR_CROSSHAIR)
     o:Check("crosshair", L.OPT_CURSOR_CROSSHAIR_SHOW)
     o:Check("crosshairCombatOnly", L.OPT_CURSOR_COMBAT_ONLY, 36)

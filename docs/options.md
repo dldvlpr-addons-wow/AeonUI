@@ -36,6 +36,7 @@ Généré par `tools/generate_options_doc.lua` depuis la fenêtre d'options (`/m
 - [Fenêtres déplaçables](#fenêtres-déplaçables)
 - [Fiche de personnage](#fiche-de-personnage)
 - [Flux de butin](#flux-de-butin)
+- [Forme active](#forme-active)
 - [Gestionnaire de recharges](#gestionnaire-de-recharges)
 - [Habillage](#habillage)
 - [Interface épurée](#interface-épurée)
@@ -74,10 +75,37 @@ Chaque module s'active ou se désactive séparément. Les changements s'applique
   _Multiplie l'échelle (pixel perfect ou celle du jeu) : 1,00 = inchangée, 1,20 = plus grand. Hors combat._
 - **Taille de la fenêtre d'options** — curseur, défaut **1.00**, 0.8 – 1.5, pas 0.05
 
+### Couleurs de classe
+
+- **Guerrier** — couleur, défaut **#C69B6D**
+- **PALADIN** — couleur, défaut **#FFFFFF**
+- **HUNTER** — couleur, défaut **#FFFFFF**
+- **ROGUE** — couleur, défaut **#FFF468**
+- **PRIEST** — couleur, défaut **#FFFFFF**
+- **SHAMAN** — couleur, défaut **#FFFFFF**
+- **Mage** — couleur, défaut **#3FC6EA**
+- **WARLOCK** — couleur, défaut **#FFFFFF**
+- **DRUID** — couleur, défaut **#FFFFFF**
+- **Revenir aux couleurs Blizzard** — bouton
+
+### Couleurs de ressource
+
+- **MANA** — couleur, défaut **#0000FF**
+- **RAGE** — couleur, défaut **#FF0000**
+- **ENERGY** — couleur, défaut **#FFFF00**
+- **FOCUS** — couleur, défaut **#FFFFFF**
+- **Revenir aux couleurs Blizzard** — bouton
+
 ### Lueurs
 
 - **Épaisseur de la lueur pixel** — curseur, défaut **2**, 1 – 4, pas 1
 - **Vitesse des lueurs animées** — curseur, défaut **1.0**, 0.5 – 2, pas 0.1
+
+### Performances
+
+- **Optimiser mes FPS** — bouton
+- **Restaurer les graphismes** — bouton  
+  _Baisse ombres, liquides, particules, occlusion ambiante, effets de profondeur, contours, effets de sorts, végétation au sol et réverbération. Restaurer rend les réglages d'avant._
 
 ### Cadres mobiles
 
@@ -95,6 +123,7 @@ Police et texture de barre pour tout MuscaUI, puis par module quand l'un doit se
 - **Police de MuscaUI** — liste, défaut **Arial Narrow**
 - **Taille du texte** — curseur, défaut **12**, 9 – 18, pas 1
 - **Contour du texte** — liste, défaut **Aucun**
+- **Cette police pour tout le texte du jeu** — case, défaut **décochée**
 - **Texture des barres** — liste, défaut **Plate**
 - **Mode sombre des barres de vie** — case, défaut **décochée**  
   _Cadres d'unité, groupe, plaques et barres de ressources : remplissage sombre, la couleur de l'unité montre la vie manquante._
@@ -174,6 +203,8 @@ Active ou coupe chaque module ici. Chacun a sa propre page dans la liste de gauc
   _Niveau d'objet sur chaque emplacement de la fiche, à la couleur de qualité, le niveau moyen, et un repère sur les pièces enchantables sans enchantement. Mêmes niveaux sur la fenêtre d'inspection, et niveau moyen des joueurs dans leur infobulle._
 - **Flux de butin** — case, défaut **cochée**  
   _Objets, or, monnaies et réputation gagnés, en lignes brèves qui s'effacent._
+- **Forme active** — case, défaut **décochée**  
+  _Icône de la posture, forme ou aura active, cachée sans forme._
 - **Gestionnaire de recharges** — case, défaut **décochée**  
   _Réglages sort par sort du gestionnaire de recharges Blizzard : afficher ou masquer chaque sort sur sa barre, lueur quand il est prêt ou en permanence._
 - **Habillage** — case, défaut **cochée**  
@@ -258,6 +289,7 @@ Un profil contient tous les réglages de MuscaUI. « Default » est partagé par
 - **Fenêtres déplaçables** — case, défaut **cochée**
 - **Fiche de personnage** — case, défaut **cochée**
 - **Flux de butin** — case, défaut **cochée**
+- **Forme active** — case, défaut **cochée**
 - **Gestionnaire de recharges** — case, défaut **cochée**
 - **Habillage** — case, défaut **cochée**
 - **Interface épurée** — case, défaut **cochée**
@@ -378,6 +410,14 @@ Les sorts de déplacement de ta classe affichés pendant leur recharge, avec une
 
 - **Taille des icônes** — curseur, défaut **36**, 16 – 64, pas 1
 - **Annoncer le retour d'un sort** — case, défaut **cochée**
+- **Son quand prêt** — case, défaut **décochée**
+  - **Son** — liste, défaut **Clic**
+  - **Son importé (vide = son par défaut)** — zone de texte
+
+> Fichier .ogg ou .mp3, chemin depuis le dossier du jeu, ex. Interface\AddOns\MesSons\alerte.ogg. Relancer le jeu après avoir ajouté le fichier.
+
+  - **Écouter** — bouton
+- **Lire à voix haute quand prêt (synthèse vocale)** — case, défaut **décochée**
 - **Afficher seulement en combat** — case, défaut **décochée**
 - **Identifiants de sorts en plus** — zone de texte
 
@@ -729,6 +769,7 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 Tes buffs et débuffs en barres horizontales avec le temps restant, les plus courts d'abord.
 
 - **Afficher** — liste, défaut **Buffs et débuffs**
+- **Débuffs montrés** — liste, défaut **Tous**
 - **Ordre de tri** — liste, défaut **Plus court d'abord**
 - **Masquer les auras sans durée** — case, défaut **cochée**
 - **Enchantements d'arme (poisons, imprégnations)** — case, défaut **cochée**
@@ -828,6 +869,8 @@ Jusqu'à trois rangées d'icônes de sorts au choix, avec recharge et charges.
 - **Avec une cible** — liste, défaut **Indifférent**
 - **Avec une cible douce** — liste, défaut **Indifférent**
 - **Manette active** — liste, défaut **Indifférent**
+- **Au repos** — liste, défaut **Indifférent**
+- **En véhicule** — liste, défaut **Indifférent**
 
 ### Barre de recharges 2
 
@@ -859,6 +902,8 @@ Jusqu'à trois rangées d'icônes de sorts au choix, avec recharge et charges.
 - **Avec une cible** — liste, défaut **Indifférent**
 - **Avec une cible douce** — liste, défaut **Indifférent**
 - **Manette active** — liste, défaut **Indifférent**
+- **Au repos** — liste, défaut **Indifférent**
+- **En véhicule** — liste, défaut **Indifférent**
 
 ### Barre de recharges 3
 
@@ -890,6 +935,8 @@ Jusqu'à trois rangées d'icônes de sorts au choix, avec recharge et charges.
 - **Avec une cible** — liste, défaut **Indifférent**
 - **Avec une cible douce** — liste, défaut **Indifférent**
 - **Manette active** — liste, défaut **Indifférent**
+- **Au repos** — liste, défaut **Indifférent**
+- **En véhicule** — liste, défaut **Indifférent**
 
 ## Barres de ressources
 
@@ -897,6 +944,7 @@ Ta vie, ta puissance, tes points de combo et ta mana de druide en barres sépar�
 
 - **Orientation** — liste, défaut **Horizontale**
 - **Longueur** — curseur, défaut **220**, 60 – 500, pas 2
+- **Animation douce des barres de vie et de puissance** — case, défaut **décochée**
 - **Niveau d'affichage** — liste, défaut **Moyenne**
 - **Opacité hors combat** — curseur, défaut **1.00**, 0 – 1, pas 0.05
 
@@ -911,6 +959,8 @@ Ta vie, ta puissance, tes points de combo et ta mana de druide en barres sépar�
 - **Avec une cible** — liste, défaut **Indifférent**
 - **Avec une cible douce** — liste, défaut **Indifférent**
 - **Manette active** — liste, défaut **Indifférent**
+- **Au repos** — liste, défaut **Indifférent**
+- **En véhicule** — liste, défaut **Indifférent**
 
 ### Vie
 
@@ -987,6 +1037,7 @@ Fenêtre de butin au thème (au curseur ou sur son mover) et barres de jets de g
 - **Ouvrir au curseur (sinon sur son mover)** — case, défaut **cochée**
 - **Barres de jets MuscaUI** — case, défaut **cochée**
 - **Largeur** — curseur, défaut **300**, 200 – 500, pas 10
+- **Cacher les barres de jet après (s, 0 = jamais)** — curseur, défaut **0**, 0 – 60, pas 1
 - **Déverrouiller / verrouiller les cadres mobiles** — bouton
 
 ## Cadres Blizzard déplaçables
@@ -1022,9 +1073,14 @@ Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du
 
 - **Couleur de classe pour les joueurs (couleur de réaction sinon)** — case, défaut **cochée**
 - **Couleur de vie du rouge au vert selon le pourcentage** — case, défaut **décochée**
+- **Animation douce des barres de vie et de puissance** — case, défaut **décochée**
 - **Couleur sous (%)** — curseur, défaut **0**, 0 – 90, pas 5
   - **Couleur** — couleur, défaut **#E52626**
 - **Soins entrants et absorptions** — case, défaut **cochée**
+- **Teinter la barre de vie à la couleur d'un débuff dissipable** — case, défaut **décochée**
+- **Débuffs signalés** — liste, défaut **Ceux que je dissipe**
+- **Opacité** — curseur, défaut **0.35**, 0.1 – 1, pas 0.05
+- **Icône du débuff sur la barre de vie** — case, défaut **cochée**
 - **Couleur des soins entrants** — couleur, défaut **#33E54C**
 - **Couleur des absorptions** — couleur, défaut **#FFFFFF**
 - **Couleur des soins absorbés** — couleur, défaut **#CC2626**
@@ -2138,6 +2194,8 @@ Un anneau autour du curseur pour le retrouver tout de suite, et un réticule au 
 - **Couleur** — couleur, défaut **#3FA8F4**
 - **Couleur de la classe** — case, défaut **décochée**
 - **Opacité** — curseur, défaut **1.00**, 0.1 – 1, pas 0.05
+- **Recharge globale sur l'anneau** — case, défaut **décochée**
+- **Progression du sort sur l'anneau** — case, défaut **décochée**
 
 ### Réticule
 
@@ -2201,6 +2259,7 @@ Niveau d'objet sur chaque emplacement de la fiche, à la couleur de qualité, le
 - **Niveau d'objet sur chaque emplacement** — case, défaut **cochée**
 - **Niveau d'objet moyen** — case, défaut **cochée**
 - **« ! » rouge sur les pièces enchantables sans enchantement** — case, défaut **décochée**
+- **Niveau d'objet dans le menu d'équipement** — case, défaut **décochée**
 - **Taille du texte** — curseur, défaut **11**, 6 – 20, pas 1
 - **Niveaux d'objet sur la fenêtre d'inspection** — case, défaut **cochée**
 - **Niveau d'objet moyen des joueurs dans leur infobulle (inspection hors combat)** — case, défaut **cochée**
@@ -2215,6 +2274,16 @@ Objets, or, monnaies et réputation gagnés, en lignes brèves qui s'effacent.
 - **Lignes au maximum** — curseur, défaut **6**, 1 – 6, pas 1
 - **Vers le haut (la plus récente en bas)** — case, défaut **décochée**
 - **Opacité du fond des lignes** — curseur, défaut **0.00**, 0 – 0.8, pas 0.05
+- **Qualité minimale des objets** — liste, défaut **0**
+- **Afficher le niveau d'objet** — case, défaut **décochée**
+- **Afficher le prix de vente** — case, défaut **décochée**
+- **Afficher l'or par heure** — case, défaut **décochée**
+
+## Forme active
+
+Icône de la posture, forme ou aura active, cachée sans forme.
+
+- **Taille** — curseur, défaut **36**, 16 – 96, pas 2
 
 ## Gestionnaire de recharges
 
@@ -2277,6 +2346,8 @@ Réglages sort par sort du gestionnaire de recharges Blizzard : afficher ou masq
 - **Avec une cible** — liste, défaut **Indifférent**
 - **Avec une cible douce** — liste, défaut **Indifférent**
 - **Manette active** — liste, défaut **Indifférent**
+- **Au repos** — liste, défaut **Indifférent**
+- **En véhicule** — liste, défaut **Indifférent**
 
 ### Visibilité : Recharges : utilitaire
 
@@ -2289,6 +2360,8 @@ Réglages sort par sort du gestionnaire de recharges Blizzard : afficher ou masq
 - **Avec une cible** — liste, défaut **Indifférent**
 - **Avec une cible douce** — liste, défaut **Indifférent**
 - **Manette active** — liste, défaut **Indifférent**
+- **Au repos** — liste, défaut **Indifférent**
+- **En véhicule** — liste, défaut **Indifférent**
 
 ### Visibilité : Recharges : icônes de buff
 
@@ -2301,6 +2374,8 @@ Réglages sort par sort du gestionnaire de recharges Blizzard : afficher ou masq
 - **Avec une cible** — liste, défaut **Indifférent**
 - **Avec une cible douce** — liste, défaut **Indifférent**
 - **Manette active** — liste, défaut **Indifférent**
+- **Au repos** — liste, défaut **Indifférent**
+- **En véhicule** — liste, défaut **Indifférent**
 
 ### Visibilité : Recharges : barres de buff
 
@@ -2313,6 +2388,8 @@ Réglages sort par sort du gestionnaire de recharges Blizzard : afficher ou masq
 - **Avec une cible** — liste, défaut **Indifférent**
 - **Avec une cible douce** — liste, défaut **Indifférent**
 - **Manette active** — liste, défaut **Indifférent**
+- **Au repos** — liste, défaut **Indifférent**
+- **En véhicule** — liste, défaut **Indifférent**
 
 ## Habillage
 
@@ -2431,6 +2508,9 @@ Moins d'encombrement et un accès direct à des réglages Blizzard. Tout réglag
 - **Afficher les coordonnées du joueur et du curseur** — case, défaut **décochée**
 - **Afficher les niveaux de la zone** — case, défaut **décochée**
 - **Voir le jeu derrière la carte maximisée** — case, défaut **décochée**
+- **Estomper la carte du monde en déplacement** — case, défaut **décochée**
+- **Commande /way (point de passage sur la carte)** — case, défaut **décochée**
+- **Retirer le point de passage à l'arrivée** — case, défaut **décochée**
 
 ### Compteur d'images par seconde
 
@@ -2536,6 +2616,8 @@ Une barre par arme jusqu'à ta prochaine attaque automatique. Demande l'événem
 - **Main gauche** — case, défaut **cochée**
 - **Distance** — case, défaut **cochée**
 - **Temps restant avant le coup** — case, défaut **cochée**
+- **Guide de mouvement sur la barre à distance (Tir automatique, baguette)** — case, défaut **décochée**
+- **Couleur pendant l'immobilité** — couleur, défaut **#E53333**
 - **Étiquette de l'arme sur la barre** — case, défaut **décochée**
 - **Atténuer la barre quand la cible est hors de portée** — case, défaut **cochée**
 - **Opacité hors de portée** — curseur, défaut **0.35**, 0.1 – 0.9, pas 0.05
@@ -2566,6 +2648,8 @@ Une barre par arme jusqu'à ta prochaine attaque automatique. Demande l'événem
 - **Avec une cible** — liste, défaut **Indifférent**
 - **Avec une cible douce** — liste, défaut **Indifférent**
 - **Manette active** — liste, défaut **Indifférent**
+- **Au repos** — liste, défaut **Indifférent**
+- **En véhicule** — liste, défaut **Indifférent**
 - **Au survol seulement** — case, défaut **décochée**
 
 ## Minuteur de vol
@@ -2975,6 +3059,8 @@ Le suivi d'objectifs Blizzard sur un support déplaçable, à la hauteur voulue,
 - **Avec une cible** — liste, défaut **Indifférent**
 - **Avec une cible douce** — liste, défaut **Indifférent**
 - **Manette active** — liste, défaut **Indifférent**
+- **Au repos** — liste, défaut **Indifférent**
+- **En véhicule** — liste, défaut **Indifférent**
 
 ## Suivi par ID
 

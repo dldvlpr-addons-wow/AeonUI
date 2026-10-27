@@ -50,6 +50,7 @@ Database.PROFILE_DEFAULTS = {
         font = "Fonts\\ARIALN.TTF",
         fontSize = 12,
         fontOutline = "",         -- "", "OUTLINE", "THICKOUTLINE"
+        fontAllGameText = false,  -- police du thème sur tout le texte du jeu (après /reload)
         accent = { r = 0.25, g = 0.66, b = 0.96 },
         backdrop = { r = 0.05, g = 0.06, b = 0.08, a = 0.9 },
         border = { r = 0, g = 0, b = 0, a = 1 },
@@ -67,6 +68,8 @@ Database.PROFILE_DEFAULTS = {
         accentPreset = "custom",  -- "custom" (accent ci-dessus), "class", "faction" (lus pour chaque personnage)
         darkMode = false,         -- palette sombre partagée des barres de vie (Media:SetHealthColor)
         moduleMedia = {},         -- [module] = { font, statusbar } : exception au thème, absent = hérité
+        classColors = {},         -- [CLASSE] = { r, g, b } : remplace RAID_CLASS_COLORS sur nos cadres, absent = Blizzard
+        powerColors = {},         -- [JETON] = { r, g, b } : remplace PowerBarColor (MANA, RAGE...), absent = Blizzard
     },
     anchors = {},
     -- Listes d'identifiants de sorts partagées par tous les filtres d'auras (« 1234, 5678 »),
@@ -687,7 +690,7 @@ function Database:ResetActiveProfile()
 end
 
 -- Couleurs du thème qu'on peut recopier d'un profil à l'autre.
-Database.THEME_COLOR_KEYS = { "accentPreset", "accent", "backdrop", "border", "moverCustom", "moverColor" }
+Database.THEME_COLOR_KEYS = { "accentPreset", "accent", "backdrop", "border", "moverCustom", "moverColor", "classColors", "powerColors" }
 
 --- Recopie les couleurs du thème du profil `from` dans le profil `to` (sur place : le profil actif
 -- garde ses tables). Faux si l'un manque ou s'ils sont identiques.
@@ -698,7 +701,9 @@ function Database:CopyThemeColors(from, to)
     for _, key in ipairs(self.THEME_COLOR_KEYS) do
         local value = source.theme[key]
         if type(value) == "table" and type(target.theme[key]) == "table" then
-            for field, part in pairs(value) do target.theme[key][field] = part end
+            -- vidée d'abord : une couleur de classe absente de la source redevient celle de Blizzard
+            wipe(target.theme[key])
+            for field, part in pairs(value) do target.theme[key][field] = self.DeepCopy(part) end
         elseif value ~= nil then
             target.theme[key] = self.DeepCopy(value)
         end

@@ -17,6 +17,7 @@ local AuraBars = NS.Modules:Register("aurabars", {
     defaults = {
         enabled = false,
         show = "both",            -- "buffs", "debuffs", "both"
+        debuffFilter = "all",     -- débuffs montrés : NS.AURA_FILTERS (important = boss ou dissipable)
         hidePermanent = true,     -- auras sans durée (formes, auras de paladin) écartées
         weaponEnchants = true,    -- enchantements d'arme temporaires en tête de pile
         maxBars = 12,
@@ -59,10 +60,11 @@ function AuraBars.Collect()
     if db.show ~= "buffs" then filters[#filters + 1] = "HARMFUL" end
     for _, filter in ipairs(filters) do
         for index = 1, MAX_AURAS do
-            local icon, duration, expiration, stacks, dispel, _, _, _, auraInstanceID, name = NS.GetAura("player", index, filter)
+            local icon, duration, expiration, stacks, dispel, isBoss, spellId, isMine, auraInstanceID, name = NS.GetAura("player", index, filter)
             if not NS.IsSecret(icon) and icon == nil then break end
             local knownDuration = Known(duration)
-            if not (db.hidePermanent and knownDuration == 0) then
+            local passes = filter == "HELPFUL" or db.debuffFilter == "all" or NS.AuraPasses(db.debuffFilter, spellId, dispel, isBoss, isMine)
+            if passes and not (db.hidePermanent and knownDuration == 0) then
                 list[#list + 1] = { icon = icon, name = name, duration = knownDuration, expiration = Known(expiration),
                                     stacks = Known(stacks), dispel = Known(dispel), harmful = filter == "HARMFUL",
                                     auraInstanceID = auraInstanceID }
@@ -185,15 +187,19 @@ local function LayoutEngine()
     local db = AuraBars.db
     local anchor = db.growUp and "BOTTOMRIGHT" or "TOPRIGHT"
     NS.SetAuraContainerFlow(engine, anchor, "LEFT", db.growUp and "UP" or "DOWN", nil, true)
-    local candidates = { maxDuration = db.hidePermanent and math.huge or nil }
+    local maxDuration = db.hidePermanent and math.huge or nil
+    local debuffCandidates = NS.AuraEngineCandidates(db.debuffFilter)
+    debuffCandidates.maxDuration = maxDuration
     local groups = {
-        debuffs = { filter = "HARMFUL", shown = db.show ~= "buffs", index = 1, harmful = true },
-        buffs = { filter = "HELPFUL", shown = db.show ~= "debuffs", index = 2, harmful = false },
+        debuffs = { filter = NS.AuraEngineFilter("HARMFUL", db.debuffFilter), shown = db.show ~= "buffs", index = 1,
+                    harmful = true, candidates = debuffCandidates },
+        buffs = { filter = "HELPFUL", shown = db.show ~= "debuffs", index = 2, harmful = false,
+                  candidates = { maxDuration = maxDuration } },
     }
     for key, group in pairs(groups) do
         NS.SetAuraGroup(engine, key, { filter = group.filter, max = group.shown and db.maxBars or 0,
             index = group.index, width = db.width, height = db.height, spacing = db.spacing, sort = ENGINE_SORTS[db.sort] or "expiration",
-            candidates = candidates, init = function(slotButton) InitEngineBar(slotButton, group.harmful) end })
+            candidates = group.candidates, init = function(slotButton) InitEngineBar(slotButton, group.harmful) end })
         for _, slotButton in ipairs(NS.AuraGroupButtons(engine, key)) do
             pcall(slotButton.SetSize, slotButton, db.width, db.height)
         end
@@ -310,11 +316,21 @@ function AuraBars:OnRefresh()
     self:Update()
 end
 
+-- Sans « importants » : la voie moteur n'a pas de critère pour ce tri, tout débuff passerait.
+local function DebuffFilterChoices()
+    local list = {}
+    for _, choice in ipairs(NS.AuraFilterChoices()) do
+        if choice.value ~= "important" then list[#list + 1] = choice end
+    end
+    return list
+end
+
 function AuraBars:BuildOptions(o)
     o:Dropdown("show", L.OPT_AURABARS_SHOW, {
         { name = L.OPT_AURABARS_BOTH, value = "both" }, { name = L.OPT_AURABARS_BUFFS, value = "buffs" },
         { name = L.OPT_AURABARS_DEBUFFS, value = "debuffs" },
     })
+    o:Dropdown("debuffFilter", L.OPT_M_UF_DEBUFF_FILTER, DebuffFilterChoices, 36)
     o:Dropdown("sort", L.OPT_G_RES_AURA_SORT, {
         { name = L.OPT_G_RES_AURA_SORT_SHORTEST, value = "shortest" },
         { name = L.OPT_G_RES_AURA_SORT_LONGEST, value = "longest" },

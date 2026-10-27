@@ -139,6 +139,7 @@ function _G.HasPetUI() return Mock.petHappiness ~= nil, Mock.petHappiness ~= nil
 _G.C_PetInfo = { GetPetHappiness = function() local p = Mock.petHappiness if p then return p[1], p[2], p[3] end end }
 function _G.UnitOnTaxi() return false end
 function _G.IsResting() return Mock.resting == true end
+function _G.UnitInVehicle(unit) return unit == "player" and Mock.inVehicle == true end
 function _G.IsMounted() return false end
 function _G.IsStealthed() return Mock.stealthed == true end
 function _G.IsAltKeyDown() return Mock.altDown == true end
@@ -265,7 +266,7 @@ _G.C_Item = {
     GetItemInfo = function(item)
         local info = Mock.items[item]
         if not info then return nil end
-        return "item" .. item, nil, 0, 1, 1, "Junk", "Junk", 20, "", 1, info.sellPrice, nil, nil, info.bindType
+        return "item" .. item, nil, info.quality or 0, 1, 1, "Junk", "Junk", 20, "", 1, info.sellPrice, nil, nil, info.bindType
     end,
     GetItemCount = function(itemID) return itemID == 6948 and 1 or 0 end,
     GetItemMaxStackSizeByID = function(itemID) return Mock.items[itemID] and Mock.items[itemID].maxStack or 1 end,
@@ -343,7 +344,7 @@ Mock.FrameMeta = FrameMeta
 local function NoOp() end
 for _, name in ipairs({
     "SetMovable", "EnableMouse", "EnableMouseWheel", "SetClampedToScreen", "RegisterForDrag",
-    "StartMoving", "StopMovingOrSizing", "SetFrameStrata", "SetFrameLevel",
+    "StartMoving", "StopMovingOrSizing", "SetFrameStrata",
     "SetJustifyH", "SetAlpha", "RegisterForClicks",
     "SetScrollChild", "SetVerticalScroll", "SetMinMaxValues", "SetValueStep",
     "SetObeyStepOnDrag", "SetAutoFocus", "ClearFocus", "SetVertexColor", "ClearLines", "AddLine",
@@ -400,6 +401,7 @@ function FrameMeta:GetWidth() return self.width or 0 end
 function FrameMeta:GetHeight() return self.height or 0 end
 function FrameMeta:SetParent(parent) self.parent = parent end
 function FrameMeta:GetFrameLevel() return self.frameLevel or 1 end
+function FrameMeta:SetFrameLevel(level) self.frameLevel = level end
 function FrameMeta:SetFrameStrata(strata) self.strata = strata end
 function FrameMeta:GetFrameStrata() return self.strata or "MEDIUM" end
 function FrameMeta:SetIgnoreParentAlpha(ignore) self.ignoreParentAlpha = ignore end
@@ -1731,5 +1733,23 @@ _G.C_Secrets = { ShouldUnitIdentityBeSecret = function(unit) return Mock.secretU
 -- Ombre de texte (chat) : ignorée par le mock.
 if not FrameMeta.SetShadowColor then function FrameMeta:SetShadowColor(r, g, b, a) self.shadowColor = { r, g, b, a } end end
 if not FrameMeta.GetShadowColor then function FrameMeta:GetShadowColor() local c = self.shadowColor or { 0, 0, 0, 1 } return c[1], c[2], c[3], c[4] end end
+
+-- Cadran de recharge (Cooldown) : swipe, liseré, objet durée. Mock.gcdDuration : objet durée du GCD.
+function FrameMeta:SetSwipeTexture(texture) self.swipeTexture = texture end
+if not FrameMeta.SetSwipeColor then function FrameMeta:SetSwipeColor(r, g, b, a) self.swipe = { r, g, b, a } end end
+function FrameMeta:SetDrawEdge(draw) self.drawEdge = draw end
+function FrameMeta:SetDrawBling(draw) self.drawBling = draw end
+function FrameMeta:SetCooldownFromDurationObject(object) self.painted = object end
+Mock.gcdDuration = nil
+_G.C_Spell.GetSpellCooldownDuration = function(id) if id == 29515 then return Mock.gcdDuration end end
+
+-- Forme active : Mock.formIcons[index] = texture (index 0 : aucune forme).
+Mock.formIcons = {}
+function _G.GetShapeshiftFormInfo(index) local icon = Mock.formIcons[index] return icon, icon ~= nil, true, nil end
+-- Synthèse vocale : Mock.spoken = dernier { voiceID, text, rate, volume }.
+_G.C_TTSSettings = { GetVoiceOptionID = function() return 3 end, GetSpeechRate = function() return 0 end,
+                     GetSpeechVolume = function() return 100 end }
+_G.C_VoiceChat = _G.C_VoiceChat or {}
+function C_VoiceChat.SpeakText(voiceID, text, rate, volume) Mock.spoken = { voiceID, text, rate, volume } end
 
 return Mock

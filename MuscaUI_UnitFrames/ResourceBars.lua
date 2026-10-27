@@ -20,6 +20,7 @@ local ResourceBars = NS.Modules:Register("resourcebars", {
         orientation = "HORIZONTAL", -- "HORIZONTAL" ou "VERTICAL" (remplissage vers le haut)
         visibility = NS.Visibility.Spec(),   -- conditions communes (Core/Visibility)
         outOfCombatAlpha = 1,
+        smoothBars = false,         -- vie, puissance et mana animées vers leur nouvelle valeur
         health = false,
         healthHeight = 14,
         healthText = "curperc",
@@ -118,7 +119,7 @@ end
 local function UpdateHealth(db)
     local bar = bars.health
     bar:SetMinMaxValues(0, UnitHealthMax("player"))
-    bar:SetValue(UnitHealth("player"))
+    Elements.SetBarValue(bar, UnitHealth("player"), db)
     local r, g, b = Elements.HealthColor("player", db.classColor)
     Media:SetHealthColor(bar, Elements.BandColor("player", "health", bar.steps, r, g, b))
     Elements.SetUnitText(bar.text, "player", "health", Elements.TextFormat(nil, db.healthText))
@@ -155,11 +156,11 @@ local function UpdatePower(db)
     local knownMax = Known(max)
     if knownMax and knownMax <= 0 then return false end
     bar:SetMinMaxValues(0, max)
-    bar:SetValue(UnitPower("player", powerType))
+    Elements.SetBarValue(bar, UnitPower("player", powerType), db)
     local r, g, b = Elements.PowerColor("player")
     if powerType then
-        local mana = _G.PowerBarColor and PowerBarColor.MANA
-        if mana then r, g, b = mana.r, mana.g, mana.b end
+        local mr, mg, mb = NS.PowerColor("MANA")
+        if mr then r, g, b = mr, mg, mb end
     end
     if powerType then bar:SetStatusBarColor(r, g, b)   -- paliers calculés sur la puissance, pas sur le mana
     else bar:SetStatusBarColor(Elements.BandColor("player", "power", bar.steps, r, g, b)) end
@@ -183,7 +184,7 @@ local function UpdateCombo()
 end
 
 --- Mana d'un druide en forme : seulement si la puissance affichée n'est pas le mana.
-local function UpdateDruidMana()
+local function UpdateDruidMana(db)
     local bar = bars.druidMana
     local powerType = Known(UnitPowerType("player"))
     if powerType == nil or powerType == ManaType() then return false end
@@ -191,9 +192,9 @@ local function UpdateDruidMana()
     local knownMax = Known(max)
     if not knownMax or knownMax <= 0 then return false end
     bar:SetMinMaxValues(0, max)
-    bar:SetValue(UnitPower("player", ManaType()))
-    local c = _G.PowerBarColor and PowerBarColor.MANA or { r = 0, g = 0.44, b = 0.87 }
-    bar:SetStatusBarColor(c.r, c.g, c.b)
+    Elements.SetBarValue(bar, UnitPower("player", ManaType()), db)
+    local r, g, b = NS.PowerColor("MANA")
+    if r then bar:SetStatusBarColor(r, g, b) else bar:SetStatusBarColor(0, 0.44, 0.87) end
     bar.text:SetText("")
     return true
 end
@@ -258,7 +259,9 @@ local UNIT_EVENT_BARS = {
 local EVENTS = { "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_TARGET_CHANGED",
                  "UPDATE_SHAPESHIFT_FORM", "PLAYER_ENTERING_WORLD", "GROUP_ROSTER_UPDATE",
                  "ZONE_CHANGED_NEW_AREA", "PLAYER_MOUNT_DISPLAY_CHANGED",
-                 "COMBO_TARGET_CHANGED", "PLAYER_SOFT_ENEMY_CHANGED", "GAME_PAD_ACTIVE_CHANGED" }
+                 "COMBO_TARGET_CHANGED", "PLAYER_SOFT_ENEMY_CHANGED", "GAME_PAD_ACTIVE_CHANGED",
+                 "PLAYER_UPDATE_RESTING" }
+local PLAYER_EVENTS = { "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE" }   -- visibilité « en véhicule »
 
 local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event)
@@ -287,6 +290,7 @@ function ResourceBars:OnEnable()
     active = true
     RegisterUnitEvents(self.db)
     for _, event in ipairs(EVENTS) do NS.RegisterEventSafe(events, event) end
+    for _, event in ipairs(PLAYER_EVENTS) do NS.RegisterEventSafe(events, event, "player") end
     self:Layout()
     for _, spec in ipairs(BARS) do
         NS.Movers:Register(spec.mover, bars[spec.key].holder, L[spec.label], "CENTER", 0, spec.y)
@@ -349,6 +353,7 @@ function ResourceBars:BuildOptions(o)
         { name = L.OPT_BAR_HORIZONTAL, value = "HORIZONTAL" }, { name = L.OPT_BAR_VERTICAL, value = "VERTICAL" },
     })
     o:Slider("width", L.OPT_RESOURCE_WIDTH, 60, 500, 2)
+    o:Check("smoothBars", L.OPT_GF_G_SMOOTH)
     o:Advanced()
     o:Dropdown("strata", L.OPT_G_RES_STRATA, {
         { name = L.OPT_STRATA_LOW, value = "LOW" }, { name = L.OPT_STRATA_MEDIUM, value = "MEDIUM" },

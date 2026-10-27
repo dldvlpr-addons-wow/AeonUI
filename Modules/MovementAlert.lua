@@ -13,6 +13,10 @@ local MovementAlert = NS.Modules:Register("movementalert", {
         enabled = false,
         iconSize = 36,
         readyAlert = true,        -- « Transfert prêt » à la fin de la recharge
+        readySound = false,       -- son avec l'annonce
+        readySoundPreset = "ping",
+        readySoundFile = "",      -- son importé, prioritaire sur le preset
+        readySpeak = false,       -- annonce lue par la synthèse vocale
         combatOnly = false,       -- icônes et annonce seulement en combat
         extraSpells = "",         -- identifiants ajoutés à ceux de la classe
     },
@@ -77,7 +81,11 @@ end
 
 local readyToken = 0   -- seule la dernière annonce cache le texte
 local function AnnounceReady(name)
-    readyText:SetText(string.format(L.MOVEMENT_READY, name))
+    local text = string.format(L.MOVEMENT_READY, name)
+    readyText:SetText(text)
+    local db = MovementAlert.db
+    if db.readySound then NS.PlayPreset(db.readySoundPreset, db.readySoundFile) end
+    if db.readySpeak then NS.SpeakText(text) end
     readyText:Show()
     readyToken = readyToken + 1
     local token = readyToken
@@ -154,6 +162,9 @@ NS:On("PREVIEW", function() MovementAlert:Update() end)
 function MovementAlert:BuildOptions(o)
     o:Slider("iconSize", L.OPT_MOVEMENT_ICON_SIZE, 16, 64, 1)
     o:Check("readyAlert", L.OPT_MOVEMENT_READY_ALERT)
+    o:Check("readySound", L.OPT_M_QOL_MOVEMENT_SOUND, 36)
+    o:Sound("readySoundPreset", "readySoundFile", 52)
+    o:Check("readySpeak", L.OPT_M_QOL_MOVEMENT_SPEAK, 36)
     o:Check("combatOnly", L.OPT_G_QOL_MOVEMENT_COMBAT_ONLY)
     o:Advanced()
     o:EditBox("extraSpells", L.OPT_MOVEMENT_EXTRA_SPELLS, 1)

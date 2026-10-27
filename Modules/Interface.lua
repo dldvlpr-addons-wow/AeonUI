@@ -36,6 +36,9 @@ local Interface = NS.Modules:Register("interface", {
         mapCoords = false,         -- coordonnées du joueur et du curseur sur la carte du monde
         mapLevels = false,         -- niveaux de la zone affichée sur la carte du monde
         mapFade = false,           -- jeu visible derrière la carte maximisée (fond noir allégé)
+        mapFadeMoving = false,     -- CVar mapFade : carte transparente pendant le déplacement
+        slashWay = false,          -- /way x y pose un point de route sur la carte du joueur
+        wayArrival = false,        -- point de route retiré quand le joueur arrive dessus
         slashCooldowns = false,    -- /cd ouvre le gestionnaire de recharges Blizzard
         fpsCounter = false,        -- compteur flottant : images par seconde et latence
         fpsLatency = true,
@@ -55,6 +58,7 @@ local CVAR_RULES = {
         return db.hideProcClasses[classFile] and "0" or nil
     end,
     alwaysShowActionBars = function(db) return db.alwaysShowBars and "1" or nil end,
+    mapFade = function(db) return db.mapFadeMoving and "1" or nil end,
     scriptErrors = function(db) return db.hideLuaErrors and "0" or nil end,
     -- Le texte coloré passe par le compte à rebours natif : il a besoin de la CVar lui aussi.
     countdownForCooldowns = function(db) return (db.cooldownNumbers or db.cooldownColors) and "1" or nil end,
@@ -191,6 +195,55 @@ local function RegisterCooldownSlash()
     _G.SlashCmdList["MUSCAUICOOLDOWNS"] = ToggleCooldownSettings
 end
 
+--- /way x y : point de route sur la carte où se trouve le joueur.
+local function SetWaypoint(msg)
+    if not (active and Interface.db.slashWay) then return end
+    local x, y = (msg:gsub(",", " ")):match("^%s*(%d+%.?%d*)%s+(%d+%.?%d*)")
+    x, y = tonumber(x), tonumber(y)
+    if not (x and y) or x > 100 or y > 100 then NS.Print(L.MSG_WAY_USAGE) return end
+    NS.Print(NS.SetUserWaypoint(x, y) and string.format(L.MSG_WAY_SET, x, y) or L.MSG_WAY_FAILED)
+end
+
+--- Enregistré comme /cd, et seulement si aucun addon (TomTom…) n'a déjà pris /way.
+local function RegisterWaySlash()
+    if _G.SlashCmdList["MUSCAUIWAY"] or not Interface.db.slashWay then return end
+    for key in pairs(_G.SlashCmdList) do
+        for i = 1, 9 do
+            local command = _G["SLASH_" .. key .. i]
+            if not command then break end
+            if command:lower() == "/way" then return end
+        end
+    end
+    _G.SLASH_MUSCAUIWAY1 = "/way"
+    _G.SlashCmdList["MUSCAUIWAY"] = SetWaypoint
+end
+
+local WAY_ARRIVAL_YARDS = 10
+local wayTicker
+local armedPoint   -- point dont le joueur s'est déjà éloigné : un point posé sous ses pieds reste
+
+local function CheckWayArrival()
+    local distance, point = NS.UserWaypointDistance()
+    if not distance then return end
+    local key = point.uiMapID .. ":" .. point.position.x .. ":" .. point.position.y
+    if distance > WAY_ARRIVAL_YARDS then
+        armedPoint = key
+    elseif armedPoint == key then
+        armedPoint = nil
+        NS.ClearUserWaypoint()
+        NS.Print(L.MSG_WAY_ARRIVED)
+    end
+end
+
+function Interface:ApplyWayArrival()
+    if active and self.db.wayArrival then
+        wayTicker = wayTicker or C_Timer.NewTicker(1, CheckWayArrival)
+    elseif wayTicker then
+        wayTicker:Cancel()
+        wayTicker = nil
+    end
+end
+
 local fpsFrame, fpsTicker
 
 local function UpdateFps()
@@ -270,7 +323,9 @@ function Interface:OnEnable()
     self:ApplyCooldownText()
     self:ApplyMap()
     self:ApplyFps()
+    self:ApplyWayArrival()
     RegisterCooldownSlash()
+    RegisterWaySlash()
 end
 
 function Interface:OnDisable()
@@ -282,6 +337,7 @@ function Interface:OnDisable()
     self:ApplyCooldownText()
     self:ApplyMap()
     self:ApplyFps()
+    self:ApplyWayArrival()
 end
 
 function Interface:OnRefresh()
@@ -291,7 +347,9 @@ function Interface:OnRefresh()
     self:ApplyCooldownText()
     self:ApplyMap()
     self:ApplyFps()
+    self:ApplyWayArrival()
     RegisterCooldownSlash()
+    RegisterWaySlash()
 end
 
 -- Réglages du jeu sans menu Blizzard : liés à la CVar elle-même (compte entier, pas au profil),
@@ -366,6 +424,9 @@ function Interface:BuildOptions(o)
     o:Check("mapCoords", L.OPT_UI_MAP_COORDS)
     o:Check("mapLevels", L.OPT_UI_MAP_LEVELS)
     o:Check("mapFade", L.OPT_G_QOL_MAP_FADE)
+    o:Check("mapFadeMoving", L.OPT_M_QOL_MAP_FADE_MOVING)
+    o:Check("slashWay", L.OPT_M_QOL_SLASH_WAY)
+    o:Check("wayArrival", L.OPT_M_QOL_WAY_ARRIVAL)
     o:Title(L.OPT_G_QOL_FPS_COUNTER)
     o:Check("fpsCounter", L.OPT_G_QOL_FPS_COUNTER)
     o:Check("fpsLatency", L.OPT_G_QOL_FPS_LATENCY, 36)

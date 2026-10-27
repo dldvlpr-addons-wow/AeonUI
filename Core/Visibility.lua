@@ -8,12 +8,13 @@
 -- combat), partagé par les cadres d'un même groupe de survol.
 -- « instance » et « softtarget » n'ont pas de condition macro (ignorées sur cadre sécurisé) ;
 -- « gamepad » non plus, mais un cadre sécurisé la reçoit en filtre posé hors combat (voir Apply).
+-- « resting » et « vehicle » : sans condition macro prouvée sur Forever, ignorées sur cadre sécurisé.
 local _, NS = ...
 
 local Visibility = { entries = {} }
 NS.Visibility = Visibility
 
-Visibility.CONDITIONS = { "combat", "group", "raid", "instance", "mounted", "target", "softtarget", "gamepad" }
+Visibility.CONDITIONS = { "combat", "group", "raid", "instance", "mounted", "target", "softtarget", "gamepad", "resting", "vehicle" }
 
 -- Condition -> { vraie, fausse } en conditions macro. Absente : non exprimable (instance).
 local MACRO = {
@@ -118,6 +119,8 @@ function Visibility.State(event)
     sharedState.target = UnitExists("target") and true or false
     sharedState.softtarget = UnitExists("softenemy") and true or false
     sharedState.gamepad = NS.GamepadActive()
+    sharedState.resting = _G.IsResting and IsResting() or false
+    sharedState.vehicle = _G.UnitInVehicle and UnitInVehicle("player") or false
     return sharedState
 end
 
@@ -246,10 +249,12 @@ end
 local events = CreateFrame("Frame")
 for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "GROUP_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD",
                          "ZONE_CHANGED_NEW_AREA", "PLAYER_TARGET_CHANGED", "PLAYER_MOUNT_DISPLAY_CHANGED",
-                         "PLAYER_SOFT_ENEMY_CHANGED", "GAME_PAD_ACTIVE_CHANGED" }) do
+                         "PLAYER_SOFT_ENEMY_CHANGED", "GAME_PAD_ACTIVE_CHANGED", "PLAYER_UPDATE_RESTING",
+                         "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE" }) do
     NS.RegisterEventSafe(events, event)
 end
-events:SetScript("OnEvent", function(_, event)
+events:SetScript("OnEvent", function(_, event, unit)
+    if (event == "UNIT_ENTERED_VEHICLE" or event == "UNIT_EXITED_VEHICLE") and unit ~= "player" then return end
     if event == "PLAYER_REGEN_DISABLED" then inCombat = true elseif event == "PLAYER_REGEN_ENABLED" then inCombat = false end
     -- Les drivers suivent seuls leurs conditions : seuls les cadres non sécurisés sont recalculés.
     local state = Visibility.State(event)

@@ -471,6 +471,44 @@ local function BuildGeneral()
         function() return NS.db.theme.optionsScale or 1 end,
         function(value) NS.db.theme.optionsScale = value; NS.OptionsWindow:ApplyScale() end, nil, "%.2f")
 
+    -- Couleurs de classe et de puissance : absente = celle de Blizzard. Le nuancier part d'une copie,
+    -- rangée dans le thème au premier changement.
+    local function PaletteColor(field, key, label)
+        local draft, base
+        layout:Color(label, function()
+                local stored = NS.db.theme[field][key]
+                if NS.ValidColor(stored) then return stored end
+                if not draft then
+                    local r, g, b
+                    if field == "classColors" then r, g, b = NS.ClassColor(key) else r, g, b = NS.PowerColor(key) end
+                    draft = { r = r or 1, g = g or 1, b = b or 1 }
+                    base = { r = draft.r, g = draft.g, b = draft.b }
+                end
+                return draft
+            end,
+            function()
+                -- Nuancier annulé sur une couleur jamais réglée : rien à ranger, Blizzard reste la référence.
+                if draft and (draft.r ~= base.r or draft.g ~= base.g or draft.b ~= base.b) then
+                    NS.db.theme[field][key], draft = draft, nil
+                end
+                NS:Fire("THEME_CHANGED")
+            end, 20)
+    end
+    local function ResetButton(field)
+        layout:Button(L.OPT_M_CORE_COLORS_RESET, function()
+            wipe(NS.db.theme[field])
+            NS:Fire("THEME_CHANGED")
+            layout:Refresh()
+        end, 20)
+    end
+    layout:Title(L.OPT_M_CORE_CLASS_COLORS)
+    local classNames = _G.LOCALIZED_CLASS_NAMES_MALE or {}
+    for _, class in ipairs(NS.PLAYABLE_CLASSES) do PaletteColor("classColors", class, classNames[class] or class) end
+    ResetButton("classColors")
+    layout:Title(L.OPT_M_CORE_POWER_COLORS)
+    for _, token in ipairs({ "MANA", "RAGE", "ENERGY", "FOCUS" }) do PaletteColor("powerColors", token, _G[token] or token) end
+    ResetButton("powerColors")
+
     -- Lueurs (Core/Glow) : épaisseur des traits « pixel » et vitesse des lueurs animées.
     layout:Title(L.OPT_G_CORE_GLOW)
     NS.Database.bounds["theme.glowThickness"] = { 1, 4 }
@@ -481,6 +519,12 @@ local function BuildGeneral()
     layout:Slider(L.OPT_G_CORE_GLOW_SPEED, 0.5, 2, 0.1,
         function() return NS.db.theme.glowSpeed or 1 end,
         function(value) NS.db.theme.glowSpeed = value; NS:Fire("THEME_CHANGED") end, nil, "%.1f")
+
+    -- Réglages graphiques bas, rendus par Restaurer (NS.CVars garde les valeurs d'origine).
+    layout:Title(L.OPT_M_CORE_FPS)
+    layout:Button(L.OPT_M_CORE_FPS_APPLY, function() NS.CVars:ApplyLowGraphics() end)
+    layout:Button(L.OPT_M_CORE_FPS_RESTORE, function() NS.CVars:RestoreLowGraphics() end)
+    layout:Hint(L.OPT_M_CORE_FPS_HINT)
 
     layout:Title(L.OPT_MOVERS)
     layout:Dropdown(L.OPT_GRID, {
@@ -538,6 +582,8 @@ local function BuildMedia()
         },
         function() return NS.db.theme.fontOutline end,
         function(value) NS.db.theme.fontOutline = value; changed() end)
+    layout:Check(L.OPT_M_CORE_FONT_ALL_TEXT, function() return NS.db.theme.fontAllGameText end,
+        function(value) NS.db.theme.fontAllGameText = value; AskReload(L.MSG_RELOAD_FONT_ALL_TEXT) end)
     layout:Dropdown(L.OPT_STATUSBAR, function() return TextureChoices(false) end,
         function() return NS.db.theme.statusbar end,
         function(value) NS.db.theme.statusbar = value; changed() end)
@@ -1340,7 +1386,7 @@ end
 -- Groupes de la liste de gauche ; un module absent d'ici va dans le dernier groupe.
 local MODULE_GROUPS = {
     frames = { "unitframes", "frames", "groupframes", "nameplateframes", "nameplates", "resourcebars", "gcdbar",
-               "swingtimer", "cotank", "clickcast" },
+               "activeform", "swingtimer", "cotank", "clickcast" },
     combat = { "actionbars", "cooldownmanager", "cooldownbars", "aurabars", "tracker", "raidcooldowns", "reminders",
                "alerts", "threatwarning", "movementalert", "radialmenu" },
     interface = { "topbar", "datapanels", "databars", "minimap", "chat", "chatbubbles", "questtracker", "bags", "bank",

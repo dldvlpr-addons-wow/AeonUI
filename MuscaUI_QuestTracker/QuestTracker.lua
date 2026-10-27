@@ -640,7 +640,8 @@ local SORT_EVENTS = { QUEST_WATCH_LIST_CHANGED = true, QUEST_LOG_UPDATE = true, 
                       ENCOUNTER_END = true, PLAYER_ENTERING_WORLD = true, QUEST_WATCH_UPDATE = true }
 local VISIBILITY_EVENTS = { PLAYER_TARGET_CHANGED = true, PLAYER_MOUNT_DISPLAY_CHANGED = true,
                             ENCOUNTER_START = true, ENCOUNTER_END = true, GROUP_ROSTER_UPDATE = true,
-                            PLAYER_SOFT_ENEMY_CHANGED = true, GAME_PAD_ACTIVE_CHANGED = true }
+                            PLAYER_SOFT_ENEMY_CHANGED = true, GAME_PAD_ACTIVE_CHANGED = true,
+                            PLAYER_UPDATE_RESTING = true, UNIT_ENTERED_VEHICLE = true, UNIT_EXITED_VEHICLE = true }
 
 events:SetScript("OnEvent", function(_, event, questID)
     if not active then return end
@@ -680,9 +681,11 @@ function QuestTracker:OnEnable()
                              "ZONE_CHANGED_NEW_AREA", "QUEST_WATCH_LIST_CHANGED", "QUEST_LOG_UPDATE",
                              "PLAYER_TARGET_CHANGED", "PLAYER_MOUNT_DISPLAY_CHANGED", "ENCOUNTER_START", "ENCOUNTER_END",
                              "GROUP_ROSTER_UPDATE", "ZONE_CHANGED", "QUEST_ACCEPTED", "QUEST_WATCH_UPDATE",
-                             "PLAYER_SOFT_ENEMY_CHANGED", "GAME_PAD_ACTIVE_CHANGED" }) do
+                             "PLAYER_SOFT_ENEMY_CHANGED", "GAME_PAD_ACTIVE_CHANGED", "PLAYER_UPDATE_RESTING" }) do
         NS.RegisterEventSafe(events, event)
     end
+    NS.RegisterEventSafe(events, "UNIT_ENTERED_VEHICLE", "player")
+    NS.RegisterEventSafe(events, "UNIT_EXITED_VEHICLE", "player")
     if not mapHooked and _G.WorldMapFrame then
         mapHooked = true
         WorldMapFrame:HookScript("OnHide", QueueSort)   -- passe refusée carte ouverte : reprise à la fermeture

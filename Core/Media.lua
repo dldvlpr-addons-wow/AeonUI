@@ -113,6 +113,7 @@ local FALLBACK_MEMBERS = {
 -- ponytail: une famille par police, taille et contour, jamais libérée (une vingtaine par police) ;
 -- à plafonner si le budget Font de LimitedLuaResources (300 par addon) devient actif.
 local families, familyCount = {}, 0
+local ownFamilies = {}   -- nos familles, que ApplyToGameText ne doit pas réécrire
 
 --- Famille de polices (police choisie + replis), une par police, taille et contour ; nil sans
 -- CreateFontFamily ou si le client la refuse.
@@ -127,6 +128,7 @@ local function FontFamily(path, height, flags)
         familyCount = familyCount + 1
         local ok, family = pcall(CreateFontFamily, "MuscaUIFontFamily" .. familyCount, members)
         families[key] = ok and family or false
+        if ok and family then ownFamilies[family] = true end
     end
     return families[key] or nil
 end
@@ -359,3 +361,26 @@ end)
 NS:On("PIXEL_CHANGED", function() Media:RefreshBackdrops() end)
 
 NS:On("LOGIN", function() Media:RegisterSharedMedia() end)
+
+--- Police du thème sur tout le texte du jeu (option, effective après /reload) : globales lues par le
+-- moteur, puis chaque objet Font de _G, taille et contour gardés.
+function Media:ApplyToGameText()
+    local path = self:Font()
+    probe = probe or UIParent:CreateFontString(nil, "BACKGROUND")
+    if probe:SetFont(path, 12, "") == false or not probe:GetFont() then path = FALLBACK_FONT end
+    STANDARD_TEXT_FONT, UNIT_NAME_FONT, DAMAGE_TEXT_FONT = path, path, path
+    for _, object in pairs(_G) do
+        local okGet, getType = pcall(function() return type(object) == "table" and object.GetObjectType end)
+        if okGet and type(getType) == "function" and not ownFamilies[object] then
+            local ok, kind = pcall(getType, object)
+            if ok and kind == "Font" then
+                local _, size, flags = object:GetFont()
+                if size then pcall(object.SetFont, object, path, size, flags or "") end
+            end
+        end
+    end
+end
+
+NS:On("LOGIN", function()
+    if NS.db.theme.fontAllGameText then Media:ApplyToGameText() end
+end)

@@ -40,12 +40,16 @@ local SwingTimer = NS.Modules:Register("swingtimer", {
         offHandColor = { r = 0.6, g = 0.75, b = 0.95 },
         rangedColor = { r = 0.55, g = 0.85, b = 0.45 },
         queueColor = { r = 1, g = 0.55, b = 0.1 },
+        moveGuide = false,        -- tir à distance : « Bougez » puis « Immobile » pendant la préparation du tir
+        stillColor = { r = 0.9, g = 0.2, b = 0.2 },
     },
 })
 
 local HANDS = { "mainHand", "offHand", "ranged" }
 local COLOR_KEYS = { mainHand = "color", offHand = "offHandColor", ranged = "rangedColor" }
 local LABEL_KEYS = { mainHand = "SWING_LABEL_MAIN", offHand = "SWING_LABEL_OFF", ranged = "SWING_LABEL_RANGED" }
+-- Tir automatique et baguette : le tir se prépare pendant la dernière demi-seconde ; bouger l'annule.
+local MOVE_WINDUP = 0.5
 local QUEUED_SPELLS = { 78, 845, 6807 }   -- Frappe héroïque, Enchaînement, Mutiler (tous rangs : même nom)
 
 local active = false
@@ -92,6 +96,12 @@ local function Idle(bar)
     if not NS.SetBarTimer(bar, GetTime() - 1, 1, true) then bar:SetValue(0) end
     bar.time:SetText("")
     bar.shownTenth = nil
+    if bar.still ~= nil then
+        bar.still = nil
+        bar.guide:SetText("")
+        local c = SwingTimer.db.rangedColor
+        bar:SetStatusBarColor(c.r, c.g, c.b)
+    end
 end
 
 -- Pendant un coup seulement : temps restant, fin du coup, remplissage si le moteur ne le fait pas.
@@ -104,6 +114,15 @@ local function Tick()
                 Idle(bar)
             else
                 if not bar.engine then bar:SetValue(remaining) end
+                if bar.hand == "ranged" and SwingTimer.db.moveGuide then
+                    local still = remaining <= MOVE_WINDUP
+                    if still ~= bar.still then
+                        bar.still = still
+                        bar.guide:SetText(still and L.SWING_GUIDE_STILL or L.SWING_GUIDE_GO)
+                        local c = still and SwingTimer.db.stillColor or SwingTimer.db.rangedColor
+                        bar:SetStatusBarColor(c.r, c.g, c.b)
+                    end
+                end
                 if SwingTimer.db.showTime then
                     -- SetText seulement quand le dixième affiché change.
                     local tenth = math.floor(remaining * 10 + 0.5)
@@ -127,6 +146,8 @@ local function Build()
         bar.hand = hand
         bar.time = Media:CreateText(bar, "OVERLAY", -2)
         bar.label = Media:CreateText(bar, "OVERLAY", -2)
+        bar.guide = Media:CreateText(bar, "OVERLAY", -2)
+        bar.guide:SetPoint("CENTER")
         bars[hand] = bar
     end
     container:Hide()
@@ -149,6 +170,7 @@ function SwingTimer:Style()
         for _, edge in pairs(bar.backdropEdges) do edge:SetShown(db.showBorder) end
         Media:SetTextSizeDelta(bar.time, db.textSizeOffset)
         Media:SetTextSizeDelta(bar.label, db.textSizeOffset)
+        Media:SetTextSizeDelta(bar.guide, db.textSizeOffset)
     end
     container:SetFrameStrata(db.strata ~= "default" and db.strata or container.defaultStrata)
 end
@@ -186,6 +208,8 @@ function SwingTimer:Layout()
         if shown then offset = offset + db.height + db.spacing end
         local c = db[COLOR_KEYS[hand]]
         bar:SetStatusBarColor(c.r, c.g, c.b)
+        if bar.still ~= nil then bar.still = false end   -- couleur remise : le prochain Tick la repeint
+        if not db.moveGuide then bar.guide:SetText("") end
         -- Portée suivie par le moteur seulement pour les barres montrées.
         local check = active and shown and db.rangeCheck
         NS.SetSwingRangeCheck(SwingType(hand), check)
@@ -315,6 +339,8 @@ function SwingTimer:BuildOptions(o)
     o:Check("offHand", L.OPT_SWING_OFF)
     o:Check("ranged", L.OPT_SWING_RANGED)
     o:Check("showTime", L.OPT_SWING_SHOW_TIME)
+    o:Check("moveGuide", L.OPT_M_UF_SWING_MOVE_GUIDE)
+    o:Color("stillColor", L.OPT_M_UF_SWING_STILL_COLOR, 36)
     o:Advanced()
     o:Check("showLabel", L.OPT_SWING_SHOW_LABEL)
     o:Check("rangeCheck", L.OPT_SWING_RANGE_CHECK)

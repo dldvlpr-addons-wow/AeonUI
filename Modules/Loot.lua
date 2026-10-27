@@ -20,6 +20,7 @@ local Loot = NS.Modules:Register("loot", {
         atCursor = true,        -- s'ouvre sous le curseur (sinon sur le mover « loot »)
         rolls = true,           -- barres de jets de groupe
         rollWidth = 300,
+        rollHideDelay = 0,      -- barre de jet cachée après N secondes sans choix (0 : jamais)
     },
 })
 
@@ -240,6 +241,8 @@ local function RollOnUpdate(bar)
     if not bar.rollID or not _G.GetLootRollTimeLeft then return end
     local left = Known(GetLootRollTimeLeft(bar.rollID))
     if left and left <= 0 then HideRoll(bar) return end   -- jet fini sans CANCEL_LOOT_ROLL reçu
+    -- Cachée seulement : sans choix, le jeu passe à la fin du temps imparti.
+    if bar.hideAt and GetTime() >= bar.hideAt then HideRoll(bar) return end
     if left then bar.timer:SetValue(left) end
 end
 
@@ -299,6 +302,7 @@ function Loot:StartRoll(rollID, rollTime)
     if NS.IsSecret(texture) or texture == nil then return end
     local bar = RollBar()
     bar.rollID = rollID
+    bar.hideAt = self.db.rollHideDelay > 0 and GetTime() + self.db.rollHideDelay or nil
     bar:SetSize(S(self.db.rollWidth), S(ROLL_HEIGHT))
     bar.iconButton:SetSize(S(ROLL_HEIGHT), S(ROLL_HEIGHT))
     bar.icon:SetTexture(texture)
@@ -463,5 +467,6 @@ function Loot:BuildOptions(o)
     o:EndAdvanced()
     o:Check("rolls", L.OPT_LOOT_ROLLS)
     o:Slider("rollWidth", L.OPT_UF_WIDTH, 200, 500, 10, 36)
+    o:Slider("rollHideDelay", L.OPT_M_QOL_LOOT_ROLL_HIDE, 0, 60, 1, 36)
     o:Button(L.OPT_UNLOCK, function() NS:SetUnlocked(not NS.unlocked) end, 20)
 end

@@ -96,3 +96,21 @@ end
 function CVars:IsChanged(name)
     return NS.global.cvarBackup[name] ~= nil and not CVars.pending[name]
 end
+
+-- « Optimiser mes FPS » : effets graphiques coûteux au plus bas. Valeurs bornées par le client ;
+-- une CVar absente de ce client est ignorée par Set.
+CVars.LOW_GRAPHICS = {
+    graphicsShadowQuality = "0", graphicsLiquidDetail = "0", graphicsParticleDensity = "1",
+    graphicsSSAO = "0", graphicsDepthEffects = "0", graphicsComputeEffects = "0",
+    graphicsOutlineMode = "0", graphicsSpellDensity = "0", graphicsProjectedTextures = "0",
+    graphicsGroundClutter = "0", Sound_EnableReverb = "0",
+}
+
+function CVars:ApplyLowGraphics()
+    for name, value in pairs(self.LOW_GRAPHICS) do self:Set(name, value) end
+end
+
+--- Rend les réglages d'avant ApplyLowGraphics (ceux changés depuis par l'utilisateur restent).
+function CVars:RestoreLowGraphics()
+    for name in pairs(self.LOW_GRAPHICS) do self:Restore(name) end
+end

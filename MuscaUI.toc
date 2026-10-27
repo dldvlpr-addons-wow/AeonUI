@@ -58,6 +58,7 @@ Modules\Frames.lua
 Modules\UnitFrameElements.lua
 Modules\SwingTimer.lua
 Modules\GCDBar.lua
+Modules\ActiveForm.lua
 Modules\RaidCooldowns.lua
 Modules\RadialMenu.lua
 Modules\MovementAlert.lua

@@ -634,6 +634,27 @@ function Movers:Select(key)
     if self.RefreshCoords then self.RefreshCoords() end
 end
 
+--- Cadres superposés sous le curseur : sélectionne le suivant (delta < 0) ou le précédent après
+-- `key`, et le passe au-dessus des autres. Rend la clé choisie, nil si `key` est seul.
+function Movers:CycleOverlap(key, delta)
+    local stack, top = {}, 0
+    for other, entry in pairs(self.registry) do
+        local overlay = entry.overlay
+        if overlay and overlay:IsShown() and overlay:IsMouseOver() then
+            stack[#stack + 1] = other
+            top = math.max(top, overlay:GetFrameLevel())
+        end
+    end
+    if #stack < 2 then return nil end
+    table.sort(stack)
+    local index = 1
+    for i, other in ipairs(stack) do if other == key then index = i end end
+    local nextKey = stack[(index - 1 + (delta < 0 and 1 or -1)) % #stack + 1]
+    self.registry[nextKey].overlay:SetFrameLevel(top + 1)
+    self:Select(nextKey)
+    return nextKey
+end
+
 --------------------------------------------------------------------------------
 -- Coordonnées saisies : X et Y du mover sélectionné, relatifs à son point d'ancrage.
 --------------------------------------------------------------------------------
@@ -1025,9 +1046,10 @@ BuildOverlay = function(entry)
     end)
     overlay:SetScript("OnLeave", function() GameTooltip:Hide() end)
     overlay:SetScript("OnKeyDown", OnKeyDown)
-    -- Molette : 1 px vertical ; Maj : horizontal ; Ctrl : 10 px.
+    -- Molette : 1 px vertical ; Maj : horizontal ; Ctrl : 10 px ; Alt : cadre superposé suivant.
     overlay:EnableMouseWheel(true)
     overlay:SetScript("OnMouseWheel", function(_, delta)
+        if IsAltKeyDown and IsAltKeyDown() then Movers:CycleOverlap(entry.key, delta) return end
         if NS.InCombat() and entry.frame.IsProtected and entry.frame:IsProtected() then return end
         Movers:Select(entry.key)
         local step = delta * ((IsControlKeyDown and IsControlKeyDown()) and 10 or 1)

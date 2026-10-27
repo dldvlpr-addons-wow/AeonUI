@@ -510,6 +510,30 @@ function NS.GetGlobalCooldown()
     return nil
 end
 
+--- Pose la recharge globale sur `cooldown` par objet durée (affiché même secret, en combat).
+-- Sans objet durée : valeurs brutes lisibles, sinon cadran vidé.
+function NS.SetGlobalCooldown(cooldown)
+    if C_Spell and C_Spell.GetSpellCooldownDuration and cooldown.SetCooldownFromDurationObject then
+        for _, spellID in ipairs(GLOBAL_COOLDOWN_SPELLS) do
+            local ok, duration = pcall(C_Spell.GetSpellCooldownDuration, spellID)
+            if ok and duration then cooldown:SetCooldownFromDurationObject(duration) return end
+        end
+    end
+    local start, duration = NS.GetGlobalCooldown()
+    if start then cooldown:SetCooldown(start, duration) else cooldown:Clear() end
+end
+
+--- Pose le sort en cours (ou canalisé) de `unit` sur `cooldown` par objet durée.
+-- Rend false sans l'API : l'appelant cache le cadran.
+function NS.SetCastCooldown(cooldown, unit, channeling)
+    local api = channeling and _G.UnitChannelDuration or _G.UnitCastingDuration
+    if not (api and cooldown.SetCooldownFromDurationObject) then return false end
+    local ok, duration = pcall(api, unit)
+    if not ok or not duration then return false end
+    cooldown:SetCooldownFromDurationObject(duration)
+    return true
+end
+
 --- Latence du monde en secondes (GetNetStats), 0 si inconnue.
 function NS.WorldLatency()
     if not _G.GetNetStats then return 0 end
@@ -733,6 +757,44 @@ function NS.OpenCooldownViewerSettings()
     if NS.InCombat() or not (settings and settings.ShowUIPanel) then return false end
     settings:ShowUIPanel()
     return true
+end
+
+--- Point de route aux coordonnées x, y (0-100) de la carte où se trouve le joueur, suivi à l'écran.
+-- Faux si le client n'a pas l'API ou refuse cette carte.
+function NS.SetUserWaypoint(x, y)
+    local map = _G.C_Map
+    if not (map and map.SetUserWaypoint and map.GetBestMapForUnit and _G.UiMapPoint) then return false end
+    local mapID = map.GetBestMapForUnit("player")
+    if not mapID or (map.CanSetUserWaypointOnMap and not map.CanSetUserWaypointOnMap(mapID)) then return false end
+    local ok, set = pcall(function()
+        return map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, x / 100, y / 100))
+    end)
+    if not ok or set == false then return false end
+    if _G.C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, true) end
+    return true
+end
+
+--- Distance en yards du joueur au point de route utilisateur, sur la carte du point.
+--- Second retour : le point (UiMapPoint). Nil sans point, hors de cette carte, ou si le client ne
+--- répond pas (instance, valeur secrète, carte sans dimensions).
+function NS.UserWaypointDistance()
+    local map = _G.C_Map
+    if not (map and map.GetUserWaypoint and map.GetPlayerMapPosition and map.GetMapWorldSize) then return nil end
+    local point = map.GetUserWaypoint()
+    if not (point and point.position) then return nil end
+    local ok, position = pcall(map.GetPlayerMapPosition, point.uiMapID, "player")
+    if not (ok and position) then return nil end
+    local x, y = position:GetXY()
+    local width, height = map.GetMapWorldSize(point.uiMapID)
+    if not (x and y and width and height) or isSecret(x) or isSecret(y) or width <= 0 or height <= 0 then return nil end
+    local dx, dy = (x - point.position.x) * width, (y - point.position.y) * height
+    return math.sqrt(dx * dx + dy * dy), point
+end
+
+--- Retire le point de route utilisateur et son suivi à l'écran (idiome de la carte Blizzard).
+function NS.ClearUserWaypoint()
+    if _G.C_Map and C_Map.ClearUserWaypoint then C_Map.ClearUserWaypoint() end
+    if _G.C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, false) end
 end
 
 --------------------------------------------------------------------------------
@@ -1068,6 +1130,36 @@ function NS.GetItemSellPrice(item)
     return tonumber(price) or 0
 end
 
+--- Niveau et qualité de l'objet d'un bouton du menu d'équipement (`button.location`).
+-- nil pour un bouton spécial (ranger, ignorer) ou sans l'API.
+function NS.GetFlyoutItemLevel(location)
+    if type(location) ~= "number" or not (_G.EquipmentManager_GetLocationData and _G.ItemLocation
+        and C_Item and C_Item.GetCurrentItemLevel) then return nil end
+    local first = _G.EQUIPMENTFLYOUT_FIRST_SPECIAL_LOCATION
+    if first and location >= first then return nil end
+    local ok, data = pcall(EquipmentManager_GetLocationData, location)
+    if not ok or type(data) ~= "table" or not data.slot then return nil end
+    local itemLocation
+    if data.isBags then
+        itemLocation = ItemLocation:CreateFromBagAndSlot(data.bag, data.slot)
+    elseif data.isPlayer then
+        itemLocation = ItemLocation:CreateFromEquipmentSlot(data.slot)
+    end
+    if not (itemLocation and itemLocation.IsValid and itemLocation:IsValid()) then return nil end
+    local okLevel, level = pcall(C_Item.GetCurrentItemLevel, itemLocation)
+    if not okLevel or type(level) ~= "number" then return nil end
+    local quality = C_Item.GetItemQuality and C_Item.GetItemQuality(itemLocation) or nil
+    return level, quality
+end
+
+--- Qualité d'un objet (0 médiocre à 5 légendaire), nil tant que le client ne le connaît pas.
+function NS.GetItemQuality(item)
+    local fn = (C_Item and C_Item.GetItemInfo) or _G.GetItemInfo
+    if not fn then return nil end
+    local quality = select(3, fn(item))
+    return type(quality) == "number" and quality or nil
+end
+
 --- Type de liaison (Enum.ItemBind : 1 à la prise, 2 à l'équipement, 9 au compte jusqu'à
 -- l'équipement), ou nil tant que le client ne connaît pas l'objet.
 function NS.GetItemBindType(item)
@@ -1173,6 +1265,16 @@ end
 --- Forme actuelle (id de forme), nil si l'API manque.
 function NS.GetShapeshiftFormID()
     return _G.GetShapeshiftFormID and GetShapeshiftFormID() or nil
+end
+
+--- Icône de la posture, forme ou aura active (barre de postures) ; nil sans forme ou si secrète.
+function NS.GetActiveFormIcon()
+    if not (_G.GetShapeshiftForm and _G.GetShapeshiftFormInfo) then return nil end
+    local index = GetShapeshiftForm()
+    if isSecret(index) or type(index) ~= "number" or index <= 0 then return nil end
+    local texture = GetShapeshiftFormInfo(index)
+    if isSecret(texture) then return nil end
+    return texture
 end
 
 --------------------------------------------------------------------------------
@@ -1376,6 +1478,20 @@ function NS.PlayPreset(name, file)
     return false
 end
 
+--- Lit `text` à voix haute (synthèse vocale du client, voix standard). false sans API.
+function NS.SpeakText(text)
+    local voice, tts = C_VoiceChat, C_TTSSettings
+    if type(text) ~= "string" or not (voice and voice.SpeakText and tts and tts.GetVoiceOptionID) then
+        return false
+    end
+    local standard = Enum and Enum.TtsVoiceType and Enum.TtsVoiceType.Standard or 0
+    local okVoice, voiceID = pcall(tts.GetVoiceOptionID, standard)
+    if not okVoice or type(voiceID) ~= "number" then return false end
+    local rate = tts.GetSpeechRate and tts.GetSpeechRate() or 0
+    local volume = tts.GetSpeechVolume and tts.GetSpeechVolume() or 100
+    return (pcall(voice.SpeakText, voiceID, text, rate, volume, false))
+end
+
 --------------------------------------------------------------------------------
 -- Rendu
 --------------------------------------------------------------------------------
@@ -1388,11 +1504,29 @@ function NS.SetSolidColor(texture, r, g, b, a)
     end
 end
 
+-- Classes jouables sur Forever (contenu Classic : RAID_CLASS_COLORS liste aussi les classes retail).
+NS.PLAYABLE_CLASSES = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
+
+-- Entrée du thème utilisable seulement si complète : un profil importé peut porter n'importe quoi.
+function NS.ValidColor(c)
+    return type(c) == "table" and type(c.r) == "number" and type(c.g) == "number" and type(c.b) == "number" and c or nil
+end
+
 function NS.ClassColor(classFile)
+    local custom = NS.db and NS.db.theme.classColors
     local colors = _G.CUSTOM_CLASS_COLORS or _G.RAID_CLASS_COLORS
-    local c = colors and classFile and colors[classFile]
+    local c = classFile and (NS.ValidColor(custom and custom[classFile]) or (colors and colors[classFile]))
     if c then return c.r, c.g, c.b end
     return 1, 1, 1
+end
+
+--- Couleur d'une puissance : celle choisie dans le thème, sinon PowerBarColor (jeton, puis index).
+-- nil si ni l'une ni l'autre n'est connue.
+function NS.PowerColor(token, id)
+    local custom = NS.db and NS.db.theme.powerColors
+    local colors = _G.PowerBarColor
+    local c = (token and NS.ValidColor(custom and custom[token])) or (colors and ((token and colors[token]) or (id and colors[id])))
+    if c then return c.r, c.g, c.b end
 end
 
 --- "Guerrier" / "Warrior" -> "WARRIOR". C_FriendList ne donne que le nom localisé de la classe,

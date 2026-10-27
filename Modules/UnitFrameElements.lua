@@ -93,17 +93,14 @@ function Elements.HealthColor(unit, classColor, reactionCache)
     return GREY[1], GREY[2], GREY[3]
 end
 
---- Couleur de la barre de puissance d'après le type courant (table Blizzard PowerBarColor).
+--- Couleur de la barre de puissance d'après le type courant (thème, sinon table Blizzard PowerBarColor).
 function Elements.PowerColor(unit)
-    local colors = _G.PowerBarColor
-    local c
     if _G.UnitPowerType then
         local id, token = UnitPowerType(unit)
-        token, id = Known(token), Known(id)
-        if colors then c = (token and colors[token]) or (id and colors[id]) end
+        local r, g, b = NS.PowerColor(Known(token), Known(id))
+        if r then return r, g, b end
     end
-    c = c or MANA
-    return c.r, c.g, c.b
+    return MANA.r, MANA.g, MANA.b
 end
 
 --- Texte du niveau : "" si secret, "??" pour un niveau inconnu (-1).
@@ -715,11 +712,12 @@ end
 
 --- Pose la valeur d'une barre ; animation douce si le réglage commun `smoothBars` est actif.
 -- L'interpolation n'est jamais passée à nil : sans l'énumération, valeur directe.
-local function SetBarValue(bar, value, global)
+function Elements.SetBarValue(bar, value, global)
     local mode = global and global.smoothBars and Enum and Enum.StatusBarInterpolation
         and Enum.StatusBarInterpolation.ExponentialEaseOut
     if mode then bar:SetValue(value, mode) else bar:SetValue(value) end
 end
+local SetBarValue = Elements.SetBarValue
 
 --- Vie, couleur et textes, sans la prédiction de soins (UpdateHealthAndPrediction).
 -- `skipTexts` : l'appelant rafraîchit les textes lui-même (UpdateAll).
@@ -728,7 +726,7 @@ function Elements.UpdateHealth(frame, skipTexts)
     local bar = frame.health
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
     local global = frame.global
-    SetBarValue(bar, UnitHealth(unit), global)
+    SetBarValue(bar, UnitHealth(unit), not frame.snapBars and global)
     local applied, r, g, b = false
     if global and global.healthGradient then applied, r, g, b = NS.HealthGradient(unit) end
     if applied then Media:SetHealthColor(bar, r, g, b)   -- r, g, b peut-être secrets : jamais testés
@@ -814,7 +812,7 @@ function Elements.UpdatePower(frame)
     local knownMax = Known(max)
     if knownMax and knownMax <= 0 then bar:Hide() return end
     bar:SetMinMaxValues(0, max)
-    SetBarValue(bar, UnitPower(unit), frame.global)
+    SetBarValue(bar, UnitPower(unit), not frame.snapBars and frame.global)
     local custom = frame.cfg.powerColorCustom and frame.cfg.powerColor   -- couleur choisie, avant celle de la ressource
     if custom then bar:SetStatusBarColor(custom.r, custom.g, custom.b) else bar:SetStatusBarColor(Elements.PowerColor(unit)) end
     Elements.SetUnitText(bar.text, unit, "power",
@@ -1988,9 +1986,71 @@ local function ShowAura(button, entry, harmful, ccGlow, bordered)
     button:Show()
 end
 
+local ANY_DISPEL = { Magic = true, Curse = true, Poison = true, Disease = true }
+
+--- Voile de la barre de vie à la couleur du débuff dissipable, et icône de ce débuff. Le moteur
+-- choisit l'aura et teinte (types secrets en combat) : l'addon ne lit rien. Réglages communs
+-- `dispelOverlay`, `dispelOverlayMode` ("mine" : ce que vous dissipez, "all" : tout débuff typé),
+-- `dispelOverlayAlpha`, `dispelOverlayIcon`. Conteneur et emplacement posés hors combat.
+local function StyleDispelParts(frame)
+    local parts, global = frame.dispelParts, frame.global
+    if not parts then return end
+    parts.fill:SetAlpha(global.dispelOverlayAlpha or 0.35)
+    parts.mark:SetShown(global.dispelOverlayIcon == true)
+    local size = math.max(8, (frame.health:GetHeight() or 12) - 4)
+    parts.icon:SetSize(size, size)
+end
+
+function Elements.UpdateDispelOverlay(frame, refresh)
+    local global = frame.global
+    local engine = frame.dispelEngine
+    if not (global and global.dispelOverlay) or frame.isPreview then
+        if engine then engine:Hide() end
+        return
+    end
+    if engine == nil then
+        if NS.InCombat() then return end
+        engine = NS.CreateAuraContainer(frame) or false
+        if engine then engine:SetAllPoints(frame.health) end
+        frame.dispelEngine = engine
+    end
+    if not engine then return end
+    local mode = global.dispelOverlayMode
+    if engine.mode ~= mode and not NS.InCombat() then
+        engine.mode = mode
+        local filter, candidates = "HARMFUL|RAID", nil
+        if mode == "all" then filter, candidates = "HARMFUL", { includeDispelTypes = ANY_DISPEL } end
+        NS.SetAuraSlot(engine, "dispel", filter, true, function(button)
+            pcall(button.SetMouseClickEnabled, button, false)
+            pcall(button.SetMouseMotionEnabled, button, false)
+            local health = frame.health
+            button:SetAllPoints(health)
+            local fill = CreateFrame("Frame", nil, button)   -- sous les textes de la barre
+            fill:SetAllPoints(health)
+            fill:SetFrameLevel(health:GetFrameLevel() + 1)
+            local tint = fill:CreateTexture(nil, "ARTWORK")
+            tint:SetAllPoints(fill)
+            NS.AddDispelTexture(button, tint)
+            local mark = CreateFrame("Frame", nil, button)   -- hors du voile : pleine opacité
+            mark:SetAllPoints(health)
+            mark:SetFrameLevel(health:GetFrameLevel() + 2)
+            local icon = mark:CreateTexture(nil, "OVERLAY")
+            icon:SetPoint("RIGHT", health, "RIGHT", -2, 0)
+            icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            pcall(button.SetIcon, button, icon)
+            frame.dispelParts = { fill = fill, mark = mark, icon = icon }
+            StyleDispelParts(frame)   -- init possiblement différé au premier débuff
+        end, candidates)
+    end
+    StyleDispelParts(frame)
+    engine:Show()
+    NS.SetAuraContainerUnit(engine, frame.unit, refresh)
+end
+
 --- `refresh` : tout relire (changement de cible, de plaque, entrée en jeu). Avec le conteneur du
 -- moteur, UNIT_AURA ne demande rien : le moteur l'écoute lui-même.
 function Elements.UpdateAuras(frame, refresh)
+    Elements.UpdateDispelOverlay(frame, refresh)
     local container = frame.auras
     if not container then return end
     local slot = frame.cfg.ccSlot and frame.ccSlot
@@ -2075,9 +2135,11 @@ end
 
 --- Rafraîchit chaque élément (changement d'unité, entrée en jeu, réglage).
 function Elements.UpdateAll(frame)
+    frame.snapBars = true   -- nouvelle unité : pas de glissement depuis la valeur de l'ancienne
     Elements.UpdateHealth(frame)
     Elements.UpdateHealPrediction(frame)
     Elements.UpdatePower(frame)
+    frame.snapBars = nil
     Elements.UpdateName(frame, true)
     Elements.UpdateLevel(frame, true)
     Elements.UpdateIndicators(frame)

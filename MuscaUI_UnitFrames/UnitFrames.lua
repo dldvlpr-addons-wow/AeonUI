@@ -79,6 +79,11 @@ local UnitFrames = NS.Modules:Register("unitframes", {
         enabled = false,          -- allumé par l'installation un clic (étape 7)
         classColor = true,
         healthGradient = false,   -- vie rouge-jaune-vert selon le pourcentage (prime sur la classe)
+        smoothBars = false,       -- vie et puissance animées vers leur nouvelle valeur
+        dispelOverlay = false,    -- voile de la vie à la couleur d'un débuff dissipable
+        dispelOverlayMode = "mine", -- "mine" : ce que vous dissipez, "all" : tout débuff typé
+        dispelOverlayAlpha = 0.35,
+        dispelOverlayIcon = true, -- icône du débuff sur la barre de vie
         lowHealth = 0,            -- vie sous ce % : couleur lowHealthColor (0 : coupé)
         lowHealthColor = { r = 0.9, g = 0.15, b = 0.15 },
         healPrediction = true,    -- soins entrants et absorptions au bout de la vie
@@ -643,11 +648,17 @@ function UnitFrames:BuildOptions(o)
     layout:Note(L.NOTE_UF_RELOAD, 20)
     o:Check("classColor", L.OPT_UF_CLASS_COLOR)
     o:Check("healthGradient", L.OPT_UF_HEALTH_GRADIENT)
+    o:Check("smoothBars", L.OPT_GF_G_SMOOTH)
     o:Advanced()
     o:Slider("lowHealth", L.OPT_BAND_LOW, 0, 90, 5, 36)
     o:Color("lowHealthColor", L.OPT_BAND_COLOR, 52)
     o:EndAdvanced()
     o:Check("healPrediction", L.OPT_UF_HEAL_PREDICTION)
+    o:Check("dispelOverlay", L.OPT_M_UF_DISPEL_OVERLAY)
+    o:Dropdown("dispelOverlayMode", L.OPT_GF_DISPEL_MODE, {
+        { name = L.GF_DISPEL_MINE, value = "mine" }, { name = L.GF_DISPEL_ALL, value = "all" } }, 36)
+    o:Slider("dispelOverlayAlpha", L.OPT_G_QOL_OPACITY, 0.1, 1, 0.05, 36, "%.2f")
+    o:Check("dispelOverlayIcon", L.OPT_M_UF_DISPEL_ICON, 36)
     o:Advanced()
     o:Color("healPredictionColor", L.OPT_UF_HEAL_PREDICTION_COLOR, 36)
     o:Color("absorbColor", L.OPT_UF_ABSORB_COLOR, 36)

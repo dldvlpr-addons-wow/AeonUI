@@ -35,12 +35,15 @@ grep -c "| fait" docs/comparatif-ellesmereui.md                           # nomb
 | Valeur | fait | partiel | non fait (raison) | non fait (non traité) |
 |---|---|---|---|---|
 | H | 25 | 22 | 8 | 0 |
-| M | 40 | 169 | 11 | 149 |
+| M | 62 | 168 | 33 | 106 |
 | G | 155 | 0 | 160 | 0 |
 
 Hors décompte : les lignes `présent`, `équivalent`, `couvert`, `sans objet`, `n/a`, `retiré`, et les lignes `retail` sans valeur.
 Les lignes G sont toutes tranchées. Les H et M ont été implémentées par lots (tickets #35 à #87, lots M1 à M7). Leur état a été relevé dans le code le 2026-10-27 : un agent par zone, grep de `docs/options.md` puis du code.
 Les « non fait : non traité » des lignes M n'ont jamais fait l'objet d'une décision : les lots M n'ont pris qu'une partie des lignes M.
+Lot M8 (2026-10-27) : zone « Cœur et réglages globaux » du 5.2 tranchée (7 faites, 3 non faites avec raison ; test `tests/test_m8_coeur.lua`).
+Lot M9 (2026-10-27) : zone « Fonctions Forever et qualité de vie » du 5.2 tranchée (10 faites, 15 non faites avec raison ; test `tests/test_m9_qol.lua`).
+Lot M10 (2026-10-27) : zone « Cadres d'unité et barres de ressources » du 5.2 tranchée (4 faites, 4 non faites avec raison, plus la ligne partielle « Barres de vie lissées » passée en fait ; test `tests/test_m10_cadres.lua`).
 
 ## 4. Travail de la dernière session (2026-10-27)
 
@@ -59,6 +62,17 @@ Contenu des packs de classe Musca Auras : Reminders, Procs, Effects, Resource, M
 - Toutes les lignes G traitées (155 faites, 160 non faites avec raison).
 - État des 417 lignes H et M relevé et écrit dans le comparatif (voir 3).
 - Nouvel outil `tools/add_locale_keys.py` (voir 7).
+
+### Lots M8 à M10 (zones du 5.2)
+Méthode : une zone du 5.2 par lot. Chaque ligne « non fait : non traité » est implémentée ou passée en « non fait : <raison> » dans le comparatif. Raisons admises : retail, API absente de Forever, valeur secrète, coût L, art ou textures à recopier, addon tiers. Le lot retire sa zone du 5.2, met à jour le décompte (3), la note du lot et « Dernier résultat » (7). Piège : un remplacement par motif dans ce fichier doit chercher la fin du bloc après sa position de départ, le §5.1 répète les noms de zones.
+- M8, Cœur et réglages globaux : visibilité repos et véhicule lue en Lua, couleurs de classe et de ressource du thème, Alt + molette entre movers superposés (`CycleOverlap`), réglages FPS bas, police sur tout le texte du jeu. Test `tests/test_m8_coeur.lua`.
+- M9, Fonctions Forever et qualité de vie : forme active (`Modules/ActiveForm.lua`, nouveau), carte estompée en déplacement, fil de butin (or par heure, filtres), niveau d'objet dans le menu d'équipement, cadrans GCD et incantation sur l'anneau du curseur, son et voix de MovementAlert, `/way` avec retrait à l'arrivée, délai de masquage des jets. Test `tests/test_m9_qol.lua`.
+- M10, Cadres d'unité et barres de ressources. Test `tests/test_m10_cadres.lua`.
+  - `smoothBars` (cadres d'unité, barres de ressources) : `Elements.SetBarValue(bar, value, global)` passe `Enum.StatusBarInterpolation.ExponentialEaseOut`. `Elements.UpdateAll` pose `frame.snapBars` : pas de glissement au changement de cible.
+  - Surcouche de dissipation (cadres d'unité) : `Elements.UpdateDispelOverlay`, appelée en tête d'`UpdateAuras`. Conteneur `AuraContainer` créé hors combat et ancré sur la vie, emplacement « dispel » (`HARMFUL|RAID` pour « les miens », `HARMFUL` + `includeDispelTypes` pour « tous »). Voile teint par le moteur (`NS.AddDispelTexture`), icône par `button.SetIcon`. Options `dispelOverlay`, `dispelOverlayMode`, `dispelOverlayAlpha`, `dispelOverlayIcon`. Les cadres de groupe et plaques n'ont pas la clé : inchangés.
+  - `debuffFilter` des barres d'auras (`Modules/AuraBars.lua`) : tous, les miens, dissipables, boss. « Importants » retiré du menu : la voie moteur n'a pas ce tri. « Tous » ne passe pas par `NS.AuraPasses`, donc la liste noire n'y est pas appliquée, comme avant.
+  - Guide de mouvement (`Modules/SwingTimer.lua`, `moveGuide`, `stillColor`) : barre à distance, BOUGEZ puis IMMOBILE dans les dernières `MOVE_WINDUP` = 0,5 s.
+  - Non faites (coût L) : styles « stock », grille d'icônes, barres d'auras libres, décalage automatique des barres.
 
 ## 5. Reste à faire
 
@@ -92,58 +106,6 @@ Contenu des packs de classe Musca Auras : Reminders, Procs, Effects, Resource, M
 
 ### 5.2 Lignes non traitées (aucune décision prise)
 Libellés raccourcis : le détail (preuve EllesmereUI, disponibilité Forever) est dans la ligne du comparatif.
-
-**Cœur et réglages globaux**
-
-- [M] Cycle de chevauchement
-- [M] Optimiser mes FPS et graphismes / Restaurer
-- [M] Visibilité : au repos (en ville / auberge)
-- [M] Visibilité : en véhicule
-- [M] Couleurs de classe personnalisées
-- [M] Couleurs de ressource (puissance) personnalisées
-- [M] 23 polices fournies
-- [M] « Apply to All Game Text »
-- [M] Loadout Manager : échange auto d'ensemble d'équipement et de loadout de talents selon l'instance, la diffic…
-- [M] Simple Loot Council : vote du butin de raid synchronisé par messages d'addon
-
-**Fonctions Forever et qualité de vie**
-
-- [M] Classic Spellbook
-- [M] Classic Talents
-- [M] Simplified Stats : Shorten Equip Lines, Merge Equal Spell Power, Color Stats, Number Color
-- [M] Auto Summon Pet + Favorites per Character
-- [M] Active Stance, Form, Aspect & Aura icon
-- [M] Gathering Skill in Tooltips (+ option Minimap)
-- [M] Fade Map While Moving
-- [M] Reveal Unexplored Areas (+ couleur de teinte)
-- [M] Show Map Markers (jeux : transports, entrées d'instance, points de vol, sorties de zone)
-- [M] Gold per Hour Tracker
-- [M] Items : Minimum Quality, Show Item Level, Show Item Price, Use Auctionator Prices
-- [M] Macro Manager (/euimacros) : éditeur visuel des macros du compte et du personnage (icônes en grille, liste …
-- [M] Fishing Key
-- [M] Fishing : Reel In With the Key, Bobber Indicator (mover), Apply Lure
-- [M] Double-Click to Cast (+ Apply Lure)
-- [M] Masquer fenêtre de jets de groupe
-- [M] Hide Item Transforms
-- [M] Waypoint (/way, /euiway) + Hand-Placed Pin Arrival
-- [M] Disable Right Click Targeting
-- [M] Target Distance Text
-- [M] Equipment Flyout : niveaux d'objet (+ lettres de stats)
-- [M] GCD Circle
-- [M] Cast Bar Circle
-- [M] Potion Ready Alert
-- [M] Son + TTS (voix, volume, message)
-
-**Cadres d'unité et barres de ressources**
-
-- [M] Styles « stock » : kits Blizzard, Classic WoW, WoW Forever (art, masques, forme des barres) posés sur les c…
-- [M] Surcouche de dissipation sur la barre de vie (opacité, « seulement ce que vous dissipez », icône de type)
-- [M] Affichage en grille d'icônes (par ligne, nombre de lignes, max total, forme d'icône, zoom, balayage de duré…
-- [M] Filtres de débuffs par catégorie (type, saignement, boss…), mode « tous les critères »
-- [M] Barres personnalisées libres (créer N barres de buffs/débuffs, chacune avec ses filtres et son mover)
-- [M] Lissage des barres
-- [M] Décalage automatique : agrandir la puissance sans ressource de classe, décaler les éléments, masquer la pui…
-- [M] Minuteur d'attaque : guide de mouvement (zones GO/STILL pour Tir automatique et baguette, texte d'aide)
 
 **Cadres de groupe et de raid**
 
@@ -281,6 +243,11 @@ Avant chaque essai : `/console scriptErrors 1`, puis `/reload`.
 - Lignes G : absorption, indicateurs de groupe, barre d'incantation, minuteur d'attaque, manette et cible douce, couleurs du profil dérivé.
 - Condition manette sans effet en mode « Au moins une » avec une condition macro sur les barres d'action.
 - `GetSpellAuraSecrecy` de 25771 et 6788 : le filtre par ID n'agit que sur les auras NeverSecret.
+- Lots M8 et M9 : chaque cas des tests `tests/test_m8_coeur.lua` et `tests/test_m9_qol.lua`, refait en jeu (cadran GCD visible sur l'anneau à opacité 1 compris).
+- M10, surcouche de dissipation : cible avec un débuff dissipable, hors combat puis en combat. Voile teint à la couleur du type, icône à droite de la vie, rien sans débuff. Mode « tous » avec un débuff non dissipable par la classe. Point le plus incertain : le mock ne simule pas le rendu du moteur.
+- M10, lissage : barre qui glisse sur dégâts, sans glisser au changement de cible.
+- M10, filtre de débuffs : « les miens » en combat, voie moteur (débuff d'un autre joueur caché).
+- M10, guide de mouvement : chasseur ou baguette, BOUGEZ puis IMMOBILE avant chaque tir ; option décochée, aucun texte.
 
 ### 5.5 Points de la section « Points à vérifier » du comparatif
 GCD 61304 ou 29515, remplacement d'`AddMessage` du chat, `COMBO_TARGET_CHANGED`, `C_DamageMeter` sur Forever. Voir le début de `docs/comparatif-ellesmereui.md`.
@@ -292,6 +259,8 @@ GCD 61304 ou 29515, remplacement d'`AddMessage` du chat, `COMBO_TARGET_CHANGED`,
 - Double rappel possible : module Reminders de MuscaUI et rappels du pack de classe Musca Auras.
 - `docs/options.md` omet les options conditionnelles au client (générateur lancé sur le client simulé).
 - Bugs existants listés dans `docs/reprise-chantier-h.md`, section « Suivis non corrigés ».
+- M10, relecture (non corrigé, optionnel) : icône de dissipation au niveau vie + 2, sous le texte de vie (niveau + 3) ; taille de l'icône non passée par `S()` ; texte du guide qui déborde d'une barre de tir verticale de 10 px ; `UpdateAllAuras` du conteneur de dissipation relancé à chaque passage d'unité sondée ; champ `dispelParts` du même nom que dans GroupFrames.
+- Prochaine étape : zone « Cadres de groupe et de raid » du 5.2 (lot M11), même méthode.
 
 ## 6. Contraintes du projet
 - Licence « All Rights Reserved » : aucun code repris d'EllesmereUI (copie de référence dans `~/Téléchargements/EllesmereUI-v9.6.8`, lecture seule), ni de Musca Auras ou ForeverMeter (GPL).
@@ -301,7 +270,7 @@ GCD 61304 ou 29515, remplacement d'`AddMessage` du chat, `COMBO_TARGET_CHANGED`,
 - Source Blizzard Forever : `~/wow-ui-source/forever/Interface/AddOns/` (`Camelot/` prime sur `Mainline/`).
 
 ## 7. Commandes
-- Tests (~5 min) : `bash tests/run.sh`. Dernier résultat : 590 ok, 0 échec, `.toc` ok.
+- Tests (~5 min) : `bash tests/run.sh`. Dernier résultat : 609 ok, 0 échec, `.toc` ok.
 - Doc des options : `lua tools/generate_options_doc.lua frFR > $TMPDIR/options.md && command cp -f $TMPDIR/options.md docs/options.md`.
 - Clés de traduction : écrire un JSON `{"CLE": {"enUS": "...", "frFR": "...", "deDE": "...", ...}}`, puis `python3 tools/add_locale_keys.py cles.json`. Ajoute la clé aux 11 fichiers `Locale/*.lua`.
 - Nouveau test : fichier `tests/test_<sujet>.lua`, enregistré dans `tests/run_tests.lua`.
