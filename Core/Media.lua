@@ -84,6 +84,14 @@ function Media:Accent()
     return c.r, c.g, c.b
 end
 
+--- Couleur des calques, lignes et grille du mode déverrouillé : l'accent, ou la couleur choisie.
+function Media:MoverColor()
+    local theme = Theme()
+    local c = theme.moverCustom and theme.moverColor
+    if type(c) == "table" and c.r then return c.r, c.g, c.b end
+    return self:Accent()
+end
+
 function Media:AccentHex()
     local r, g, b = self:Accent()
     local function byte(v) return math.floor(v * 255 + 0.5) end

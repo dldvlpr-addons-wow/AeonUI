@@ -15,6 +15,9 @@ local LootFeed = NS.Modules:Register("lootfeed", {
         size = 20,              -- hauteur d'une ligne et taille de l'icône
         duration = 5,           -- secondes d'affichage après le dernier gain
         faction = true,         -- gains de réputation
+        maxLines = 6,           -- lignes affichées en même temps (1 à 6)
+        growUp = false,         -- la ligne la plus récente en bas, le flux monte
+        backgroundOpacity = 0,  -- fond noir derrière chaque ligne
     },
 })
 
@@ -32,6 +35,8 @@ local born = 0              -- ordre d'arrivée des lignes
 local function Line(index)
     if lines[index] then return lines[index] end
     local line = CreateFrame("Frame", nil, holder)
+    line.background = line:CreateTexture(nil, "BACKGROUND")
+    line.background:SetAllPoints()
     line.icon = line:CreateTexture(nil, "ARTWORK")
     line.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     line.text = Media:CreateText(line, "OVERLAY", 0, "OUTLINE")
@@ -60,7 +65,13 @@ local function Layout()
     table.sort(live, function(a, b) return a.born > b.born end)
     for index, line in ipairs(live) do
         line:ClearAllPoints()
-        line:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -(index - 1) * (size + SPACING))
+        local offset = (index - 1) * (size + SPACING)
+        if LootFeed.db.growUp then
+            line:SetPoint("BOTTOMLEFT", holder, "BOTTOMLEFT", 0, offset)
+        else
+            line:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -offset)
+        end
+        line.background:SetColorTexture(0, 0, 0, LootFeed.db.backgroundOpacity)
         line:SetSize(holder:GetWidth(), size)
         line.icon:ClearAllPoints()
         line.icon:SetPoint("LEFT", line, "LEFT", 0, 0)
@@ -115,7 +126,7 @@ end
 function LootFeed:Add(entry)
     if not active then return end
     local target, free, oldest
-    for index = 1, MAX_LINES do
+    for index = 1, LootFeed.db.maxLines do
         local line = Line(index)
         if line.key == entry.key then target = line break end
         if not line.key and not free then free = line end
@@ -222,6 +233,9 @@ end
 function LootFeed:OnRefresh()
     if not (active and holder) then return end
     LayoutHolder()
+    for index = self.db.maxLines + 1, MAX_LINES do   -- lignes au-delà du maximum : retirées
+        if lines[index] then lines[index].key = nil lines[index]:Hide() end
+    end
     if self.db.faction then NS.RegisterEventSafe(events, "CHAT_MSG_COMBAT_FACTION_CHANGE")
     else events:UnregisterEvent("CHAT_MSG_COMBAT_FACTION_CHANGE") end
     Layout()
@@ -234,6 +248,9 @@ function LootFeed:BuildOptions(o)
     o:Slider("size", L.OPT_LOOTFEED_SIZE, 14, 32, 1)
     o:Slider("duration", L.OPT_LOOTFEED_DURATION, 2, 15, 1)
     o:Check("faction", L.OPT_LOOTFEED_FACTION)
+    o:Slider("maxLines", L.OPT_G_QOL_LOOT_MAX_LINES, 1, MAX_LINES, 1)
+    o:Check("growUp", L.OPT_G_QOL_LOOT_GROW_UP)
+    o:Slider("backgroundOpacity", L.OPT_G_QOL_LOOT_BACKGROUND, 0, 0.8, 0.05, 20, "%.2f")
 end
 
 function LootFeed:BuildPreview(p)

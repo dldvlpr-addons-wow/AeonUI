@@ -8,6 +8,7 @@
 --   * barres d'action toujours visibles, même vides ;
 --   * erreurs Lua masquées (pour qui ne développe pas) ;
 --   * chiffres de recharge : le décompte natif du moteur, sur tous les boutons et icônes ;
+--   * carte du monde : coordonnées (joueur, curseur) et niveaux de la zone, en option ;
 --   * recharges MuscaUI colorées par palier : formateur natif, la durée secrète reste au moteur.
 local _, NS = ...
 local L = NS.L
@@ -32,6 +33,12 @@ local Interface = NS.Modules:Register("interface", {
         cooldownColorExpiring = { r = 1, g = 0.2, b = 0.2 },
         cooldownColorSeconds = { r = 1, g = 0.9, b = 0.3 },
         cooldownColorMinutes = { r = 1, g = 1, b = 1 },
+        mapCoords = false,         -- coordonnées du joueur et du curseur sur la carte du monde
+        mapLevels = false,         -- niveaux de la zone affichée sur la carte du monde
+        mapFade = false,           -- jeu visible derrière la carte maximisée (fond noir allégé)
+        slashCooldowns = false,    -- /cd ouvre le gestionnaire de recharges Blizzard
+        fpsCounter = false,        -- compteur flottant : images par seconde et latence
+        fpsLatency = true,
     },
 })
 
@@ -100,10 +107,129 @@ function Interface:ApplyTalkingHead()
     end
 end
 
+--------------------------------------------------------------------------------
+-- Carte du monde : coordonnées et niveaux
+--------------------------------------------------------------------------------
+
+local MAP_FADE_ALPHA = 0.2
+local mapInfo   -- cadre enfant de WorldMapFrame, créé au premier besoin
+
+local function Percent(x, y)
+    if NS.IsSecret(x) or NS.IsSecret(y) or not x or not y or x < 0 or x > 1 or y < 0 or y > 1 then return "--" end
+    return string.format("%.1f, %.1f", x * 100, y * 100)
+end
+
+--- Texte affiché : niveaux de la zone, puis position du joueur et du curseur.
+function Interface.MapText(db, mapID, cursorX, cursorY, playerX, playerY)
+    local lines = {}
+    if db.mapLevels and mapID and C_Map.GetMapLevels then
+        local low, high = C_Map.GetMapLevels(mapID)
+        if low and high and not NS.IsSecret(low) and not NS.IsSecret(high) and high > 0 then
+            lines[#lines + 1] = string.format(L.UI_MAP_LEVELS, low, high)
+        end
+    end
+    if db.mapCoords then
+        lines[#lines + 1] = string.format(L.UI_MAP_PLAYER, Percent(playerX, playerY))
+        lines[#lines + 1] = string.format(L.UI_MAP_CURSOR, Percent(cursorX, cursorY))
+    end
+    return table.concat(lines, "\n")
+end
+
+local function UpdateMapInfo()
+    local map = _G.WorldMapFrame
+    if not (mapInfo and map and map.GetMapID) then return end
+    local mapID = map:GetMapID()
+    local playerX, playerY
+    if mapID and C_Map.GetPlayerMapPosition then
+        local position = C_Map.GetPlayerMapPosition(mapID, "player")
+        if position and position.GetXY then playerX, playerY = position:GetXY() end
+    end
+    local cursorX, cursorY = map:GetNormalizedCursorPosition()
+    mapInfo.text:SetText(Interface.MapText(Interface.db, mapID, cursorX, cursorY, playerX, playerY))
+end
+
+--- Crée (une fois) ou retire l'encart ; la carte est chargée à la demande (Blizzard_WorldMap).
+function Interface:ApplyMap()
+    local map = _G.WorldMapFrame
+    local wanted = active and (self.db.mapCoords or self.db.mapLevels)
+    if wanted and map and not mapInfo then
+        mapInfo = CreateFrame("Frame", nil, map)
+        mapInfo:SetSize(220, 50)
+        mapInfo:SetPoint("BOTTOM", map, "BOTTOM", 0, 8)
+        mapInfo:SetFrameStrata("HIGH")
+        mapInfo.text = mapInfo:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        mapInfo.text:SetAllPoints()
+        local elapsed = 0
+        mapInfo:SetScript("OnUpdate", function(_, delta)
+            elapsed = elapsed + delta
+            if elapsed < 0.1 then return end
+            elapsed = 0
+            UpdateMapInfo()
+        end)
+    end
+    if mapInfo then mapInfo:SetShown(wanted and true or false) end
+    -- Fond noir de la carte maximisée : opaque d'origine (alpha 1 de sa couleur).
+    local blackout = map and map.BlackoutFrame and map.BlackoutFrame.Blackout
+    if blackout then blackout:SetAlpha(active and self.db.mapFade and MAP_FADE_ALPHA or 1) end
+end
+
+--------------------------------------------------------------------------------
+-- Compteur d'images par seconde
+--------------------------------------------------------------------------------
+
+--- /cd : ouvre (ou ferme) les réglages de recharges Blizzard ; enregistré au premier passage où l'option est cochée.
+local function ToggleCooldownSettings()
+    if not (active and Interface.db.slashCooldowns) then return end
+    local settings = _G.CooldownViewerSettings
+    if settings and settings.IsShown and settings:IsShown() then settings:Hide() return end
+    NS.OpenCooldownViewerSettings()
+end
+
+local function RegisterCooldownSlash()
+    if _G.SlashCmdList["MUSCAUICOOLDOWNS"] or not Interface.db.slashCooldowns then return end
+    _G.SLASH_MUSCAUICOOLDOWNS1 = "/cd"
+    _G.SlashCmdList["MUSCAUICOOLDOWNS"] = ToggleCooldownSettings
+end
+
+local fpsFrame, fpsTicker
+
+local function UpdateFps()
+    local text = math.floor(GetFramerate() + 0.5) .. " " .. L.OPT_G_QOL_FPS_UNIT
+    if Interface.db.fpsLatency and _G.GetNetStats then
+        local _, _, home, world = GetNetStats()
+        text = text .. "  " .. math.max(home or 0, world or 0) .. " ms"
+    end
+    fpsFrame.text:SetText(text)
+    fpsFrame:SetSize(math.max(60, fpsFrame.text:GetStringWidth() + 12), 20)
+end
+
+function Interface:ApplyFps()
+    local wanted = active and self.db.fpsCounter
+    if wanted and not fpsFrame then
+        fpsFrame = CreateFrame("Frame", "MuscaUIFpsCounter", UIParent)
+        fpsFrame.text = NS.Media:CreateText(fpsFrame, "OVERLAY", 0, "OUTLINE")
+        fpsFrame.text:SetPoint("CENTER")
+    end
+    if wanted then
+        fpsTicker = fpsTicker or C_Timer.NewTicker(1, UpdateFps)
+        NS.Movers:Register("fpsCounter", fpsFrame, L.OPT_G_QOL_FPS_COUNTER, "TOPRIGHT", -20, -20)
+        NS.Movers:Load("fpsCounter")
+        UpdateFps()
+        fpsFrame:Show()
+    else
+        if fpsTicker then fpsTicker:Cancel() fpsTicker = nil end
+        if fpsFrame then
+            NS.Movers:Unregister("fpsCounter")
+            fpsFrame:Hide()
+        end
+    end
+end
+
 local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event, name)
     if event == "ADDON_LOADED" then
         if name == "Blizzard_TalkingHeadUI" then Interface:ApplyTalkingHead() end
+        if name == "Blizzard_WorldMap" then Interface:ApplyMap() end
     elseif event == "SCREENSHOT_SUCCEEDED" or event == "SCREENSHOT_FAILED" then
         if Interface.db.hideScreenshotMessage then
             -- Le message s'affiche dans la même frame ; le cacher une frame plus tard.
@@ -142,6 +268,9 @@ function Interface:OnEnable()
     self:ApplyErrors()
     self:ApplyTalkingHead()
     self:ApplyCooldownText()
+    self:ApplyMap()
+    self:ApplyFps()
+    RegisterCooldownSlash()
 end
 
 function Interface:OnDisable()
@@ -151,6 +280,8 @@ function Interface:OnDisable()
     self:ApplyErrors()
     self:ApplyTalkingHead()
     self:ApplyCooldownText()
+    self:ApplyMap()
+    self:ApplyFps()
 end
 
 function Interface:OnRefresh()
@@ -158,9 +289,63 @@ function Interface:OnRefresh()
     self:ApplyErrors()
     self:ApplyTalkingHead()
     self:ApplyCooldownText()
+    self:ApplyMap()
+    self:ApplyFps()
+    RegisterCooldownSlash()
+end
+
+-- Réglages du jeu sans menu Blizzard : liés à la CVar elle-même (compte entier, pas au profil),
+-- par NS.CVars pour garder l'origine. La case caméra de l'assistant pose la même CVar.
+local GAME_SLIDERS = {
+    { name = "cameraDistanceMaxZoomFactor", label = "OPT_UI_CAMERA", min = 1, max = 2.6, step = 0.1, format = "%.1f" },
+    { name = "SpellQueueWindow", label = "OPT_UI_SPELL_QUEUE", min = 0, max = 400, step = 10, format = "%d ms" },
+}
+
+-- Texte de combat flottant (CombatText Blizzard) : une case par CVar réellement présente sur le client.
+local FLOATING_TEXT_TOGGLES = {
+    { "enableFloatingCombatText", "OPT_UI_FCT_ENABLE" },
+    { "floatingCombatTextDodgeParryMiss_v2", "OPT_UI_FCT_DODGE" },
+    { "floatingCombatTextDamageReduction_v2", "OPT_UI_FCT_REDUCTION" },
+    { "floatingCombatTextAuras_v2", "OPT_UI_FCT_AURAS" },
+    { "floatingCombatTextAuraFade_v2", "OPT_UI_FCT_AURA_FADE" },
+    { "floatingCombatTextLowManaHealth_v2", "OPT_UI_FCT_LOW" },
+    { "floatingCombatTextEnergyGains_v2", "OPT_UI_FCT_ENERGY" },
+    { "floatingCombatTextComboPoints_v2", "OPT_UI_FCT_COMBO" },
+    { "floatingCombatTextCombatState_v2", "OPT_UI_FCT_COMBAT_STATE" },
+    { "floatingCombatTextReactives_v2", "OPT_UI_FCT_REACTIVES" },
+    { "floatingCombatTextFriendlyHealers_v2", "OPT_UI_FCT_HEALERS" },
+    { "floatingCombatTextHonorGains_v2", "OPT_UI_FCT_HONOR" },
+    { "floatingCombatTextRepChanges_v2", "OPT_UI_FCT_REPUTATION" },
+}
+Interface.FLOATING_TEXT_TOGGLES = FLOATING_TEXT_TOGGLES
+
+local function GameSettings(o)
+    o:Title(L.OPT_UI_GAME)
+    for _, entry in ipairs(GAME_SLIDERS) do
+        if NS.CVars:Exists(entry.name) then
+            o.layout:Slider(L[entry.label], entry.min, entry.max, entry.step,
+                function() return tonumber(NS.CVars:Get(entry.name)) or entry.max end,
+                function(value) NS.CVars:Set(entry.name, tostring(value)) end, 20, entry.format)
+        end
+    end
+    if NS.CVars:Exists("ActionButtonUseKeyDown") then
+        o.layout:Check(L.OPT_UI_KEY_DOWN,
+            function() return NS.CVars:Get("ActionButtonUseKeyDown") == "1" end,
+            function(checked) NS.CVars:Set("ActionButtonUseKeyDown", checked and "1" or "0") end, 20)
+    end
+    local titled
+    for _, toggle in ipairs(FLOATING_TEXT_TOGGLES) do
+        local name = toggle[1]
+        if NS.CVars:Exists(name) then
+            if not titled then o:Title(L.OPT_UI_FCT); titled = true end
+            o.layout:Check(L[toggle[2]], function() return NS.CVars:Get(name) == "1" end,
+                function(checked) NS.CVars:Set(name, checked and "1" or "0") end, 20)
+        end
+    end
 end
 
 function Interface:BuildOptions(o)
+    GameSettings(o)
     o:Title(L.OPT_UI_CLUTTER)
     o:Check("hideErrors", L.OPT_UI_ERRORS)
     o:Check("hideTalkingHead", L.OPT_UI_TALKING_HEAD)
@@ -177,8 +362,16 @@ function Interface:BuildOptions(o)
             NS.db.modules.interface.hideProcClasses[classFile] = value or nil
             NS.Modules:Refresh("interface")
         end, 20)
+    o:Title(L.OPT_UI_MAP)
+    o:Check("mapCoords", L.OPT_UI_MAP_COORDS)
+    o:Check("mapLevels", L.OPT_UI_MAP_LEVELS)
+    o:Check("mapFade", L.OPT_G_QOL_MAP_FADE)
+    o:Title(L.OPT_G_QOL_FPS_COUNTER)
+    o:Check("fpsCounter", L.OPT_G_QOL_FPS_COUNTER)
+    o:Check("fpsLatency", L.OPT_G_QOL_FPS_LATENCY, 36)
     o:Title(L.OPT_UI_BARS)
     o:Check("alwaysShowBars", L.OPT_UI_ALWAYS_BARS)
+    o:Check("slashCooldowns", L.OPT_G_QOL_SLASH_COOLDOWNS)
     o:Check("cooldownNumbers", L.OPT_UI_COOLDOWN_NUMBERS)
     o:Check("cooldownColors", L.OPT_UI_COOLDOWN_COLORS)
     if not NS.CooldownText.Supported() then o:Note(L.OPT_UI_COOLDOWN_COLORS_MISSING, 36) end

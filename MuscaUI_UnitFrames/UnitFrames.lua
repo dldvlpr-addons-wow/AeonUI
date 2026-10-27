@@ -12,9 +12,39 @@ local L = NS.L
 local Elements = NS.UnitFrameElements
 local Movers = NS.Movers
 
+-- Dimensions que « Échelle » multiplie (la base du profil ne change jamais ; SetScale casserait les movers).
+local SCALED_FIELDS = { width = true, height = true, powerHeight = true, castbarHeight = true,
+                        castbarWidth = true, auraSize = true, totemSize = true }
+
+--- Vue du réglage d'une unité avec ses dimensions multipliées par `scale` ; le réglage lui-même
+-- si l'échelle vaut 1. Les polices gardent leur taille.
+local function ScaledConfig(cfg)
+    local factor = tonumber(cfg.scale)
+    if not factor or factor == 1 then return cfg end
+    return setmetatable({}, {
+        __index = function(_, key)
+            local value = cfg[key]
+            if SCALED_FIELDS[key] and type(value) == "number" then return value * factor end
+            return value
+        end,
+        __newindex = cfg,
+    })
+end
+
+-- Indicateurs à taille et décalages réglables (cfg.<clé>Size : 0 = taille d'origine, <clé>OffsetX, <clé>OffsetY).
+local INDICATORS = { "combatIcon", "raidIcon", "classificationIcon", "pvpIcon", "happinessIcon" }
+
 local function Unit(width, height, overrides)
     local cfg = {
+        strata = "LOW",           -- strate du cadre : BACKGROUND | LOW | MEDIUM | HIGH
+        nameTarget = false,       -- « nom > cible » dans le texte du nom
+        powerColorCustom = false, powerColor = { r = 0, g = 0.44, b = 0.87 },   -- barre de puissance à une couleur choisie
+        targetHighlight = false, hoverHighlight = false,   -- bordure de surbrillance (couleur highlightColor)
+        portraitStyle = "portrait",   -- "portrait" | "class" (icône de classe des joueurs)
+        comboAbove = false, comboHeight = 0,   -- combo au-dessus du cadre ; hauteur (0 : automatique)
         enabled = true, width = width, height = height, powerHeight = 6,
+        scale = 1,                -- facteur des dimensions du cadre (0,5 à 2)
+        auraSplit = false,        -- buffs dans leur propre conteneur, côté opposé aux débuffs
         castbar = true, castbarHeight = 18, castbarDetached = false, castbarWidth = 260,
         auras = false, auraSize = 22, aurasAbove = false,
         vertical = false,         -- barre de vie remplie de bas en haut
@@ -35,6 +65,7 @@ local function Unit(width, height, overrides)
         manaCostPrediction = true, -- coût en mana de l'incantation en cours (joueur)
         visibility = NS.Visibility.Spec(),   -- conditions communes (Core/Visibility), en plus de l'existence de l'unité
     }
+    for _, key in ipairs(INDICATORS) do cfg[key .. "Size"], cfg[key .. "OffsetX"], cfg[key .. "OffsetY"] = 0, 0, 0 end
     for k, v in pairs(overrides or {}) do cfg[k] = v end
     return cfg
 end
@@ -58,6 +89,9 @@ local UnitFrames = NS.Modules:Register("unitframes", {
         absorbColor = { r = 1, g = 1, b = 1, a = 0.35 },
         healAbsorbColor = { r = 0.8, g = 0.15, b = 0.15, a = 0.6 },
         absorbHeight = 100,       -- % de la hauteur de vie, collée en bas (barre horizontale)
+        percentDecimals = 0,      -- décimales du pourcentage de vie (0 à 2)
+        highlightColor = { r = 1, g = 1, b = 1, a = 1 },   -- surbrillance de cible ou de survol
+        castIcon = "left",        -- icône de la barre d'incantation : left | right | none
         healthText = "current",   -- préréglage : UnitFrameElements.TEXT_PRESETS
         powerText = "none",
         fadeAlpha = 0.35,         -- opacité d'un cadre estompé (option fader par unité)
@@ -65,17 +99,36 @@ local UnitFrames = NS.Modules:Register("unitframes", {
         castTarget = true,        -- barre d'incantation : cible du sort après son nom
         castLatency = true,       -- barre du joueur : zone de latence au bout de l'incantation
         castTicks = true,         -- barre du joueur : tops des canalisations connues
+        castLatencyText = false,  -- barre du joueur : latence en ms au bout de la barre
+        castBackground = true, castBorder = true,   -- fond et bordure de la barre d'incantation
+        castAlpha = 1,            -- opacité de la barre d'incantation
+        castStrata = "",          -- strate de la barre d'incantation ("" : celle du cadre)
         castGCD = false,          -- barre du joueur : repère de fin de la recharge globale
         interruptReady = true,    -- barre d'incantation colorée quand ton interruption est prête
         interruptReadyColor = { r = 0.2, g = 0.85, b = 0.35 },
         importantCast = true,     -- barre d'incantation colorée quand le sort est marqué important
         importantCastColor = { r = 0.9, g = 0.3, b = 0.9 },
+        castText = true,          -- nom du sort sur la barre
+        castTimer = false,        -- temps restant sur la barre
+        castTextSize = 0,         -- écart de taille des textes de la barre
+        castRank = false,         -- rang du sort après son nom
+        castChannel = false,      -- couleur propre aux canalisations
+        castChannelColor = { r = 0.35, g = 0.7, b = 1 },
+        castLockedColor = { r = 0.6, g = 0.6, b = 0.6 },   -- sort non interruptible
+        auraCountShow = true, auraCountSize = -2, auraCountPoint = "BOTTOMRIGHT",   -- piles des auras
+        auraDuration = "swipe",   -- "swipe" : chiffres du balayage | "text" : texte propre | "none"
+        auraDurationSize = -1, auraDurationPoint = "CENTER",
+        auraCountOffsetX = 0, auraCountOffsetY = 0, auraDurationOffsetX = 0, auraDurationOffsetY = 0,   -- décalages des textes
+        auraStealGlow = false,    -- lueur des buffs volables
+        auraCancel = false,       -- clic droit sur un buff du joueur : l'annule (hors combat)
         units = {
             player       = Unit(220, 42, { combo = true, comboPips = false, comboSpacing = 2,
                                              comboColor = { r = 1, g = 0.82, b = 0 },
                                              portraitSide = "LEFT", auras = true, aurasAbove = true,
                                              totems = true, totemSize = 30, pvp = true, threatBorder = true }),
-            target       = Unit(220, 42, { auras = true, classification = true, pvp = true }),
+            target       = Unit(220, 42, { auras = true, classification = true, pvp = true,
+                                             comboPips = false, comboSpacing = 2,
+                                             comboColor = { r = 1, g = 0.82, b = 0 } }),
             targettarget = Unit(110, 24, { powerHeight = 0, castbar = false, power = false, level = false, name = true }),
             focus        = Unit(180, 36, { auras = true, classification = true }),
             pet          = Unit(110, 24, { powerHeight = 4, castbar = false, level = false, portraitSide = "LEFT",
@@ -141,6 +194,10 @@ local function OnUnitEvent(frame, event)
     if not active then return end
     if Elements.OnEvent(frame, event) then return end
     if event == "RAID_TARGET_UPDATE" then Elements.UpdateRaidIcon(frame) return end
+    if event == "UNIT_TARGET" then
+        if frame.cfg.nameTarget then Elements.UpdateName(frame, true) end
+        return
+    end
     if event == "PLAYER_LEVEL_UP" then Elements.UpdateLevel(frame) return end
     Elements.UpdateIndicators(frame)   -- PLAYER_REGEN_*, PLAYER_UPDATE_RESTING, groupe
 end
@@ -154,10 +211,9 @@ local function Create(unit)
     frame:RegisterForClicks("AnyUp")
     local clickCast = NS.Modules:Get("clickcast")   -- absent sans MuscaUI_GroupFrames
     if clickCast then clickCast:Apply(frame) end
-    frame:SetFrameStrata("LOW")
     local _, edges = NS.Media:CreateBackdrop(frame)
     frame.border = edges   -- bordure de menace (cfg.threatBorder)
-    frame.cfg, frame.global = Settings(unit), UnitFrames.db
+    frame.cfg, frame.global = ScaledConfig(Settings(unit)), UnitFrames.db
     Elements.Build(frame)
 
     -- UNIT_POWER_FREQUENT couvre déjà UNIT_POWER_UPDATE : une seule mise à jour par variation.
@@ -166,6 +222,7 @@ local function Create(unit)
     end
     for _, event in ipairs(Elements.CAST_EVENTS) do NS.RegisterEventSafe(frame, event, unit) end
     NS.RegisterEventSafe(frame, "RAID_TARGET_UPDATE")
+    NS.RegisterEventSafe(frame, "UNIT_TARGET", unit)   -- « nom > cible »
     if unit == "player" then
         for _, event in ipairs(PLAYER_EVENTS) do NS.RegisterEventSafe(frame, event) end
     end
@@ -179,6 +236,9 @@ local function Create(unit)
             if active then Elements.UpdateAll(self) end
         end)
     end
+    -- Survol : surbrillance (HookScript, le bouton est sécurisé).
+    frame:HookScript("OnEnter", function(self) self.hovered = true Elements.UpdateHighlight(self) end)
+    frame:HookScript("OnLeave", function(self) self.hovered = false Elements.UpdateHighlight(self) end)
     -- Unité apparue ou disparue : le faux cadre du mode déplacement suit.
     frame:HookScript("OnShow", function() if NS.unlocked then UnitFrames:UpdatePreview() end end)
     frame:HookScript("OnHide", function() if NS.unlocked then UnitFrames:UpdatePreview() end end)
@@ -195,7 +255,8 @@ end
 --- Pose tailles, éléments, mover et visibilité d'un cadre (hors combat).
 local function Setup(unit)
     local frame = UnitFrames.frames[unit] or Create(unit)
-    frame.cfg, frame.global = Settings(unit), UnitFrames.db
+    frame.cfg, frame.global = ScaledConfig(Settings(unit)), UnitFrames.db
+    frame:SetFrameStrata(frame.cfg.strata or "LOW")
     Elements.Layout(frame)
     Elements.BuildAuras(frame)
     Elements.LayoutAuras(frame)
@@ -259,6 +320,12 @@ end
 function UnitFrames:Refresh(unit)
     local frame = self.frames[unit]
     if frame and frame.watched then Elements.UpdateAll(frame) end
+end
+
+--- Points de combo du cadre de la cible (le cadre n'écoute que sa propre unité, pas la puissance du joueur).
+function UnitFrames:UpdateTargetCombo()
+    local frame = self.frames.target
+    if frame and frame.watched and frame.cfg and frame.cfg.combo then Elements.UpdateCombo(frame) end
 end
 
 function UnitFrames:GetFrame(unit) return self.frames[unit] end
@@ -381,7 +448,7 @@ end
 --- Taille, mover et visibilité de la barre (hors combat).
 local function SetupTotems()
     if not totemBar then BuildTotems() end
-    local size = Settings("player").totemSize
+    local size = ScaledConfig(Settings("player")).totemSize
     for slot, button in ipairs(totemBar.buttons) do
         button:SetSize(size, size)
         button:ClearAllPoints()
@@ -466,11 +533,20 @@ events:SetScript("OnEvent", function(_, event, unit)
         UnitFrames:Refresh("target")
         UnitFrames:Refresh("targettarget")
         UnitFrames:Refresh("player")   -- points de combo
+        for _, frame in pairs(UnitFrames.frames) do
+            if frame.watched then Elements.UpdateHighlight(frame) end
+        end
     elseif event == "COMBO_TARGET_CHANGED" then
         UnitFrames:Refresh("player")   -- points déplacés vers une autre cible, sans événement de puissance
+        UnitFrames:UpdateTargetCombo()
+    elseif event == "UNIT_POWER_FREQUENT" or event == "UNIT_MAXPOWER" then
+        UnitFrames:UpdateTargetCombo()   -- puissance du joueur : les points du cadre de la cible suivent
     elseif event == "PLAYER_FOCUS_CHANGED" then
         UnitFrames:Refresh("focus")
         UnitFrames:Refresh("focustarget")
+    elseif event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_REGEN_DISABLED" then
+        local player = UnitFrames.frames.player
+        if player and player.watched then Elements.RefreshAuraCancel(player, event == "PLAYER_REGEN_DISABLED") end
     elseif event == "UNIT_PET" then
         if unit == "player" then UnitFrames:Refresh("pet") end
     elseif event == "UNIT_TARGET" then
@@ -490,10 +566,12 @@ function UnitFrames:OnEnable()
     self:Reconcile()
     for _, event in ipairs({ "PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED", "PLAYER_ENTERING_WORLD",
                              "INSTANCE_ENCOUNTER_ENGAGE_UNIT", "PLAYER_TOTEM_UPDATE",
-                             "COMBO_TARGET_CHANGED" }) do
+                             "COMBO_TARGET_CHANGED", "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED" }) do
         NS.RegisterEventSafe(events, event)
     end
     NS.RegisterEventSafe(events, "UNIT_PET", "player")
+    NS.RegisterEventSafe(events, "UNIT_POWER_FREQUENT", "player")
+    NS.RegisterEventSafe(events, "UNIT_MAXPOWER", "player")
     NS.RegisterEventSafe(events, "UNIT_TARGET", "target", "focus")
 end
 
@@ -524,7 +602,10 @@ NS:On("PIXEL_CHANGED", Relayout)
 -- Le thème repeint les bordures : la couleur de menace est reposée par-dessus.
 NS:On("THEME_CHANGED", function()
     if not active then return end
-    for _, frame in pairs(UnitFrames.frames) do Elements.UpdateThreatBorder(frame) end
+    for _, frame in pairs(UnitFrames.frames) do
+        Elements.UpdateThreatBorder(frame)
+        Elements.UpdateHighlight(frame)   -- la bordure de surbrillance est repeinte aux couleurs du thème
+    end
 end)
 
 --------------------------------------------------------------------------------
@@ -532,6 +613,30 @@ end)
 --------------------------------------------------------------------------------
 
 local TEXT_MODES = Elements.TextModeChoices
+
+local function Choices(...)
+    local list = { ... }
+    return function()
+        local choices = {}
+        for _, entry in ipairs(list) do choices[#choices + 1] = { name = L[entry[1]], value = entry[2] } end
+        return choices
+    end
+end
+local STRATA_CHOICES = Choices({ "OPT_GF_G_STRATA_BACKGROUND", "BACKGROUND" }, { "OPT_GF_G_STRATA_LOW", "LOW" },
+    { "OPT_GF_G_STRATA_MEDIUM", "MEDIUM" }, { "OPT_GF_G_STRATA_HIGH", "HIGH" })
+local CAST_STRATA_CHOICES = Choices({ "OPT_UF_G_CAST_STRATA_DEFAULT", "" }, { "OPT_GF_G_STRATA_LOW", "LOW" },
+    { "OPT_GF_G_STRATA_MEDIUM", "MEDIUM" }, { "OPT_GF_G_STRATA_HIGH", "HIGH" })
+local CAST_ICON_CHOICES = Choices({ "OPT_UF_G_CAST_ICON_LEFT", "left" }, { "OPT_UF_G_CAST_ICON_RIGHT", "right" },
+    { "OPT_UF_G_CAST_ICON_NONE", "none" })
+local PORTRAIT_STYLE_CHOICES = Choices({ "OPT_UF_G_PORTRAIT_STYLE_PORTRAIT", "portrait" }, { "OPT_UF_G_PORTRAIT_STYLE_CLASS", "class" })
+-- Indicateurs réglables par unité : clé, libellé, unités qui l'ont.
+local INDICATOR_OPTIONS = {
+    { "combatIcon", "OPT_UF_G_ICON_COMBAT" }, { "raidIcon", "OPT_UF_G_ICON_RAID" },
+    { "classificationIcon", "OPT_UF_G_ICON_CLASSIFICATION" }, { "pvpIcon", "OPT_UF_G_ICON_PVP" },
+    { "happinessIcon", "OPT_UF_G_ICON_HAPPINESS", "pet" },
+}
+
+local AURA_DURATION_MODES, AURA_TEXT_POINTS = Elements.AuraDurationChoices, Elements.AuraTextPointChoices
 
 function UnitFrames:BuildOptions(o)
     local layout = o.layout
@@ -554,15 +659,32 @@ function UnitFrames:BuildOptions(o)
     end
     o:EndAdvanced()
     o:Dropdown("healthText", L.OPT_UF_HEALTH_TEXT, TEXT_MODES)
+    o:Advanced()
+    o:Slider("percentDecimals", L.OPT_UF_G_PERCENT_DECIMALS, 0, 2, 1, 36)
+    o:Color("highlightColor", L.OPT_UF_G_HIGHLIGHT_COLOR, 36)
+    o:Dropdown("castIcon", L.OPT_UF_G_CAST_ICON, CAST_ICON_CHOICES)
+    o:EndAdvanced()
     o:Dropdown("powerText", L.OPT_UF_POWER_TEXT, TEXT_MODES)
     o:Advanced()
     o:Slider("fadeAlpha", L.OPT_UF_FADE_ALPHA, 0, 0.9, 0.05, nil, "%.2f")
     o:Slider("rangeAlpha", L.OPT_SWING_RANGE_ALPHA, 0.1, 0.9, 0.05, nil, "%.2f")
     o:EndAdvanced()
     o:Check("castTarget", L.OPT_CAST_TARGET)
+    o:Check("castText", L.OPT_CAST_TEXT)
+    o:Check("castTimer", L.OPT_CAST_TIMER)
+    o:Check("castRank", L.OPT_CAST_RANK)
     o:Advanced()
+    o:Slider("castTextSize", L.OPT_CAST_TEXT_SIZE, -4, 8, 1)
+    o:Check("castChannel", L.OPT_CAST_CHANNEL)
+    o:Color("castChannelColor", L.OPT_CAST_CHANNEL_COLOR, 36)
+    o:Color("castLockedColor", L.OPT_CAST_LOCKED_COLOR, 36)
     o:Check("castLatency", L.OPT_CAST_LATENCY)
+    o:Check("castLatencyText", L.OPT_UF_G_CAST_LATENCY_TEXT, 36)
     o:Check("castTicks", L.OPT_CAST_TICKS)
+    o:Check("castBackground", L.OPT_UF_G_CAST_BACKGROUND)
+    o:Check("castBorder", L.OPT_UF_G_CAST_BORDER)
+    o:Slider("castAlpha", L.OPT_UF_G_CAST_ALPHA, 0.2, 1, 0.05, nil, "%.2f")
+    o:Dropdown("castStrata", L.OPT_UF_G_CAST_STRATA, CAST_STRATA_CHOICES)
     o:Check("castGCD", L.OPT_CAST_GCD)
     o:EndAdvanced()
     o:Check("interruptReady", L.OPT_CAST_INTERRUPT_READY)
@@ -573,6 +695,21 @@ function UnitFrames:BuildOptions(o)
     o:Advanced()
     o:Color("importantCastColor", L.OPT_CAST_IMPORTANT_COLOR, 36)
     layout:Note(L.NOTE_UF_TEXT_TOKENS, 20)
+    o:EndAdvanced()
+    layout:Title(L.OPT_UF_AURA_TEXT)
+    o:Check("auraCountShow", L.OPT_UF_AURA_COUNT)
+    o:Dropdown("auraDuration", L.OPT_UF_AURA_DURATION, AURA_DURATION_MODES)
+    o:Check("auraStealGlow", L.OPT_UF_AURA_STEALABLE)
+    o:Check("auraCancel", L.OPT_UF_AURA_CANCEL)
+    o:Advanced()
+    o:Slider("auraCountSize", L.OPT_UF_AURA_COUNT_SIZE, -6, 6, 1)
+    o:Dropdown("auraCountPoint", L.OPT_UF_AURA_COUNT_POINT, AURA_TEXT_POINTS)
+    o:Slider("auraCountOffsetX", L.OPT_GF_AURA_COUNT_OFFSET_X, -10, 10, 1, 36)
+    o:Slider("auraCountOffsetY", L.OPT_GF_AURA_COUNT_OFFSET_Y, -10, 10, 1, 36)
+    o:Slider("auraDurationSize", L.OPT_UF_AURA_DURATION_SIZE, -6, 6, 1)
+    o:Dropdown("auraDurationPoint", L.OPT_UF_AURA_DURATION_POINT, AURA_TEXT_POINTS)
+    o:Slider("auraDurationOffsetX", L.OPT_GF_AURA_DURATION_OFFSET_X, -10, 10, 1, 36)
+    o:Slider("auraDurationOffsetY", L.OPT_GF_AURA_DURATION_OFFSET_Y, -10, 10, 1, 36)
     o:EndAdvanced()
     layout:Title(L.OPT_AURA_LISTS)
     local function ListSetter(field)
@@ -606,10 +743,19 @@ function UnitFrames:BuildOptions(o)
         o:CopyFrom("units." .. unit, sources, 36)
         o:Slider(key .. "width", L.OPT_UF_WIDTH, 60, 400, 2, 36)
         o:Slider(key .. "height", L.OPT_UF_HEIGHT, 12, 80, 1, 36)
+        o:Slider(key .. "scale", L.OPT_UF_SCALE, 0.5, 2, 0.05, 36, "%.2f")
         o:Advanced()
         o:Check(key .. "vertical", L.OPT_UF_VERTICAL, 36)
         o:EndAdvanced()
+        o:Advanced()
+        o:Dropdown(key .. "strata", L.OPT_GF_G_STRATA, STRATA_CHOICES, 36)
+        o:Check(key .. "targetHighlight", L.OPT_UF_G_TARGET_HIGHLIGHT, 36)
+        o:Check(key .. "hoverHighlight", L.OPT_UF_G_HOVER_HIGHLIGHT, 36)
+        o:EndAdvanced()
         o:Check(key .. "name", L.OPT_UF_UNIT_NAME, 36)
+        o:Advanced()
+        o:Check(key .. "nameTarget", L.OPT_UF_G_NAME_TARGET, 52)
+        o:EndAdvanced()
         o:Check(key .. "level", L.OPT_UF_UNIT_LEVEL, 36)
         o:Advanced()
         o:Check(key .. "fader", L.OPT_UF_UNIT_FADER, 36)
@@ -617,19 +763,34 @@ function UnitFrames:BuildOptions(o)
         o:EndAdvanced()
         o:Check(key .. "portrait", L.OPT_UF_UNIT_PORTRAIT, 36)
         o:Advanced()
+        o:Dropdown(key .. "portraitStyle", L.OPT_UF_G_PORTRAIT_STYLE, PORTRAIT_STYLE_CHOICES, 52)
+        o:EndAdvanced()
+        o:Advanced()
         o:Check(key .. "classification", L.OPT_UF_UNIT_CLASSIFICATION, 36)
         o:Check(key .. "pvp", L.OPT_UF_UNIT_PVP, 36)
         o:Check(key .. "threatBorder", L.OPT_UF_UNIT_THREAT_BORDER, 36)
         if unit == "target" or unit == "focus" then o:Check(key .. "threatPercent", L.OPT_UF_UNIT_THREAT_PERCENT, 36) end
         if unit == "pet" then o:Check(key .. "happiness", L.OPT_UF_UNIT_HAPPINESS, 36) end
+        for _, indicator in ipairs(INDICATOR_OPTIONS) do
+            if not indicator[3] or indicator[3] == unit then
+                local name = L[indicator[2]]
+                o:Slider(key .. indicator[1] .. "Size", string.format(L.OPT_UF_G_ICON_SIZE, name), 0, 48, 1, 52)
+                o:Slider(key .. indicator[1] .. "OffsetX", string.format(L.OPT_UF_G_ICON_OFFSET_X, name), -30, 30, 1, 52)
+                o:Slider(key .. indicator[1] .. "OffsetY", string.format(L.OPT_UF_G_ICON_OFFSET_Y, name), -30, 30, 1, 52)
+            end
+        end
         o:EndAdvanced()
-        if unit == "player" then
+        if unit == "player" or unit == "target" then
             o:Check(key .. "combo", L.OPT_UF_UNIT_COMBO, 36)
             o:Advanced()
             o:Check(key .. "comboPips", L.OPT_UF_COMBO_PIPS, 52)
             o:Slider(key .. "comboSpacing", L.OPT_UF_COMBO_SPACING, 0, 10, 1, 52)
             o:Color(key .. "comboColor", L.OPT_UF_COMBO_COLOR, 52)
+            o:Check(key .. "comboAbove", L.OPT_UF_G_COMBO_ABOVE, 52)
+            o:Slider(key .. "comboHeight", L.OPT_UF_G_COMBO_HEIGHT, 0, 20, 1, 52)
             o:EndAdvanced()
+        end
+        if unit == "player" then
             o:Check(key .. "totems", L.OPT_UF_UNIT_TOTEMS, 36)
             o:Advanced()
             o:Slider(key .. "totemSize", L.OPT_UF_TOTEM_SIZE, 16, 60, 2, 52)
@@ -637,6 +798,10 @@ function UnitFrames:BuildOptions(o)
         end
         o:Check(key .. "power", L.OPT_UF_UNIT_POWER, 36)
         o:Slider(key .. "powerHeight", L.OPT_UF_POWER_HEIGHT, 0, 16, 1, 52)
+        o:Advanced()
+        o:Check(key .. "powerColorCustom", L.OPT_UF_G_POWER_COLOR_CUSTOM, 52)
+        o:Color(key .. "powerColor", L.OPT_UF_G_POWER_COLOR, 68)
+        o:EndAdvanced()
         if unit == "player" then
             o:Check(key .. "manaSpark", L.OPT_MANA_SPARK, 52)
             o:Check(key .. "manaCostPrediction", L.OPT_MANA_COST_PREDICTION, 52)
@@ -649,6 +814,7 @@ function UnitFrames:BuildOptions(o)
         o:EndAdvanced()
         o:Check(key .. "auras", L.OPT_UF_UNIT_AURAS, 36)
         o:Check(key .. "aurasAbove", L.OPT_UF_AURAS_ABOVE, 52)
+        o:Check(key .. "auraSplit", L.OPT_UF_AURA_SPLIT, 52)
         o:Advanced()
         o:Slider(key .. "auraSize", L.OPT_UF_AURA_SIZE, 12, 40, 1, 52)
         o:Dropdown(key .. "auraFilter", L.OPT_AURA_FILTER, NS.AuraFilterChoices, 52)
@@ -657,7 +823,7 @@ function UnitFrames:BuildOptions(o)
         if unit ~= "targettarget" and unit ~= "focustarget" then
             o:EditBox(key .. "powerFormat", L.OPT_UF_POWER_FORMAT, 1, 36)
         end
-        o:Visibility(key .. "visibility", L.OPT_VISIBILITY, { secure = true, noMouseover = true })
+        o:Visibility(key .. "visibility", L.OPT_VISIBILITY, { secure = true, hideClauses = true, noMouseover = true })
     end
 end
 
@@ -680,7 +846,7 @@ function UnitFrames:BuildPreview(p)
         for _, units in ipairs(PREVIEW_ROWS) do
             local row, x = { top = height, height = 0, units = {} }, 0
             for _, unit in ipairs(units) do
-                local cfg = db.units[unit]
+                local cfg = db.units[unit] and ScaledConfig(db.units[unit])
                 if cfg and cfg.enabled then
                     row.units[#row.units + 1] = { unit = unit, cfg = cfg, x = x }
                     x = x + cfg.width + 16

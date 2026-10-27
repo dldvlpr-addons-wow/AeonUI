@@ -68,6 +68,9 @@ function T.reset()
     Mock.groupSize = 0
     Mock.roles = {}
     Mock.merchantOpen = false
+    Mock.gossip = { active = {}, available = {} }
+    Mock.trainer = { services = {}, bought = {} }
+    Mock.logging, Mock.talentPoints, Mock.mapLevels = false, { 0, 0 }, {}
     Mock.popups = {}
     Mock.namePlates = {}
     Mock.shapeshiftForm, Mock.formID = 0, nil
@@ -121,6 +124,24 @@ local FILES = {
     "tests/test_radial_menu.lua",
     "tests/test_skinwindows.lua",
     "tests/test_lot7.lua",
+    "tests/test_quality_of_life.lua",
+    "tests/test_clickcast_extensions.lua",
+    "tests/test_unitframe_extensions.lua",
+    "tests/test_bars_bags_extensions.lua",
+    "tests/test_group_nameplate_extensions.lua",
+    "tests/test_m_reliquat_groupe_chat.lua",
+    "tests/test_m_reliquat_sacs.lua",
+    "tests/test_g_lot1.lua",
+    "tests/test_g_groupe.lua",
+    "tests/test_g_qol.lua",
+    "tests/test_g_sacs_skin.lua",
+    "tests/test_g_barres_action.lua",
+    "tests/test_g_plaques.lua",
+    "tests/test_g_cadres_unite.lua",
+    "tests/test_g_chat_minimap.lua",
+    "tests/test_g_coeur.lua",
+    "tests/test_g_ressources.lua",
+    "tests/test_g_swing.lua",
 }
 for _, file in ipairs(FILES) do
     T.reset()

@@ -24,6 +24,15 @@ local SwingTimer = NS.Modules:Register("swingtimer", {
         height = 10,
         spacing = 2,
         showTime = true,          -- temps restant avant le coup
+        -- Habillage : par défaut, rendu du thème inchangé.
+        showBackground = true,    -- fond derrière chaque barre
+        customBackground = false, -- couleur de fond propre (sinon celle du thème)
+        backgroundColor = { r = 0.05, g = 0.06, b = 0.08, a = 0.9 },
+        showBorder = true,        -- bordure de chaque barre
+        textSizeOffset = -2,      -- écart à la police du thème
+        textOffsetX = 0,          -- décalage du texte, en plus de son ancrage
+        textOffsetY = 0,
+        strata = "default",       -- "default" : strate d'origine du cadre
         showLabel = false,        -- étiquette de l'arme (MD, MG, Dist.)
         rangeCheck = true,        -- barre atténuée quand la cible est hors de portée
         rangeAlpha = 0.35,
@@ -111,19 +120,42 @@ end
 
 local function Build()
     container = CreateFrame("Frame", "MuscaUISwingTimer", UIParent)
+    container.defaultStrata = container:GetFrameStrata()
     for _, hand in ipairs(HANDS) do
         local bar = Media:CreateStatusBar(container)
-        Media:CreateBackdrop(bar)
+        bar.backdropBg, bar.backdropEdges = Media:CreateBackdrop(bar)
         bar.hand = hand
         bar.time = Media:CreateText(bar, "OVERLAY", -2)
         bar.label = Media:CreateText(bar, "OVERLAY", -2)
         bars[hand] = bar
     end
     container:Hide()
+    SwingTimer:Style()
+end
+
+--- Fond, bordure, texte, strate : réglages d'habillage, rendus au thème quand ils sont coupés.
+-- La texture passe par la page Médias (Media:StatusBarTexture).
+function SwingTimer:Style()
+    local db = self.db
+    local theme = NS.db and NS.db.theme
+    local fill = db.customBackground and db.backgroundColor or (theme and theme.backdrop)
+    for _, bar in pairs(bars) do
+        bar.bg:SetShown(db.showBackground)
+        bar.backdropBg:SetShown(db.showBackground)
+        if fill then
+            NS.SetSolidColor(bar.bg, fill.r, fill.g, fill.b, fill.a or 1)
+            NS.SetSolidColor(bar.backdropBg, fill.r, fill.g, fill.b, fill.a or 1)
+        end
+        for _, edge in pairs(bar.backdropEdges) do edge:SetShown(db.showBorder) end
+        Media:SetTextSizeDelta(bar.time, db.textSizeOffset)
+        Media:SetTextSizeDelta(bar.label, db.textSizeOffset)
+    end
+    container:SetFrameStrata(db.strata ~= "default" and db.strata or container.defaultStrata)
 end
 
 function SwingTimer:Layout()
     local db = self.db
+    local tx, ty = db.textOffsetX, db.textOffsetY
     local vertical = db.orientation == "VERTICAL"
     local offset = 0
     for _, hand in ipairs(HANDS) do
@@ -136,13 +168,13 @@ function SwingTimer:Layout()
         if vertical then
             bar:SetSize(db.height, db.width)
             bar:SetPoint("LEFT", container, "LEFT", offset, 0)
-            bar.time:SetPoint("BOTTOM", bar, "TOP", 0, 2)
-            bar.label:SetPoint("TOP", bar, "BOTTOM", 0, -2)
+            bar.time:SetPoint("BOTTOM", bar, "TOP", tx, 2 + ty)
+            bar.label:SetPoint("TOP", bar, "BOTTOM", tx, -2 + ty)
         else
             bar:SetSize(db.width, db.height)
             bar:SetPoint("TOP", container, "TOP", 0, -offset)
-            bar.time:SetPoint("RIGHT", bar, "RIGHT", -2, 0)
-            bar.label:SetPoint("LEFT", bar, "LEFT", 2, 0)
+            bar.time:SetPoint("RIGHT", bar, "RIGHT", -2 + tx, ty)
+            bar.label:SetPoint("LEFT", bar, "LEFT", 2 + tx, ty)
         end
         bar.label:SetText(L[LABEL_KEYS[hand]])
         bar.label:SetShown(db.showLabel)
@@ -245,6 +277,7 @@ function SwingTimer:OnEnable()
         NS.RegisterEventSafe(events, event)
     end
     NS.RegisterEventSafe(events, "UNIT_ATTACK_SPEED", "player")
+    self:Style()
     self:Layout()
     NS.Movers:Register("swingTimer", container, L.MOVER_SWING, "CENTER", 0, -240)
     NS.Movers:Load("swingTimer")
@@ -267,11 +300,14 @@ end
 
 function SwingTimer:OnRefresh()
     if not container then return end
+    self:Style()
     self:Layout()
     self:Update()
 end
 
 NS:On("PREVIEW", function() SwingTimer:Update() end)
+NS:On("THEME_CHANGED", function() if container then SwingTimer:Style() end end)
+NS:On("PIXEL_CHANGED", function() if container then SwingTimer:Style() end end)   -- RefreshBackdrops repeint le fond du thème
 
 function SwingTimer:BuildOptions(o)
     if not SwingTimer.Available() then o:Note(L.SWING_UNAVAILABLE) end
@@ -291,6 +327,17 @@ function SwingTimer:BuildOptions(o)
     o:Slider("height", L.OPT_RESOURCE_HEIGHT, 4, 30, 1)
     o:Color("color", L.OPT_SWING_COLOR)
     o:Advanced()
+    o:Check("showBackground", L.OPT_G_SWING_BACKGROUND)
+    o:Check("customBackground", L.OPT_G_SWING_CUSTOM_BACKGROUND, 36)
+    o:Color("backgroundColor", L.OPT_G_SWING_BACKGROUND_COLOR, 36)
+    o:Check("showBorder", L.OPT_G_SWING_BORDER)
+    o:Slider("textSizeOffset", L.OPT_G_SWING_TEXT_SIZE, -6, 8, 1, 36)
+    o:Slider("textOffsetX", L.OPT_G_SWING_TEXT_X, -40, 40, 1, 36)
+    o:Slider("textOffsetY", L.OPT_G_SWING_TEXT_Y, -40, 40, 1, 36)
+    o:Dropdown("strata", L.OPT_G_SWING_STRATA, {
+        { name = L.OPT_G_RES_STRATA_DEFAULT, value = "default" }, { name = L.OPT_STRATA_LOW, value = "LOW" },
+        { name = L.OPT_STRATA_MEDIUM, value = "MEDIUM" }, { name = L.OPT_STRATA_HIGH, value = "HIGH" },
+    }, 36)
     o:Color("offHandColor", L.OPT_SWING_OFF_COLOR)
     o:Color("rangedColor", L.OPT_SWING_RANGED_COLOR)
     o:Color("queueColor", L.OPT_SWING_QUEUE_COLOR)

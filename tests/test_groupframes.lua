@@ -697,6 +697,12 @@ test("groupe : icônes des buffs de groupe manquants, détection de Reminders, c
     Mock.FireEvent("UNIT_AURA", "party1")
     eq(ami.missingIcons[1]:IsShown(), false, "famille décochée")
     NS.db.modules.reminders.coverageRules.fortitude = true
+    Mock.knownSpells[1243] = nil
+    Mock.FireEvent("SPELLS_CHANGED")
+    eq(ami.missingIcons[1]:IsShown(), false, "sort oublié : plus d'icône")
+    Mock.knownSpells[1243] = true
+    Mock.FireEvent("SPELLS_CHANGED")
+    eq(ami.missingIcons[1]:IsShown(), true, "sort appris : icône sans attendre UNIT_AURA")
     Mock.knownSpells[1243], Mock.spells[1243], Mock.spells[21562] = nil, nil, nil
     Mock.units.player.class = "MAGE"
     Mock.SetGroup(1, false)

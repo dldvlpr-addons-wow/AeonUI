@@ -77,7 +77,9 @@ local Reminders = NS.Modules:Register("reminders", {
         skipResting = true,        -- pas de rappel de buff en ville / auberge
         durability = true,
         durabilityThreshold = 20,
+        textSizeBonus = 0,         -- points ajoutés à la taille du texte des rappels
         bagsFull = true,
+        talents = false,           -- points de talent non dépensés
         stealth = false,
         stealthEverywhere = false, -- sinon : donjons et raids seulement
         stealthText = "",          -- vide = texte de la locale
@@ -89,12 +91,19 @@ local Reminders = NS.Modules:Register("reminders", {
         pet = true,
         wellFed = false,
         groupCoverage = true,      -- membres du groupe sans ton buff de groupe
+        -- Par famille, pile et cadres. Épines : réservée au tank, pas une icône sur chaque membre.
         coverageRules = { arcaneIntellect = true, fortitude = true, divineSpirit = true, wildCoverage = true,
-                          thorns = true, salvation = true, blessings = true },   -- par famille, pile et cadres
+                          thorns = false, salvation = true, blessings = true },
         customBuffs = "",          -- identifiants de buffs à garder (« 1234, 5678 »), si le sort est connu
         castButtons = true,        -- icône cliquable qui lance le sort manquant, hors combat
         shadowform = false,
         righteousFury = false,
+        glowStyle = "pixel",       -- lueur de l'icône de lancement ("none" : aucune)
+        iconBorder = false,        -- bordure autour de l'icône de lancement
+        followCursor = false,      -- la pile suit le curseur (hors combat)
+        gearSoundOwn = false,      -- son propre aux rappels d'équipement (durabilité, sacs, talents)
+        gearSoundPreset = "ping",
+        gearSoundFile = "",
         sound = true,
         soundPreset = "ping",
         soundFile = "",            -- son importé, prioritaire sur le preset
@@ -104,8 +113,24 @@ local Reminders = NS.Modules:Register("reminders", {
 local active = false
 local frame, lines
 local shown = {}          -- [clé] = true pour les rappels actuellement affichés
+local dismissed = {}      -- [clé] = true : masqué d'un clic du milieu, jusqu'au prochain écran de chargement
 local DEFAULT_COLOR = { r = 1, g = 0.55, b = 0.15 }
 local lastSound = 0
+local GEAR_KEYS = { durability = true, bags = true, talents = true }
+local following = false   -- la pile suit le curseur : le mover reprend la main à l'arrêt
+
+--- La pile suit le curseur seulement sans icône cliquable (un cadre protégé ne se déplace pas en combat).
+local function WantsCursor()
+    return Reminders.db.followCursor and not Reminders.db.castButtons
+end
+
+--- Rend la pile à son mover, hors combat.
+local function ReleaseCursor()
+    if following and not NS.InCombat() then
+        following = false
+        NS.Movers:Load("reminders")
+    end
+end
 local repeatTicker        -- rejoue le son tant que camouflage ou posture reste affiché
 local stealthSince        -- GetTime() de la sortie de combat, pour le délai du camouflage
 
@@ -201,6 +226,23 @@ local function PetReminder(db, classFile)
     if not db.pet or not spell or not NS.KnowsSpell(spell) then return nil end
     if (_G.IsMounted and IsMounted()) or UnitExists("pet") then return nil end
     return L.REM_PET
+end
+
+--- Points de talent non dépensés : 0 si aucun, l'API absente ou la réponse secrète.
+-- C_ClassTalents d'abord, puis l'API des talents classiques.
+local function UnspentTalentPoints()
+    local talents = _G.C_ClassTalents
+    if talents and talents.HasUnspentTalentPoints then
+        local has, classPoints, specPoints = talents.HasUnspentTalentPoints()
+        if NS.IsSecret(has) or not has then return 0 end
+        if NS.IsSecret(classPoints) or NS.IsSecret(specPoints) then return 1 end
+        return math.max((classPoints or 0) + (specPoints or 0), 1)
+    end
+    if _G.GetUnspentTalentPoints then
+        local points = GetUnspentTalentPoints()
+        return (not NS.IsSecret(points) and tonumber(points)) or 0
+    end
+    return 0
 end
 
 local function WellFedReminder(db)
@@ -342,6 +384,11 @@ function Reminders:Collect()
         for bag = 0, NS.NUM_BAGS do free = free + NS.GetBagFreeSlots(bag, true) end
         if free == 0 then result[#result + 1] = { key = "bags", text = L.REM_BAGS_FULL } end
     end
+
+    if db.talents then
+        local points = UnspentTalentPoints()
+        if points > 0 then result[#result + 1] = { key = "talents", text = string.format(L.REM_TALENTS, points) } end
+    end
     return result
 end
 
@@ -356,12 +403,34 @@ local function Build()
     frame.hint = Media:CreateText(frame, "OVERLAY")
     frame.hint:SetPoint("BOTTOM", frame, "TOP", 0, 4)
     frame.hint:SetText(L.REM_DRAG_HINT)
+    frame:SetScript("OnUpdate", function()
+        if not (WantsCursor() and active) or NS.unlocked then ReleaseCursor() return end
+        if NS.InCombat() then return end
+        following = true
+        local x, y = GetCursorPosition()
+        local scale = UIParent:GetEffectiveScale()
+        frame:ClearAllPoints()
+        frame:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", x / scale, y / scale + 24)
+    end)
     lines = {}
     for i = 1, MAX_LINES do
         local line = Media:CreateText(frame, "OVERLAY", 4, "OUTLINE")
         line:SetPoint("TOP", frame, "TOP", 0, -(i - 1) * 22)
         line.index = i
         lines[i] = line
+        -- Clic du milieu sur le texte : rappel ignoré jusqu'au prochain écran de chargement. Cadre non
+        -- sécurisé, donc utilisable en combat ; il suit la ligne (Evaluate).
+        local catcher = CreateFrame("Button", nil, frame)
+        catcher:SetAllPoints(line)
+        catcher:RegisterForClicks("MiddleButtonUp")
+        pcall(catcher.SetPassThroughButtons, catcher, "LeftButton", "RightButton", "Button4", "Button5")   -- ciblage et caméra passent
+        catcher:Hide()
+        catcher:SetScript("OnClick", function()
+            if not line.key then return end
+            dismissed[line.key] = true
+            Reminders:Evaluate()
+        end)
+        line.catcher = catcher
     end
 end
 
@@ -376,6 +445,7 @@ local function CastButton(line)
     button.icon = button:CreateTexture(nil, "ARTWORK")
     button.icon:SetAllPoints(button)
     button.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    button.border = Media:CreateBorder(button)
     button:Hide()
     RegisterStateDriver(button, "visibility", "[combat] hide")   -- l'affichage revient à Evaluate
     line.castButton = button
@@ -404,7 +474,9 @@ local function SetCastButton(line, entry, enabled)
     button:SetAttribute("unit", entry.unit or "player")
     button.icon:SetTexture(NS.GetSpellTexture(spell))
     button:Show()
-    NS.Glow.Show(button, "pixel")
+    for _, edge in pairs(button.border) do edge:SetShown(Reminders.db.iconBorder) end
+    local style = Reminders.db.glowStyle
+    if style == "none" then NS.Glow.Hide(button) else NS.Glow.Show(button, style) end
 end
 
 local function ApplyUnlock(unlocked)
@@ -423,6 +495,7 @@ function Reminders:Evaluate()
             for i = 1, MAX_LINES do
                 lines[i]:SetText(nil)
                 lines[i]:Hide()
+                lines[i].catcher:Hide()
             end
             shown = {}
             self:UpdateRepeat()
@@ -431,19 +504,29 @@ function Reminders:Evaluate()
     end
     combatHidden = false
     local list = self:Collect()
-    local now, fresh = {}, false
+    for i = #list, 1, -1 do
+        if dismissed[list[i].key] then table.remove(list, i) end
+    end
+    local now, fresh, freshOther = {}, false, false
     for i = 1, MAX_LINES do
         local entry = list[i]
         if entry then
             lines[i]:SetText(entry.text)
+            lines[i].key = entry.key
+            lines[i].catcher:Show()
             local color = entry.color or DEFAULT_COLOR
             lines[i]:SetTextColor(color.r, color.g, color.b)
             lines[i]:Show()
             now[entry.key] = true
-            if not shown[entry.key] then fresh = true end
+            if not shown[entry.key] then
+                fresh = true
+                if not GEAR_KEYS[entry.key] then freshOther = true end
+            end
         else
             lines[i]:SetText(nil)
             lines[i]:Hide()
+            lines[i].key = nil
+            lines[i].catcher:Hide()
         end
         SetCastButton(lines[i], entry, self.db.castButtons)   -- après le texte : il se cale sur sa largeur
     end
@@ -452,7 +535,11 @@ function Reminders:Evaluate()
     if not NS.InCombat() then frame:SetShown(#list > 0 or NS:Previewing()) end
     if fresh and self.db.sound and GetTime() - lastSound >= SOUND_THROTTLE then
         lastSound = GetTime()
-        NS.PlayPreset(self.db.soundPreset, self.db.soundFile)
+        if self.db.gearSoundOwn and not freshOther then
+            NS.PlayPreset(self.db.gearSoundPreset, self.db.gearSoundFile)
+        else
+            NS.PlayPreset(self.db.soundPreset, self.db.soundFile)
+        end
     end
     self:UpdateRepeat()
     return list
@@ -505,6 +592,7 @@ events:SetScript("OnEvent", function(_, event, unit)
             if not (unit == "player" or unit:find("^party%d") or unit:find("^raid%d")) then return end
             staleUnits[unit] = true
         elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" or event == "SPELLS_CHANGED" then
+            if event == "PLAYER_ENTERING_WORLD" then dismissed = {} end
             coverageDirty = true
         end
         return ScheduleEvaluate()
@@ -518,10 +606,17 @@ local EVENTS = {
     "UPDATE_INVENTORY_DURABILITY", "ZONE_CHANGED_NEW_AREA", "GROUP_ROSTER_UPDATE",
     "PLAYER_UPDATE_RESTING", "UPDATE_STEALTH", "PLAYER_ALIVE", "PLAYER_UNGHOST",
     "SPELLS_CHANGED", "UNIT_PET", "PLAYER_MOUNT_DISPLAY_CHANGED",
+    "CHARACTER_POINTS_CHANGED", "PLAYER_LEVEL_UP", "PLAYER_TALENT_UPDATE", "TRAIT_CONFIG_UPDATED",
 }
+
+--- Taille du texte : écart de base (4, comme à la construction) plus le réglage.
+local function ApplyTextSize()
+    for i = 1, MAX_LINES do Media:SetTextSizeDelta(lines[i], 4 + Reminders.db.textSizeBonus) end
+end
 
 function Reminders:OnEnable()
     if not frame then Build() end
+    ApplyTextSize()
     active = true
     stealthSince = GetTime()
     for _, event in ipairs(EVENTS) do NS.RegisterEventSafe(events, event) end
@@ -549,6 +644,8 @@ function Reminders:OnDisable()
 end
 
 function Reminders:OnRefresh()
+    if lines then ApplyTextSize() end
+    if not WantsCursor() then ReleaseCursor() end
     coverageDirty = true
     NS:Fire("MISSING_BUFFS_CHANGED")   -- familles cochées : icônes des cadres
     self:Evaluate()
@@ -565,6 +662,12 @@ end)
 --------------------------------------------------------------------------------
 -- Options
 --------------------------------------------------------------------------------
+
+local function glowChoices()
+    local choices = NS.Glow.Choices()
+    table.insert(choices, 1, { name = L.OPT_CDM_GLOW_NONE, value = "none" })
+    return choices
+end
 
 function Reminders:BuildOptions(o)
     o:Title(L.OPT_REM_BUFFS)
@@ -583,6 +686,12 @@ function Reminders:BuildOptions(o)
     o:EditBox("customBuffs", L.OPT_REM_CUSTOM, 1)
     o:EndAdvanced()
     o:Check("castButtons", L.OPT_REM_CAST_BUTTONS)
+    o:Dropdown("glowStyle", L.OPT_GLOW_STYLE, glowChoices(), 36)
+    o:Check("iconBorder", L.OPT_G_RES_REM_BORDER, 36)
+    local follow = o:Check("followCursor", L.OPT_G_RES_REM_CURSOR)
+    -- Grisée tant que l'icône cliquable est active.
+    if follow and o.layout.Bind then o.layout:Bind(follow, { function() return not Reminders.db.castButtons end }) end
+    o:Hint(L.OPT_REM_DISMISS_HINT)
     local _, classFile = UnitClass("player")
     local choices = NS.STANCE_CHOICES[classFile]
     if choices then
@@ -606,9 +715,13 @@ function Reminders:BuildOptions(o)
     o:Slider("durabilityThreshold", L.OPT_REM_DURABILITY_THRESHOLD, 5, 50, 5, 36, "%d %%")
     o:EndAdvanced()
     o:Check("bagsFull", L.OPT_REM_BAGS)
+    o:Check("talents", L.OPT_REM_TALENTS)
     o:Title(L.OPT_REM_ALERT)
+    o:Slider("textSizeBonus", L.OPT_G_QOL_REM_TEXT_SIZE, -4, 6, 1)
     o:Check("sound", L.OPT_REM_SOUND)
     o:Sound("soundPreset", "soundFile", 36)
+    o:Check("gearSoundOwn", L.OPT_G_RES_REM_GEAR_SOUND, 36)
+    o:Sound("gearSoundPreset", "gearSoundFile", 52)
     o:Advanced()
     o:Slider("repeatSound", L.OPT_REM_REPEAT, 0, 30, 1, 36, "%d s")
     o:EndAdvanced()

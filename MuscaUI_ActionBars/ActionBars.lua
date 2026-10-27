@@ -18,7 +18,10 @@ local GCD_MAX = 1.5   -- recharge globale la plus longue, en secondes
 
 local function Bar(enabled, overrides)
     local cfg = { enabled = enabled, buttons = 12, perRow = 12, size = 36, spacing = 4, alpha = 1, mouseover = false,
-                  visibility = NS.Visibility.Spec() }   -- conditions communes (Core/Visibility), survol à part
+                  visibility = NS.Visibility.Spec(),   -- conditions communes (Core/Visibility), survol à part
+                  background = false, backgroundColor = { r = 0, g = 0, b = 0 }, backgroundAlpha = 0.5,   -- fond derrière les boutons
+                  border = false, borderColor = { r = 0.3, g = 0.3, b = 0.3 },   -- bordure autour de la barre
+                  endCaps = false }   -- gryphons Blizzard de part et d'autre
     for k, v in pairs(overrides or {}) do cfg[k] = v end
     return cfg
 end
@@ -39,13 +42,29 @@ local ActionBars = NS.Modules:Register("actionbars", {
         petBar = "move",
         hotkeys = true,           -- texte du raccourci sur les boutons
         macroNames = true,        -- nom de la macro sur les boutons
+        buttonTooltip = "show",   -- infobulle des boutons : "show" | "hideInCombat" | "hide"
         linkedMouseover = false,  -- survoler une barre « au survol » révèle toutes les autres
         iconStyle = "blizzard",   -- "blizzard" : rendu d'origine ; "aeon" : icône recadrée, bordure fine, fond
         iconZoom = 0.08,          -- recadrage de l'icône en style MuscaUI (part de chaque bord)
         classBorder = false,      -- bordure à la couleur de classe (style MuscaUI)
+        customBorder = false,     -- bordure d'une couleur choisie (style MuscaUI), après la couleur de classe
+        borderColor = { r = 0.3, g = 0.3, b = 0.3 },
         cooldownDesaturate = true, -- icône grisée pendant une recharge (hors recharge globale)
         cooldownColor = { r = 0, g = 0, b = 0 },   -- couleur du voile de recharge
+        formPaging = true,        -- barre 1 : la page change avec la forme (druide, guerrier, voleur furtif)
+        pageArrows = false,       -- barre 1 : flèches de page et numéro de page, à droite
         procGlow = "blizzard",    -- lueur d'un sort en surbrillance : "blizzard" ou un style de NS.Glow
+        slotBackgroundAlpha = 1,  -- opacité du fond d'icône Blizzard (emplacements vides compris)
+        hideZeroCharges = false,  -- cache le « 0 » du compteur de charges
+        hideCooldownNumbers = false,   -- cache les nombres de recharge Blizzard
+        chargeCooldownNumbers = false, -- montre les nombres de la recharge d'une charge
+        cooldownSwipeAlpha = 0.8, -- opacité du voile de recharge
+        cooldownIconAlpha = 1,    -- opacité de l'icône pendant une recharge
+        hideCastAnimations = false, -- retire l'animation de lancement et le réticule de cible
+        interactionColors = false, -- teinte pressé / survol / sort en cours
+        interactionClassColor = false,
+        pushedColor = { r = 1, g = 1, b = 1 }, highlightColor = { r = 1, g = 1, b = 1 }, checkedColor = { r = 1, g = 1, b = 1 },
+        styleFlyout = false,      -- style MuscaUI aussi sur le flyout de sorts
         -- Barre 1 : page par modificateur (0 = aucune).
         bars = { Bar(true, { pageAlt = 0, pageCtrl = 0, pageShift = 0 }), Bar(true), Bar(true), Bar(false, { perRow = 1 }), Bar(false, { perRow = 1 }), Bar(false),
                  Bar(false), Bar(false) },
@@ -71,7 +90,7 @@ local BAR_DEFS = {
 -- (véhicule Blizzard) et barre 1 cachée pour laisser la barre Blizzard dédiée.
 local SPECIAL_BAR = "[overridebar][vehicleui][possessbar]"
 local PAGE_DRIVER = SPECIAL_BAR .. " 12; [bar:2] 2; [bar:3] 3; [bar:4] 4; [bar:5] 5; [bar:6] 6; "
-    .. "[bonusbar:1] 7; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10; [bonusbar:5] 11; "
+local FORM_DRIVER = "[bonusbar:1] 7; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10; [bonusbar:5] 11; "
 local MODIFIERS = { { key = "pageAlt", mod = "alt" }, { key = "pageCtrl", mod = "ctrl" }, { key = "pageShift", mod = "shift" } }
 
 --- Pages libres pour un modificateur de la barre 1 : celles des barres 2 à 8 éteintes (2, 7 à 12
@@ -87,10 +106,11 @@ end
 
 --- Pilote de page de la barre 1 : modificateurs après formes et véhicule, qu'ils ne masquent jamais.
 -- Une page reprise depuis par une barre allumée est ignorée et remise à « aucune », que le menu suit.
-function ActionBars.PageDriver(bars)
+-- `ignoreForms` : les formes ne changent plus la page (véhicule et pages manuelles gardés).
+function ActionBars.PageDriver(bars, ignoreForms)
     local free = {}
     for _, page in ipairs(ActionBars.FreePages(bars)) do free[page] = true end
-    local driver = PAGE_DRIVER
+    local driver = ignoreForms and PAGE_DRIVER or (PAGE_DRIVER .. FORM_DRIVER)
     for _, modifier in ipairs(MODIFIERS) do
         local page = bars[1][modifier.key]
         if free[page] then
@@ -147,6 +167,7 @@ local EXTRAS_EVENTS = {
     ACTIONBAR_UPDATE_COOLDOWN = true, ACTIONBAR_SLOT_CHANGED = true, ACTIONBAR_PAGE_CHANGED = true,
     UPDATE_BONUS_ACTIONBAR = true, PLAYER_ENTERING_WORLD = true, UPDATE_SHAPESHIFT_FORM = true,
     SPELL_ACTIVATION_OVERLAY_GLOW_SHOW = true, SPELL_ACTIVATION_OVERLAY_GLOW_HIDE = true,
+    SPELL_UPDATE_CHARGES = true,
 }
 local BUTTON_UNIT_EVENTS = {
     "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_CHANNEL_STOP",
@@ -427,14 +448,36 @@ local function ApplyStyled(key, def, mode)
     Movers:Load(key .. "_styled")
 end
 
+--- Cache l'infobulle après celle de Blizzard (hook post, aucun script remplacé : pas de taint).
+local function HideButtonTooltip()
+    local mode = ActionBars.db.buttonTooltip
+    if mode == "hide" or (mode == "hideInCombat" and NS.InCombat()) then GameTooltip:Hide() end
+end
+
+--- Hook unique par bouton : survol, puis SetTooltip (rappelé par UpdateTooltip, donc aussi à l'entrée en combat).
+local function HookButtonTooltip(button)
+    if button.muscaTooltipHooked or not button.HookScript then return end
+    button.muscaTooltipHooked = true
+    button:HookScript("OnEnter", HideButtonTooltip)
+    if button.SetTooltip then hooksecurefunc(button, "SetTooltip", HideButtonTooltip) end
+end
+
 -- Boutons Blizzard des postures et du familier : même style d'icône que nos barres.
 local SIDE_BUTTONS = { stance = "StanceButton%d", pet = "PetActionButton%d" }
 
 local function ApplySideFrames()
+    if not ActionBars.flyoutHooked and _G.SpellFlyout and SpellFlyout.HookScript then
+        ActionBars.flyoutHooked = true
+        SpellFlyout:HookScript("OnShow", function() ActionBars.StyleFlyoutButtons() end)
+    end
+    ActionBars.StyleFlyoutButtons()
     for key, pattern in pairs(SIDE_BUTTONS) do
         for i = 1, 10 do
             local button = _G[string.format(pattern, i)]
-            if button then ActionBars.StyleButton(button) end
+            if button then
+                ActionBars.StyleButton(button)
+                HookButtonTooltip(button)
+            end
         end
     end
     for key, def in pairs(SIDE_FRAMES) do
@@ -621,6 +664,8 @@ function ActionBars.StyleButton(button)
         local _, classFile = UnitClass("player")
         color.r, color.g, color.b = NS.ClassColor(not NS.IsSecret(classFile) and classFile or nil)
         color.a = 1
+    elseif db.customBorder and db.borderColor then
+        color.r, color.g, color.b, color.a = db.borderColor.r, db.borderColor.g, db.borderColor.b, 1
     else
         local c = NS.db.theme.border
         color.r, color.g, color.b, color.a = c.r, c.g, c.b, c.a or 1
@@ -631,6 +676,127 @@ function ActionBars.StyleButton(button)
     end
     button.muscaBackground:SetShown(aeon)
 end
+
+-- Pressé, survol et sort en cours : textures du modèle, teintées par SetVertexColor (blanc = d'origine).
+local INTERACTION_TEXTURES = { { "GetPushedTexture", "pushedColor" }, { "GetHighlightTexture", "highlightColor" },
+                               { "GetCheckedTexture", "checkedColor" } }
+-- Animations de lancement du modèle : cadres rendus invisibles, jamais retirés (Blizzard les montre et les cache).
+local CAST_ANIMATION_FRAMES = { "SpellCastAnimFrame", "TargetReticleAnimFrame" }
+
+--- Réglages de rendu propres au bouton, sans protection : fond d'icône, nombres de recharge,
+-- teintes d'interaction, animations de lancement. Un réglage coupé rend l'état d'origine.
+function ActionBars.ApplyButtonLook(button)
+    local db = ActionBars.db
+    if button.SlotBackground then button.SlotBackground:SetAlpha(db.slotBackgroundAlpha or 1) end
+    local cooldown = button.cooldown
+    if cooldown and cooldown.SetHideCountdownNumbers and (db.hideCooldownNumbers or button.muscaNumbersHidden) then
+        cooldown.foreverHideNumbers = db.hideCooldownNumbers or nil   -- NS.StyleCooldown le relit
+        cooldown:SetHideCountdownNumbers(db.hideCooldownNumbers and true or false)
+        button.muscaNumbersHidden = db.hideCooldownNumbers or nil
+    end
+    local charges = button.chargeCooldown
+    if charges and charges.SetHideCountdownNumbers and (db.chargeCooldownNumbers or button.muscaChargeNumbers) then
+        charges:SetHideCountdownNumbers(not db.chargeCooldownNumbers)
+        button.muscaChargeNumbers = db.chargeCooldownNumbers or nil
+    end
+    if db.interactionColors or button.muscaTinted then
+        local r, g, b
+        if db.interactionClassColor then
+            local _, classFile = UnitClass("player")
+            r, g, b = NS.ClassColor(not NS.IsSecret(classFile) and classFile or nil)
+        end
+        for _, entry in ipairs(INTERACTION_TEXTURES) do
+            local texture = button[entry[1]] and button[entry[1]](button)
+            local c = db[entry[2]]
+            if texture and texture.SetVertexColor then
+                if not db.interactionColors then texture:SetVertexColor(1, 1, 1)
+                elseif r then texture:SetVertexColor(r, g, b)
+                else texture:SetVertexColor(c.r, c.g, c.b) end
+            end
+        end
+        button.muscaTinted = db.interactionColors or nil
+    end
+    if db.hideCastAnimations or button.muscaCastHidden then
+        for _, key in ipairs(CAST_ANIMATION_FRAMES) do
+            if button[key] then button[key]:SetAlpha(db.hideCastAnimations and 0 or 1) end
+        end
+        button.muscaCastHidden = db.hideCastAnimations or nil
+    end
+end
+
+--- Fond, bordure et gryphons d'une barre (textures du cadre : permis en combat).
+local ENDCAP_ATLASES = { left = "ui-hud-actionbar-gryphon-left", right = "ui-hud-actionbar-gryphon-right" }
+local function ApplyBarDecor(bar, cfg)
+    local padding = S(2)
+    if cfg.background and not bar.muscaBackground then
+        bar.muscaBackground = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
+        bar.muscaBackground:SetPoint("TOPLEFT", bar, "TOPLEFT", -padding, padding)
+        bar.muscaBackground:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", padding, -padding)
+    end
+    if bar.muscaBackground then
+        local c = cfg.backgroundColor
+        NS.SetSolidColor(bar.muscaBackground, c.r, c.g, c.b, cfg.backgroundAlpha or 0.5)
+        bar.muscaBackground:SetShown(cfg.background and true or false)
+    end
+    if cfg.border and not bar.muscaBarBorder then
+        bar.muscaBarBorderColor = {}
+        bar.muscaBarBorder = NS.Media:CreateBorder(bar, bar.muscaBarBorderColor, padding)
+    end
+    if bar.muscaBarBorder then
+        local c = cfg.borderColor
+        for _, edge in pairs(bar.muscaBarBorder) do
+            NS.SetSolidColor(edge, c.r, c.g, c.b, 1)
+            edge:SetShown(cfg.border and true or false)
+        end
+    end
+    if cfg.endCaps and not bar.muscaEndCaps then
+        bar.muscaEndCaps = {}
+        for side, atlas in pairs(ENDCAP_ATLASES) do
+            local texture = bar:CreateTexture(nil, "OVERLAY")
+            texture:SetAtlas(atlas)
+            bar.muscaEndCaps[side] = texture
+        end
+    end
+    if bar.muscaEndCaps then
+        local height = S(cfg.size) * 2.1   -- proportion des gryphons Blizzard (95 pour un bouton de 45)
+        local width = height * 154 / 95
+        for side, texture in pairs(bar.muscaEndCaps) do
+            texture:SetSize(width, height)
+            texture:ClearAllPoints()
+            if side == "left" then texture:SetPoint("RIGHT", bar, "LEFT", S(10), 0)
+            else texture:SetPoint("LEFT", bar, "RIGHT", -S(10), 0) end
+            texture:SetShown(cfg.endCaps and true or false)
+        end
+    end
+end
+
+--- Flyout de sorts : style d'icône des boutons de la fenêtre, d'origine rendu quand le réglage tombe.
+local function StyleFlyoutButtons()
+    local db = ActionBars.db
+    local on = active and db.styleFlyout and db.iconStyle == "aeon"
+    -- Forever : boutons d'un pool sans nom, listés dans SpellFlyout.buttons.
+    for _, button in ipairs(_G.SpellFlyout and SpellFlyout.buttons or {}) do
+        local icon = Icon(button)
+        if icon then
+            if on then
+                if not button.muscaFlyoutCoords and icon.GetTexCoord then button.muscaFlyoutCoords = { icon:GetTexCoord() } end
+                ActionBars.StyleButton(button)
+            elseif button.muscaFlyoutCoords then
+                icon:SetTexCoord(unpack(button.muscaFlyoutCoords))
+                local normal = button.GetNormalTexture and button:GetNormalTexture()
+                if normal then normal:SetAlpha(1) end
+                for _, edge in pairs(button.muscaBorder or {}) do edge:Hide() end
+                if button.muscaBackground then button.muscaBackground:Hide() end
+                if button.IconMask and button.muscaMasked == false then
+                    icon:AddMaskTexture(button.IconMask)
+                    button.muscaMasked = true
+                end
+                button.muscaFlyoutCoords = nil
+            end
+        end
+    end
+end
+ActionBars.StyleFlyoutButtons = StyleFlyoutButtons
 
 --- Sort de l'action en surbrillance (proc) ? false si illisible ou sans API.
 local function Overlayed(button)
@@ -649,7 +815,8 @@ function ActionBars.UpdateButtonExtras(button)
     local icon = Icon(button)
     if not (icon and button.action) then return end
     local cooling = false
-    local info = db.cooldownDesaturate and C_ActionBar and C_ActionBar.GetActionCooldown
+    local iconAlpha = db.cooldownIconAlpha or 1
+    local info = (db.cooldownDesaturate or iconAlpha < 1) and C_ActionBar and C_ActionBar.GetActionCooldown
         and C_ActionBar.GetActionCooldown(button.action)
     -- isOnGCD n'est fiable qu'au SPELL_UPDATE_COOLDOWN (doc Blizzard) : souvent nil pendant la
     -- recharge globale. Durée lisible : elle tranche ; secrète (combat) : seul isOnGCD == false grise.
@@ -661,9 +828,18 @@ function ActionBars.UpdateButtonExtras(button)
             cooling = info.isOnGCD == false
         end
     end
-    icon:SetDesaturated(cooling)
+    icon:SetDesaturated(cooling and db.cooldownDesaturate or false)
+    icon:SetAlpha(cooling and iconAlpha or 1)
     local c = db.cooldownColor
-    if button.cooldown and button.cooldown.SetSwipeColor then button.cooldown:SetSwipeColor(c.r, c.g, c.b, 0.8) end
+    if button.cooldown and button.cooldown.SetSwipeColor then button.cooldown:SetSwipeColor(c.r, c.g, c.b, db.cooldownSwipeAlpha or 0.8) end
+    -- « 0 » du compteur de charges : texte illisible (secret) laissé tel quel.
+    local count = button.Count
+    if count and count.GetText and (db.hideZeroCharges or button.muscaCountHidden) then
+        local text = count:GetText()
+        local hide = db.hideZeroCharges and not NS.IsSecret(text) and text == "0"
+        count:SetAlpha(hide and 0 or 1)
+        button.muscaCountHidden = hide or nil
+    end
     local alert = button.SpellActivationAlert or button.overlay
     if db.procGlow == "blizzard" then
         if alert and alert.SetAlpha then alert:SetAlpha(1) end
@@ -761,7 +937,9 @@ local function LayoutBar(bar, cfg)
         if button.HotKey then button.HotKey:SetAlpha(db.hotkeys and 1 or 0) end
         if button.Name then button.Name:SetAlpha(db.macroNames and 1 or 0) end
         ActionBars.StyleButton(button)
+        ActionBars.ApplyButtonLook(button)
         ActionBars.UpdateButtonExtras(button)
+        HookButtonTooltip(button)
         if i <= count then
             -- Mise à l'échelle plutôt que SetSize : icône, bordure, masque, recharge et textes du
             -- modèle Blizzard ont des tailles fixes ; l'échelle les fait tous suivre le bouton.
@@ -791,21 +969,103 @@ local function BindBar(bar)
     end
 end
 
+-- Flèches de page : boutons sécurisés « actionbar » avec une page numérotée. Le clic passe par un
+-- extrait restreint (dragHeader) qui choisit la page suivante ou précédente parmi celles de la barre 1
+-- (1, 2 et les pages des barres éteintes) : ActionBar_PageUp / PageDown, eux, suivent les barres
+-- multiples Blizzard et sauteraient des pages ou doubleraient une de nos barres. SetActionBarPage est
+-- exécuté par le code sécurisé de Blizzard : pas de taint, permis en combat. Le numéro suit
+-- l'attribut « actionpage » que le pilote pose sur le premier bouton (formes, véhicule compris).
+local PAGE_ARROWS = {
+    { key = "PageUp", step = 1, texture = "UI-ScrollBar-ScrollUpButton", point = "TOPLEFT", relative = "TOPRIGHT" },
+    { key = "PageDown", step = -1, texture = "UI-ScrollBar-ScrollDownButton", point = "BOTTOMLEFT", relative = "BOTTOMRIGHT" },
+}
+-- Pages triées « 1,2,… » dans musca-pages, sens dans musca-step ; on boucle en bout de liste.
+ActionBars.PAGE_CYCLE = [[
+local pages, step, current = self:GetAttribute('musca-pages'), self:GetAttribute('musca-step'), GetActionBarPage()
+local best, edge
+for i = 1, select('#', strsplit(',', pages)) do
+    local page = tonumber((select(i, strsplit(',', pages))))
+    if step > 0 then
+        if page > current and not best then best = page end
+        edge = edge or page
+    else
+        if page < current then best = page end
+        edge = page
+    end
+end
+self:SetAttribute('action', best or edge)
+]]
+
+--- Pages que parcourent les flèches : 1, 2, puis celles des barres 2 à 8 éteintes (jusqu'à 6).
+function ActionBars.CyclePages(bars)
+    local pages = { 1, 2 }
+    for _, page in ipairs(ActionBars.FreePages(bars)) do
+        if page <= 6 then pages[#pages + 1] = page end
+    end
+    table.sort(pages)
+    return table.concat(pages, ",")
+end
+
+--- Une flèche de page est sous la souris : elle fait partie de la barre pour le fondu au survol.
+local function PageArrowHovered(bar)
+    for _, arrow in ipairs(bar.pageArrows or {}) do
+        if arrow:IsShown() and arrow:IsMouseOver() then return true end
+    end
+    return false
+end
+
+local function UpdatePageNumber(bar)
+    if bar.pageNumber then bar.pageNumber:SetText(tostring(bar.buttons[1]:GetAttribute("actionpage") or 1)) end
+end
+
+local function ApplyPageArrows(bar, enabled)
+    if not (enabled or bar.pageArrows) then return end
+    if not bar.pageArrows then
+        bar.pageArrows = {}
+        for _, def in ipairs(PAGE_ARROWS) do
+            local arrow = CreateFrame("Button", bar:GetName() .. def.key, bar, "SecureActionButtonTemplate")
+            arrow:RegisterForClicks("AnyUp")
+            arrow:SetAttribute("type", "actionbar")
+            arrow:SetAttribute("action", 1)
+            arrow:SetAttribute("musca-step", def.step)
+            dragHeader:WrapScript(arrow, "OnClick", ActionBars.PAGE_CYCLE)
+            arrow:SetNormalTexture("Interface\\Buttons\\" .. def.texture .. "-Up")
+            arrow:SetPoint(def.point, bar, def.relative, S(4), 0)
+            bar.pageArrows[#bar.pageArrows + 1] = arrow
+        end
+        bar.pageNumber = NS.Media:CreateText(bar, "OVERLAY")
+        bar.pageNumber:SetPoint("LEFT", bar, "RIGHT", S(24), 0)
+        bar.buttons[1]:HookScript("OnAttributeChanged", function(_, name)
+            if name == "actionpage" then UpdatePageNumber(bar) end
+        end)
+    end
+    for _, arrow in ipairs(bar.pageArrows) do
+        arrow:SetAttribute("musca-pages", ActionBars.CyclePages(ActionBars.db.bars))
+        arrow:SetSize(S(18), S(18))
+        arrow:SetShown(enabled)
+    end
+    bar.pageNumber:SetShown(enabled)
+    UpdatePageNumber(bar)
+end
+
 local function SetupBar(index)
     local cfg = ActionBars.db.bars[index]
     local bar = ActionBars.bars[index] or NewBar(index)
     -- Show, page posée : le modèle se met à jour (recharge comprise) sous notre taint.
     for _, button in ipairs(bar.buttons) do ShadowCooldown(button) end
     LayoutBar(bar, cfg)
+    ApplyBarDecor(bar, cfg)
     if index == 1 then
-        local driver = ActionBars.PageDriver(ActionBars.db.bars)
+        local driver = ActionBars.PageDriver(ActionBars.db.bars, not ActionBars.db.formPaging)
         for _, button in ipairs(bar.buttons) do RegisterAttributeDriver(button, "actionpage", driver) end
+        ApplyPageArrows(bar, ActionBars.db.pageArrows)
     end
     NS.Visibility:Register("actionbar" .. index, bar, function() return ActionBars.db.bars[index].visibility end, {
         secure = true,
         prefix = (index == 1 and (SPECIAL_BAR .. " hide; ") or "") .. "[petbattle] hide; ",
         alpha = function() return ActionBars:BarAlpha(index) end,
         forceVisible = function() return dragging end,
+        hoverExtra = function() return PageArrowHovered(bar) end,
     })
     local d = MOVER_DEFAULTS[index]
     Movers:Register("bar" .. index, bar, string.format(L.MOVER_ACTIONBAR, index), d[1], d[2], d[3])
@@ -829,6 +1089,7 @@ local function TeardownBar(index)
         NS.Visibility:Unregister("actionbar" .. index)
         if index == 1 then
             for _, button in ipairs(bar.buttons) do UnregisterAttributeDriver(button, "actionpage") end
+            ApplyPageArrows(bar, false)
         end
         ClearOverrideBindings(bar)
         bar:Hide()
@@ -849,7 +1110,7 @@ local fader = CreateFrame("Frame")
 fader.elapsed = 0
 
 local function Hovered(index)
-    if ActionBars.bars[index]:IsMouseOver() then return true end
+    if ActionBars.bars[index]:IsMouseOver() or PageArrowHovered(ActionBars.bars[index]) then return true end
     if not ActionBars.db.linkedMouseover then return false end
     for other, bar in pairs(ActionBars.bars) do
         local cfg = ActionBars.db.bars[other]
@@ -1089,6 +1350,7 @@ function ActionBars:OnDisable()
     local had = next(self.bars) ~= nil
     for index = 1, #BAR_DEFS do TeardownBar(index) end
     ReleaseSideFrames()
+    ActionBars.StyleFlyoutButtons()   -- active est faux : icônes du flyout rendues
     if had then NS.Print(L.MSG_AB_DISABLED_RELOAD) end
 end
 
@@ -1120,9 +1382,14 @@ function ActionBars:BuildOptions(o)
     o:Dropdown("stanceBar", L.OPT_AB_STANCE, SIDE_CHOICES)
     o:Dropdown("totemBar", L.OPT_AB_TOTEM, SIDE_CHOICES)
     o:Dropdown("petBar", L.OPT_AB_PET, SIDE_CHOICES)
+    o:Check("formPaging", L.OPT_AB_FORM_PAGING)
+    o:Check("pageArrows", L.OPT_AB_PAGE_ARROWS)
     o:Check("hotkeys", L.OPT_AB_HOTKEYS)
     o:Check("macroNames", L.OPT_AB_MACRO_NAMES)
     o:Advanced()
+    o:Dropdown("buttonTooltip", L.OPT_AB_BUTTON_TOOLTIP, {
+        { name = L.AB_TOOLTIP_SHOW, value = "show" }, { name = L.AB_TOOLTIP_HIDE_IN_COMBAT, value = "hideInCombat" },
+        { name = L.AB_TOOLTIP_HIDE, value = "hide" } })
     o:Check("linkedMouseover", L.OPT_AB_LINKED_MOUSEOVER)
     o:EndAdvanced()
     o:Title(L.OPT_AB_STYLE)
@@ -1132,10 +1399,25 @@ function ActionBars:BuildOptions(o)
     o:Advanced()
     o:Slider("iconZoom", L.OPT_AB_ICON_ZOOM, 0, 0.2, 0.01, 36, "%.2f")
     o:Check("classBorder", L.OPT_AB_CLASS_BORDER, 36)
+    o:Check("customBorder", L.OPT_AB_G_CUSTOM_BORDER, 36)
+    o:Color("borderColor", L.OPT_AB_G_BORDER_COLOR, 36)
+    o:Check("styleFlyout", L.OPT_AB_G_STYLE_FLYOUT, 36)
     o:EndAdvanced()
     o:Check("cooldownDesaturate", L.OPT_AB_COOLDOWN_DESATURATE)
     o:Advanced()
     o:Color("cooldownColor", L.OPT_AB_COOLDOWN_COLOR)
+    o:Slider("cooldownSwipeAlpha", L.OPT_AB_G_SWIPE_ALPHA, 0, 1, 0.1, 36, "%.1f")
+    o:Slider("cooldownIconAlpha", L.OPT_AB_G_COOLDOWN_ICON_ALPHA, 0.1, 1, 0.1, 36, "%.1f")
+    o:Slider("slotBackgroundAlpha", L.OPT_AB_G_SLOT_BACKGROUND_ALPHA, 0, 1, 0.1, 36, "%.1f")
+    o:Check("hideCooldownNumbers", L.OPT_AB_G_HIDE_COOLDOWN_NUMBERS, 36)
+    o:Check("chargeCooldownNumbers", L.OPT_AB_G_CHARGE_COOLDOWN_NUMBERS, 36)
+    o:Check("hideZeroCharges", L.OPT_AB_G_HIDE_ZERO_CHARGES, 36)
+    o:Check("hideCastAnimations", L.OPT_AB_G_HIDE_CAST_ANIMATIONS, 36)
+    o:Check("interactionColors", L.OPT_AB_G_INTERACTION_COLORS, 36)
+    o:Check("interactionClassColor", L.OPT_AB_G_INTERACTION_CLASS, 36)
+    o:Color("pushedColor", L.OPT_AB_G_PUSHED_COLOR, 36)
+    o:Color("highlightColor", L.OPT_AB_G_HIGHLIGHT_COLOR, 36)
+    o:Color("checkedColor", L.OPT_AB_G_CHECKED_COLOR, 36)
     o:EndAdvanced()
     o:Dropdown("procGlow", L.OPT_AB_PROC_GLOW, function()
         local choices = NS.Glow.Choices()
@@ -1175,6 +1457,14 @@ function ActionBars:BuildOptions(o)
         o:Slider(key .. "alpha", L.OPT_AB_ALPHA, 0.1, 1, 0.1, 36, "%.1f")
         o:EndAdvanced()
         o:Check(key .. "mouseover", L.OPT_AB_MOUSEOVER, 36)
+        o:Advanced()
+        o:Check(key .. "background", L.OPT_AB_G_BAR_BACKGROUND, 36)
+        o:Color(key .. "backgroundColor", L.OPT_AB_G_BAR_BACKGROUND_COLOR, 36)
+        o:Slider(key .. "backgroundAlpha", L.OPT_AB_G_BAR_BACKGROUND_ALPHA, 0, 1, 0.1, 36, "%.1f")
+        o:Check(key .. "border", L.OPT_AB_G_BAR_BORDER, 36)
+        o:Color(key .. "borderColor", L.OPT_AB_G_BAR_BORDER_COLOR, 36)
+        o:Check(key .. "endCaps", L.OPT_AB_G_END_CAPS, 36)
+        o:EndAdvanced()
         o:Visibility(key .. "visibility", L.OPT_VISIBILITY, { secure = true, noMouseover = true })
     end
 end

@@ -499,7 +499,7 @@ test("unitframes : conteneur du moteur quand le client l'offre ; vie verticale",
     eq(engine.groups.buffs.options.layout.forceNewLine, true, "buffs sur une ligne neuve")
     local button = engine.groups.debuffs.buttons[1]
     truthy(button.SetIcon and button.SetDurationCooldown and button.SetApplicationCount, "régions confiées au moteur")
-    eq(button.SetMouseClickEnabled, false, "clics laissés au cadre")
+    eq(button.clickEnabled, false, "clics laissés au cadre")
     Elements.UpdateAll(frame)
     eq(engine:GetUnit(), frame.unit, "unité posée")
     local refreshes = #engine.calls

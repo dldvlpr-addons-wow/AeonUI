@@ -22,6 +22,7 @@ local Alerts = NS.Modules:Register("alerts", {
         combatOutText = "",
         combatInColor = { r = 1, g = 0.3, b = 0.3 },
         combatOutColor = { r = 0.3, g = 1, b = 0.3 },
+        combatClassColor = false,  -- texte « +Combat » / « -Combat » à la couleur de la classe
         combatSound = false,
         combatSoundPreset = "ping",
         combatSoundFile = "",      -- son importé, prioritaire sur le preset
@@ -165,12 +166,17 @@ local function IsGroupUnit(unit)
     end
     return known
 end
+--- Couleur de l'alerte : celle de la classe si demandé, sinon la couleur réglée.
+local function CombatColor(color)
+    if Alerts.db.combatClassColor then return NS.ClassColor(select(2, UnitClass("player"))) end
+    return color.r, color.g, color.b
+end
 events:SetScript("OnEvent", function(_, event, unit)
     local db = Alerts.db
     if event == "PLAYER_REGEN_DISABLED" then
         if db.combat and db.combatShow ~= "leave" then
-            local c = db.combatInColor
-            Alerts:Flash(db.combatInText ~= "" and db.combatInText or L.ALERTS_COMBAT_IN, c.r, c.g, c.b,
+            local r, g, b = CombatColor(db.combatInColor)
+            Alerts:Flash(db.combatInText ~= "" and db.combatInText or L.ALERTS_COMBAT_IN, r, g, b,
                 db.combatSound and db.combatSoundPreset or nil, nil, db.combatSoundFile)
         end
         if db.combatTimer then
@@ -181,8 +187,8 @@ events:SetScript("OnEvent", function(_, event, unit)
         end
     elseif event == "PLAYER_REGEN_ENABLED" then
         if db.combat and db.combatShow ~= "enter" then
-            local c = db.combatOutColor
-            Alerts:Flash(db.combatOutText ~= "" and db.combatOutText or L.ALERTS_COMBAT_OUT, c.r, c.g, c.b,
+            local r, g, b = CombatColor(db.combatOutColor)
+            Alerts:Flash(db.combatOutText ~= "" and db.combatOutText or L.ALERTS_COMBAT_OUT, r, g, b,
                 db.combatSound and db.combatSoundPreset or nil, nil, db.combatSoundFile)
         end
         if combatStart then
@@ -280,6 +286,7 @@ function Alerts:BuildOptions(o)
         { name = L.ALERTS_SHOW_ENTER, value = "enter" },
         { name = L.ALERTS_SHOW_LEAVE, value = "leave" },
     }, 36)
+    o:Check("combatClassColor", L.OPT_G_QOL_ALERTS_CLASS_COLOR, 36)
     o:Advanced()
     o:EditBox("combatInText", L.OPT_ALERTS_IN_TEXT, 1, 36)
     o:Color("combatInColor", L.OPT_ALERTS_IN_COLOR, 36)

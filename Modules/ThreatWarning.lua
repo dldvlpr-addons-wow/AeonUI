@@ -53,7 +53,16 @@ function ThreatWarning:Check(percent)
     return true
 end
 
+-- ForeverMeter sonne aussi quand sa fenêtre de menace est ouverte : il se tait seulement quand ce
+-- module peut sonner pour le joueur (actif, son coché, pas tank), sinon personne ne préviendrait.
+local function SyncForeverMeter()
+    if type(_G.ForeverMeter) ~= "table" then return end
+    local db = ThreatWarning.db
+    _G.ForeverMeter.externalWarning = ThreatWarning.enabled and db and db.sound and not NS.IsTankUnit("player") or false
+end
+
 local function Read()
+    SyncForeverMeter()   -- le rôle de tank peut changer en cours de session
     if NS.IsTankUnit("player") then return end
     local percent, status, masked = NS.GetThreatPercent("target")
     if masked then ThreatWarning.masked = true end
@@ -92,12 +101,18 @@ function ThreatWarning:OnEnable()
         NS.RegisterEventSafe(events, event)
     end
     Listen(NS.InCombat())
+    self.enabled = true   -- posé par Modules après OnEnable : lu tout de suite par SyncForeverMeter
+    SyncForeverMeter()
 end
+
+function ThreatWarning:OnRefresh() SyncForeverMeter() end
 
 function ThreatWarning:OnDisable()
     events:UnregisterAllEvents()
     Listen(false)
     if alertText then alertText:Hide() end
+    self.enabled = false
+    SyncForeverMeter()
 end
 
 function ThreatWarning:BuildOptions(o)

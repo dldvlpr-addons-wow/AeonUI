@@ -160,6 +160,29 @@ test("menace : alerte au seuil, réarmée sous seuil - 10", function()
     Restore()
 end)
 
+test("menace : ForeverMeter se tait seulement quand MuscaUI peut sonner", function()
+    reset()
+    local ThreatWarning = NS.Modules:Get("threatwarning")
+    NS.Modules:SetEnabled("threatwarning", false)
+    _G.ForeverMeter = {}
+    NS.Modules:SetEnabled("threatwarning", true)
+    eq(ForeverMeter.externalWarning, true, "module actif, son coché")
+    ThreatWarning.db.sound = false
+    NS.Modules:Refresh("threatwarning")
+    eq(ForeverMeter.externalWarning, false, "son MuscaUI décoché : ForeverMeter sonne")
+    ThreatWarning.db.sound = true
+    local isTank = NS.IsTankUnit
+    NS.IsTankUnit = function() return true end
+    NS.Modules:Refresh("threatwarning")
+    eq(ForeverMeter.externalWarning, false, "tank : MuscaUI muet, ForeverMeter sonne")
+    NS.IsTankUnit = isTank
+    NS.Modules:SetEnabled("threatwarning", false)
+    eq(ForeverMeter.externalWarning, false, "module coupé")
+    NS.Modules:SetEnabled("threatwarning", true)
+    _G.ForeverMeter = nil
+    Restore()
+end)
+
 --------------------------------------------------------------------------------
 -- Ticket 06 : flux de butin
 --------------------------------------------------------------------------------

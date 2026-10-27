@@ -27,6 +27,10 @@ local RaidUtility = NS.Modules:Register("raidutility", {
         show = "group",      -- "group" | "raid" | "always"
         bandScale = 1,
         toggleKey = "",      -- touche qui ouvre ou ferme le panneau
+        panelScale = 1,      -- échelle du panneau (disposition « panel »)
+        showRoleCheck = true,   -- boutons du panneau affichables un par un
+        showConvert = true,
+        showDisband = true,
     },
 })
 
@@ -167,7 +171,6 @@ local function Build()
             StaticPopup_Show("MUSCAUI_DISBAND")
         end, _G.C_PartyInfo and C_PartyInfo.LeaveParty ~= nil },
     }
-    local y = -S(5)
     local function Disable(button, available)
         if not available then button:Disable() button:SetAlpha(0.4) end
     end
@@ -175,43 +178,47 @@ local function Build()
     local third = (WIDTH - 14) / 3
     panel.countdowns = {}
     panel.actions = {}
+    -- Rangées du panneau, posées par LayoutPanel : { hauteur, clé de réglage, items = { { cadre, x } } }
+    -- (sans x : pleine largeur).
+    panel.rows = {}
+    local HIDE_KEYS = { [2] = "showRoleCheck", [4] = "showConvert", [5] = "showDisband" }
     for i, action in ipairs(actions) do
         if i == 3 then
+            local row = { 22, nil, items = {} }
             for n, key in ipairs(COUNTDOWN_KEYS) do
                 local button = TextButton(panel, "", function() RaidUtility.Countdown(RaidUtility.db[key]) end,
                     "MuscaUIRaidCountdown" .. n)
-                button:SetPoint("TOPLEFT", panel, "TOPLEFT", S(5) + (n - 1) * S(third + 2), y)
                 button:SetSize(S(third), S(20))
                 Disable(button, hasCountdown)
                 panel.countdowns[n] = button
+                row.items[#row.items + 1] = { button, (n - 1) * (third + 2) }
             end
-            y = y - S(22)
+            panel.rows[#panel.rows + 1] = row
         end
         local button = TextButton(panel, action[1], action[2])
-        button:SetPoint("TOPLEFT", panel, "TOPLEFT", S(5), y)
-        button:SetPoint("RIGHT", panel, "RIGHT", -S(5), 0)
         button:SetHeight(S(20))
         Disable(button, action[3])
         panel.actions[i] = button
-        y = y - S(22)
+        panel.rows[#panel.rows + 1] = { 22, HIDE_KEYS[i], items = { { button } } }
     end
     panel.convert = panel.actions[4]
     panel:RegisterEvent("GROUP_ROSTER_UPDATE")
     panel:SetScript("OnEvent", UpdateLabels)
     panel:SetScript("OnShow", UpdateLabels)
 
-    y = y - S(4)
     panel.targetMarkers = {}
+    local targetRow = { BUTTON + 4, nil, items = {} }
     for index = 1, 8 do
         local button = IconButton(panel, ICON_PATH .. index)
-        button:SetPoint("TOPLEFT", panel, "TOPLEFT", S(5) + (index - 1) * S(BUTTON + 2), y)
         button:SetScript("OnClick", function() RaidUtility.MarkTarget(index) end)
         panel.targetMarkers[index] = button
+        targetRow.items[#targetRow.items + 1] = { button, (index - 1) * (BUTTON + 2) }
     end
-    y = y - S(BUTTON + 4)
+    panel.rows[#panel.rows + 1] = targetRow
 
     -- Marqueurs au sol : boutons sécurisés, clic gauche pose ou retire, clic droit retire.
     panel.worldMarkers = {}
+    local worldRow = { BUTTON + 4, nil, items = {} }
     for marker = 1, 8 do
         local button = CreateFrame("Button", nil, panel, "SecureActionButtonTemplate")
         button:SetSize(S(BUTTON), S(BUTTON))
@@ -223,10 +230,10 @@ local function Build()
         button:SetAttribute("marker", marker)
         button:SetAttribute("*action1", "toggle")
         button:SetAttribute("*action2", "clear")
-        button:SetPoint("TOPLEFT", panel, "TOPLEFT", S(5) + (marker - 1) * S(BUTTON + 2), y)
         panel.worldMarkers[marker] = button
+        worldRow.items[#worldRow.items + 1] = { button, (marker - 1) * (BUTTON + 2) }
     end
-    y = y - S(BUTTON + 4)
+    panel.rows[#panel.rows + 1] = worldRow
     local clear = CreateFrame("Button", nil, panel, "SecureActionButtonTemplate")
     Media:CreateBackdrop(clear)
     clear.label = Media:CreateText(clear, "OVERLAY")
@@ -235,12 +242,35 @@ local function Build()
     clear:RegisterForClicks("AnyUp", "AnyDown")
     clear:SetAttribute("type", "worldmarker")
     clear:SetAttribute("action", "clear")   -- sans marqueur : tous
-    clear:SetPoint("TOPLEFT", panel, "TOPLEFT", S(5), y)
-    clear:SetPoint("RIGHT", panel, "RIGHT", -S(5), 0)
     clear:SetHeight(S(20))
     panel.clearWorld = clear
-    y = y - S(24)
-    panel:SetSize(S(WIDTH), -y + S(2))
+    panel.rows[#panel.rows + 1] = { 24, nil, items = { { clear } } }
+    RaidUtility.LayoutPanel()
+end
+
+--- Pose les rangées visibles du panneau (boutons masqués par réglage retirés, le reste remonte).
+-- Cadres sécurisés dedans : hors combat seulement, repris à la sortie du combat.
+function RaidUtility.LayoutPanel()
+    if not panel then return end
+    NS:RunOutOfCombat(function()
+        local db = RaidUtility.db
+        local y = -S(5)
+        for _, row in ipairs(panel.rows) do
+            local shown = not (row[2] and db[row[2]] == false)
+            for _, item in ipairs(row.items) do
+                local frame, x = item[1], item[2]
+                frame:SetShown(shown)
+                if shown then
+                    frame:ClearAllPoints()
+                    frame:SetPoint("TOPLEFT", panel, "TOPLEFT", S(5) + S(x or 0), y)
+                    if not x then frame:SetPoint("RIGHT", panel, "RIGHT", -S(5), 0) end
+                end
+            end
+            if shown then y = y - S(row[1]) end
+        end
+        panel:SetSize(S(WIDTH), -y + S(2))
+        panel:SetScale(tonumber(db.panelScale) or 1)
+    end)
 end
 
 local function Tooltip(button, text)
@@ -408,6 +438,7 @@ function RaidUtility:Bind(on)
 end
 
 function RaidUtility:OnRefresh()
+    RaidUtility.LayoutPanel()
     ApplyLayout()
     UpdateLabels()
     self:Bind(true)
@@ -434,7 +465,11 @@ function RaidUtility:BuildOptions(o)
         { name = L.RAIDUTILITY_SHOW_GROUP, value = "group" }, { name = L.RAIDUTILITY_SHOW_RAID, value = "raid" },
         { name = L.RAIDUTILITY_SHOW_ALWAYS, value = "always" } })
     o:Hint(L.OPT_RAIDUTILITY_ASSIST_HINT)
+    o:Check("showRoleCheck", L.OPT_G_QOL_RAID_SHOW_ROLES)
+    o:Check("showConvert", L.OPT_G_QOL_RAID_SHOW_CONVERT)
+    o:Check("showDisband", L.OPT_G_QOL_RAID_SHOW_DISBAND)
     o:Advanced()
+    o:Slider("panelScale", L.OPT_G_QOL_RAID_PANEL_SCALE, 0.5, 2, 0.05, 36, "%.2f")
     o:Slider("bandScale", L.OPT_RAIDUTILITY_BAND_SCALE, 0.75, 1.5, 0.05, 36, "%.2f")
     o:EditBox("toggleKey", L.OPT_RAIDUTILITY_TOGGLE_KEY, 1)
     o:EndAdvanced()

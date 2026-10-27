@@ -868,6 +868,13 @@ function NS.GetBagSlots(bag)
     return fn and fn(bag) or 0
 end
 
+--- Sac du trousseau (Forever : Enum.BagIndex.Keyring, -1) ; nil si le client n'en montre pas.
+function NS.GetKeyringBag()
+    local shouldShow = _G.C_ActionBar and C_ActionBar.ShouldShowKeyring
+    if not (shouldShow and shouldShow()) then return nil end
+    return _G.Enum and Enum.BagIndex and Enum.BagIndex.Keyring or nil
+end
+
 --- Places libres d'un sac. generalOnly : 0 pour un sac spécial (carquois, sac d'âme, d'herbes…),
 -- qui n'accepte que certains objets.
 function NS.GetBagFreeSlots(bag, generalOnly)
@@ -880,13 +887,14 @@ end
 
 --- Sac général (type 0) ? Faux pour un sac spécial.
 function NS.IsGeneralBag(bag)
+    if bag == NS.GetKeyringBag() then return false end   -- les clés ne comptent pas dans les places libres
     local fn = Container.GetContainerNumFreeSlots or _G.GetContainerNumFreeSlots
     if not fn then return true end
     local _, bagType = fn(bag)
     return not bagType or bagType == 0
 end
 
---- { itemID, quality, stackCount, hasNoValue, isLocked, link, icon, isBound } ou nil pour une case vide.
+--- { itemID, quality, stackCount, hasNoValue, isLocked, link, icon, isBound, hasLoot } ou nil pour une case vide.
 function NS.GetBagItem(bag, slot)
     if Container.GetContainerItemInfo then
         local info = Container.GetContainerItemInfo(bag, slot)
@@ -894,7 +902,7 @@ function NS.GetBagItem(bag, slot)
         return {
             itemID = info.itemID, quality = info.quality, stackCount = info.stackCount or 1,
             hasNoValue = info.hasNoValue, isLocked = info.isLocked, link = info.hyperlink,
-            icon = info.iconFileID, isBound = info.isBound,
+            icon = info.iconFileID, isBound = info.isBound, hasLoot = info.hasLoot,
         }
     end
     if _G.GetContainerItemInfo then
@@ -926,6 +934,30 @@ function NS.GetBankTabs(bankType)
     return tabs
 end
 
+--- Emplacements-sacs des onglets de banque Forever (BankItemButtonBagTemplate, Camelot/BankFrame.lua) :
+-- { { slot, bag, purchased } }. Le sac posé dans l'onglet `slot` (2 et suivants, le premier n'en porte
+-- pas) vit dans un pseudo-sac (Characterbanktab / Accountbanktab) ; `purchased` : onglet acheté.
+function NS.GetBankBagSlots(bankType)
+    local Bank = BankAPI()
+    local index = _G.Enum and Enum.BagIndex
+    local types = _G.Enum and Enum.BankType
+    local slots = {}
+    if not (index and types and Bank.FetchMaxNumBankTabs and Bank.FetchPurchasedBankTabData) then return slots end
+    local bag = (bankType == types.Character and index.Characterbanktab) or (bankType == types.Account and index.Accountbanktab)
+    if not bag then return slots end
+    local purchased = Bank.FetchPurchasedBankTabData(bankType) or {}
+    for slot = 2, Bank.FetchMaxNumBankTabs(bankType) or 0 do
+        -- Pseudo-sac : Blizzard lit le sac posé par ItemLocation, pas par GetContainerItemInfo.
+        local icon
+        if _G.ItemLocation and _G.C_Item and C_Item.DoesItemExist and C_Item.GetItemIcon then
+            local location = ItemLocation:CreateFromBagAndSlot(bag, slot)
+            if C_Item.DoesItemExist(location) then icon = C_Item.GetItemIcon(location) end
+        end
+        slots[#slots + 1] = { slot = slot, bag = bag, purchased = purchased[slot] ~= nil, icon = icon }
+    end
+    return slots
+end
+
 --- Dépôt automatique possible pour ce type de banque ?
 function NS.BankSupportsAutoDeposit(bankType)
     local Bank = BankAPI()
@@ -952,6 +984,43 @@ function NS.SortBank(bankType)
     if not Container.SortBank then return false end
     Container.SortBank(bankType)
     return true
+end
+
+--- Tri des sacs « vers le bas » (objets rangés de la fin vers le début). nil sans l'API.
+function NS.GetSortToBottom()
+    if not Container.GetSortBagsRightToLeft then return nil end
+    return Container.GetSortBagsRightToLeft() == true
+end
+
+function NS.SetSortToBottom(enabled)
+    if not Container.SetSortBagsRightToLeft then return false end
+    Container.SetSortBagsRightToLeft(enabled and true or false)
+    return true
+end
+
+--- Achat d'un onglet possible pour ce type ? Règle de la BankFrame Camelot : le premier onglet
+-- de bataillon ne s'achète pas au guichet du personnage.
+function NS.CanPurchaseBankTab(bankType)
+    local Bank = BankAPI()
+    if not (Bank.CanPurchaseBankTab and Bank.FetchNumPurchasedBankTabs) then return false end
+    if bankType == Enum.BankType.Account and Bank.FetchNumPurchasedBankTabs(bankType) == 0 then return false end
+    return Bank.CanPurchaseBankTab(bankType) == true
+end
+
+--- Bouton d'achat d'onglet : modèle prévu par Blizzard pour les addons (type lu dans l'attribut
+-- overrideBankType, popup ouverte sans taint, C_Bank.PurchaseBankTab étant restreint). Sans le
+-- modèle, popup ouverte par l'addon.
+function NS.CreateBankPurchaseButton(parent)
+    if _G.BankPanelPurchaseTabButtonMixin then
+        return CreateFrame("Button", nil, parent, "BankPanelPurchaseButtonScriptTemplate")
+    end
+    local button = CreateFrame("Button", nil, parent)
+    button:SetScript("OnClick", function(self)
+        if _G.StaticPopupDialogs and StaticPopupDialogs.CONFIRM_BUY_BANK_TAB then
+            StaticPopup_Show("CONFIRM_BUY_BANK_TAB", nil, nil, { bankType = self:GetAttribute("overrideBankType") })
+        end
+    end)
+    return button
 end
 
 function NS.CloseBank()
@@ -1083,6 +1152,24 @@ function NS.GetAverageItemLevel()
     return (select(2, GetAverageItemLevel()))
 end
 
+--- Niveau d'objet moyen : total (sacs compris), équipé. nil si le client ne les donne pas.
+function NS.GetAverageItemLevels()
+    if not _G.GetAverageItemLevel then return nil end
+    local total, equipped = GetAverageItemLevel()
+    return total, equipped
+end
+
+--- Volume principal (0 à 1), nil si la CVar manque.
+function NS.GetMasterVolume()
+    return tonumber(NS.CVars:Get("Sound_MasterVolume"))
+end
+
+--- Pose le volume principal, sans mémoire d'origine : c'est le choix de l'utilisateur.
+function NS.SetMasterVolume(volume)
+    if C_CVar and C_CVar.SetCVar then C_CVar.SetCVar("Sound_MasterVolume", volume)
+    elseif _G.SetCVar then SetCVar("Sound_MasterVolume", volume) end
+end
+
 --- Forme actuelle (id de forme), nil si l'API manque.
 function NS.GetShapeshiftFormID()
     return _G.GetShapeshiftFormID and GetShapeshiftFormID() or nil
@@ -1096,6 +1183,14 @@ function NS.GetTargetNamePlate()
     if not (C_NamePlate and C_NamePlate.GetNamePlateForUnit) then return nil end
     if not UnitExists("target") then return nil end
     return C_NamePlate.GetNamePlateForUnit("target")
+end
+
+--- `unit` désigne-t-il le focus ? nil quand la réponse est secrète.
+function NS.IsFocus(unit)
+    if not unit or not _G.UnitIsUnit then return false end
+    local same = UnitIsUnit(unit, "focus")
+    if isSecret(same) then return nil end
+    return same and true or false
 end
 
 --- `unit` désigne-t-il la cible ? nil quand la réponse est secrète : l'appelant s'abstient.
@@ -1533,6 +1628,16 @@ function NS.FormatMoney(copper)
     return table.concat(parts, " ")
 end
 
+--- Comme FormatMoney, mais en icônes de pièces quand le client sait les écrire (repli : lettres colorées).
+function NS.FormatMoneyIcons(copper)
+    local getCoinTexture = _G.C_CurrencyInfo and C_CurrencyInfo.GetCoinTextureString
+    if getCoinTexture then
+        local ok, text = pcall(getCoinTexture, math.floor(tonumber(copper) or 0))
+        if ok and text then return text end
+    end
+    return NS.FormatMoney(copper)
+end
+
 --- 75 -> "1:15", 3725 -> "1:02:05".
 function NS.FormatDuration(seconds)
     seconds = math.floor(seconds + 0.5)
@@ -1746,12 +1851,14 @@ function NS.SetAuraContainerFlow(container, anchor, horizontal, vertical, lineSi
     pcall(container.SetFlowLayoutMaximumLineSize, container, lineSize)
 end
 
---- Tri du moteur : `sort` = "expiration" (la plus courte d'abord), sinon priorité des débuffs
+--- Tri du moteur : `sort` = "expiration" (la plus courte d'abord), "expirationLongest" (la plus longue), "name", sinon priorité des débuffs
 -- (boss, dissipables) si `prioritize`, sinon l'ordre du jeu.
 local function AuraSort(sort, prioritize)
     local methods, directions = _G.AuraContainerSortMethod, _G.AuraContainerSortDirection
     if not (methods and directions) then return nil, nil end
     if sort == "expiration" then return methods.Expiration, directions.Normal end
+    if sort == "expirationLongest" then return methods.Expiration, directions.Reverse end
+    if sort == "name" then return methods.Name, directions.Normal end
     return prioritize and methods.UnitFrameDebuff or methods.Default, directions.Normal
 end
 
@@ -1841,24 +1948,34 @@ local DISPEL_EDGES = { "TOP", "BOTTOM", "LEFT", "RIGHT" }
 
 --- Texture blanche que le moteur teinte à la couleur du type de dissipation de l'aura de `button`
 -- (débuffs seulement) et montre ou cache. `always` : texture gardée (remplissage d'une barre),
--- montrée aussi sans type (couleur « aucun »). false si le client n'offre pas ce style.
-function NS.AddDispelTexture(button, texture, always)
+-- montrée aussi sans type (couleur « aucun »). `stealable` : à l'inverse, buffs volables seulement
+-- (filtre du moteur, qui lit lui-même le drapeau de l'aura). false si le client n'offre pas ce style.
+function NS.AddDispelTexture(button, texture, always, stealable)
     local styles = _G.Enum and Enum.CustomAuraButtonDispelTypeTextureStyle
+    local filters = _G.Enum and Enum.CustomAuraButtonDispelTypeStealableFilter
     if not always then
         texture:SetColorTexture(1, 1, 1, 1)
         texture:Hide()   -- écrit avant l'enregistrement : ensuite, l'alpha et l'affichage sont au moteur
     end
     if not (styles and styles.PreserveAsset) then return false end
-    return (pcall(button.AddDispelTypeTexture, button, texture, { style = styles.PreserveAsset,
-        showWhenHarmful = true, showWhenHelpful = false, showWithoutDispelType = always == true }))
+    local options = { style = styles.PreserveAsset, showWhenHarmful = true, showWhenHelpful = false,
+                      showWithoutDispelType = always == true }
+    if stealable then
+        if not filters then return false end
+        options.showWhenHarmful, options.showWhenHelpful, options.showWithoutDispelType = false, true, true
+        options.stealableFilter = filters.Stealable
+    end
+    return (pcall(button.AddDispelTypeTexture, button, texture, options))
 end
 
 --- Quatre bords d'épaisseur `px` autour de `host` (écartés de `inset`), teintés comme ci-dessus.
--- `host` descend de `button`.
-function NS.AddDispelEdges(button, host, px, inset)
+-- `host` descend de `button`. Rend les quatre bords (haut, bas, gauche, droite), pour les réépaissir.
+function NS.AddDispelEdges(button, host, px, inset, stealable)
     local o = inset or 0
+    local edges = {}
     for _, side in ipairs(DISPEL_EDGES) do
         local edge = host:CreateTexture(nil, "OVERLAY", nil, 1)
+        edges[#edges + 1] = edge
         if side == "TOP" or side == "BOTTOM" then
             local y = side == "TOP" and o or -o
             edge:SetPoint(side .. "LEFT", host, side .. "LEFT", -o, y)
@@ -1870,8 +1987,64 @@ function NS.AddDispelEdges(button, host, px, inset)
             edge:SetPoint("BOTTOM" .. side, host, "BOTTOM" .. side, x, -o)
             edge:SetWidth(px)
         end
-        NS.AddDispelTexture(button, edge)
+        NS.AddDispelTexture(button, edge, nil, stealable)
     end
+    return edges
+end
+
+local auraHolders = setmetatable({}, { __mode = "k" })   -- bouton du moteur -> holder de InitAuraButton
+
+--- Réglages d'un bouton préparé par InitAuraButton avec `opts.style` : texte des piles (taille,
+-- coin, affichage), texte de durée (« swipe » : chiffres du balayage, « text » : texte propre posé
+-- dans un coin, « none »), lueur des buffs volables. Ne lit aucune valeur d'aura.
+-- style : { count, countSize, countPoint, countOffsetX/Y, duration, durationSize, durationPoint,
+-- durationOffsetX/Y, stealable, cancel, border, borderSize }.
+-- `border` false : ni bordure du thème ni bordure de dissipation ; `borderSize` (px, > 0) : épaisseur de
+-- la bordure de dissipation (nil : celle du thème). Sans ces champs, rendu inchangé.
+-- `cancel` (true, false ou nil pour ne pas y toucher) : clic droit pour annuler l'aura (buffs du joueur).
+function NS.StyleAuraHolder(holder, style)
+    if not (holder and holder.top and style) then return end
+    local count, top = holder.count, holder.top
+    NS.Media:SetTextSizeDelta(count, style.countSize or -2)
+    local point = style.countPoint or "BOTTOMRIGHT"
+    count:ClearAllPoints()
+    count:SetPoint(point, top, point, style.countOffsetX or 0, style.countOffsetY or 0)
+    count:SetAlpha(style.count == false and 0 or 1)
+    local mode = style.duration or "swipe"
+    local cooldown, text = holder.cooldown, holder.durationText
+    cooldown.foreverHideNumbers = mode ~= "swipe" or nil
+    if cooldown.SetHideCountdownNumbers then cooldown:SetHideCountdownNumbers(mode ~= "swipe") end
+    if text then
+        text:SetShown(mode == "text")
+        NS.Media:SetTextSizeDelta(text, style.durationSize or -1)
+        local textPoint = style.durationPoint or "CENTER"
+        text:ClearAllPoints()
+        text:SetPoint(textPoint, top, textPoint, style.durationOffsetX or 0, style.durationOffsetY or 0)
+    end
+    if holder.stealHost then holder.stealHost:SetShown(style.stealable == true) end
+    local bordered = style.border ~= false
+    for _, edge in pairs(holder.borderEdges or {}) do edge:SetShown(bordered) end
+    if holder.dispelHost then holder.dispelHost:SetShown(bordered) end   -- cadre à part : masqué sans toucher aux bords du moteur
+    if holder.dispelEdges then
+        -- Le moteur garde l'affichage et la couleur de ces bords : on n'en change que l'épaisseur.
+        local thickness = tonumber(style.borderSize) or 0
+        local px = NS.Pixel:Scale(thickness > 0 and thickness or (NS.db and NS.db.theme.borderSize or 1))
+        for index, edge in ipairs(holder.dispelEdges) do
+            if index <= 2 then edge:SetHeight(px) else edge:SetWidth(px) end
+        end
+    end
+    if style.cancel ~= nil and holder.button then
+        -- Clic droit : le moteur annule lui-même l'aura (code Blizzard, rien de protégé côté addon).
+        -- Clics coupés en combat ; sinon les clics vont au cadre dessous.
+        local active = style.cancel == true
+        pcall(holder.button.SetCancelAuraButtons, holder.button, active and "RightButtonUp" or nil)
+        pcall(holder.button.SetMouseClickEnabled, holder.button, active and not NS.InCombat())
+    end
+end
+
+--- Réapplique `style` au bouton du moteur `button` (sans effet s'il n'a pas été préparé avec un style).
+function NS.StyleAuraButton(button, style)
+    NS.StyleAuraHolder(auraHolders[button], style)
 end
 
 --- Prépare un bouton du moteur (appelé par initializeFrame, seule fenêtre où le bouton se touche
@@ -1899,24 +2072,42 @@ function NS.InitAuraButton(button, opts)
     local top = CreateFrame("Frame", nil, holder)   -- bordure et compteur au-dessus du balayage
     top:SetAllPoints(holder)
     top:SetFrameLevel(cooldown:GetFrameLevel() + 1)
-    NS.Media:CreateBorder(top)
+    local borderEdges = NS.Media:CreateBorder(top)
     local count = NS.Media:CreateText(top, "OVERLAY", -2, "OUTLINE")   -- police posée avant l'enregistrement
     count:SetPoint("BOTTOMRIGHT", top, "BOTTOMRIGHT", 0, 0)
     pcall(button.SetIcon, button, icon)
     pcall(button.SetDurationCooldown, button, cooldown)
     pcall(button.SetApplicationCount, button, count)
-    if opts.durationText then
+    holder.top, holder.cooldown, holder.count, holder.button, holder.icon = top, cooldown, count, button, icon
+    holder.borderEdges = borderEdges
+    if opts.durationText or opts.style then
+        -- Avec un style, le texte existe toujours : le moteur le tient, le réglage le montre ou non.
         local text = NS.Media:CreateText(top, "OVERLAY", 0, "OUTLINE")
         text:SetPoint("TOP", top, "BOTTOM", 0, -2)
         pcall(button.SetDurationText, button, text, {})
+        holder.durationText = text
+        if opts.style then text:Hide() end
     end
-    if opts.dispel then NS.AddDispelEdges(button, top, NS.Pixel:Scale(NS.db and NS.db.theme.borderSize or 1)) end
+    if opts.dispel then
+        holder.dispelHost = CreateFrame("Frame", nil, top)
+        holder.dispelHost:SetAllPoints(top)
+        holder.dispelEdges = NS.AddDispelEdges(button, holder.dispelHost, NS.Pixel:Scale(NS.db and NS.db.theme.borderSize or 1))
+    end
+    if opts.style then
+        -- Lueur des buffs volables : cadre à part, que le réglage montre ou cache.
+        local steal = CreateFrame("Frame", nil, top)
+        steal:SetAllPoints(top)
+        steal:Hide()
+        NS.AddDispelEdges(button, steal, NS.Pixel:Scale(2), NS.Pixel:Scale(2), true)
+        holder.stealHost = steal
+    end
     if opts.highlight then
         local ring = CreateFrame("Frame", nil, top)   -- un cadre par bordure : le thème les repeint chacune
         ring:SetAllPoints(top)
         NS.Media:CreateBorder(ring, opts.highlight, 1)
     end
-    holder.count = count   -- alpha libre (le moteur tient le texte et l'affichage)
+    auraHolders[button] = holder
+    NS.StyleAuraHolder(holder, opts.style)
     return holder
 end
 
@@ -2286,12 +2477,12 @@ function NS.StyleCooldown(cooldown)
             cooldown:SetCountdownFormatter(cooldown.foreverFormatter)
         end)
         if not ok then return end
-        if cooldown.SetHideCountdownNumbers then cooldown:SetHideCountdownNumbers(false) end
+        if cooldown.SetHideCountdownNumbers then cooldown:SetHideCountdownNumbers(cooldown.foreverHideNumbers == true) end
         cooldown.foreverStyled = true
     elseif cooldown.foreverStyled then
         pcall(cooldown.SetCountdownFormatter, cooldown, nil)
         -- Valeur par défaut du modèle : la CVar countdownForCooldowns décide ensuite.
-        if cooldown.SetHideCountdownNumbers then cooldown:SetHideCountdownNumbers(false) end
+        if cooldown.SetHideCountdownNumbers then cooldown:SetHideCountdownNumbers(cooldown.foreverHideNumbers == true) end
         cooldown.foreverStyled = nil
     end
 end
@@ -2510,6 +2701,14 @@ function NS.ItemKnown(item)
     local instant = (C_Item and C_Item.GetItemInfoInstant) or _G.GetItemInfoInstant
     if not instant then return true end
     return instant(item) ~= nil
+end
+
+--- Emplacement d'équipement ("INVTYPE_…", "" si inconnu), classe et sous-classe d'un objet (lien, nom ou ID).
+function NS.GetItemEquipInfo(item)
+    local instant = (C_Item and C_Item.GetItemInfoInstant) or _G.GetItemInfoInstant
+    if not instant then return "" end
+    local _, _, _, equipLoc, _, classID, subclassID = instant(item)
+    return type(equipLoc) == "string" and equipLoc or "", classID, subclassID
 end
 
 --------------------------------------------------------------------------------
@@ -2839,4 +3038,20 @@ function NS.IsBagItemRefundable(bag, slot)
     local ok, info = pcall(api, bag, slot, false)
     local seconds = ok and type(info) == "table" and info.refundSeconds or nil
     return seconds ~= nil and not isSecret(seconds) and type(seconds) == "number" and seconds > 0
+end
+
+--------------------------------------------------------------------------------
+-- Manette
+--------------------------------------------------------------------------------
+
+--- Mode manette actif (C_GamePad.IsEnabled, lu par l'interface Blizzard) ; false sans l'API.
+function NS.GamepadActive()
+    local pad = _G.C_GamePad
+    if not (pad and pad.IsEnabled) then return false end
+    local ok, enabled = pcall(pad.IsEnabled)
+    if not (ok and enabled == true) then return false end
+    local using = _G.IsUsingGamepad
+    if not using then return true end
+    local okUsing, active = pcall(using)
+    return okUsing and active == true
 end

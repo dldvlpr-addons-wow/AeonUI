@@ -16,9 +16,15 @@ local SLOTS = {
 }
 -- Emplacements qu'un enchanteur Classic peut enchanter.
 local ENCHANTABLE = {
-    Head = true, Shoulder = true, Back = true, Chest = true, Wrist = true, Hands = true,
-    Legs = true, Feet = true, MainHand = true,
+    Back = true, Chest = true, Wrist = true, Hands = true,
+    Legs = true, Feet = true, MainHand = true, SecondaryHand = true,
 }
+-- Mains : seules les armes se marquent (pas une canne à pêche, une relique, un objet de main gauche) ;
+-- la main gauche prend aussi le bouclier. Un type inconnu (objet pas encore en cache) ne marque rien.
+local WEAPON_LOCATIONS = {
+    INVTYPE_WEAPON = true, INVTYPE_2HWEAPON = true, INVTYPE_WEAPONMAINHAND = true, INVTYPE_WEAPONOFFHAND = true,
+}
+local FISHING_POLE_SUBCLASS = 20
 
 local Gear = NS.Modules:Register("gear", {
     titleKey = "GEAR_TITLE",
@@ -59,6 +65,15 @@ end
 function Gear.EnchantID(link)
     local enchant = link and link:match("item:%d+:(%d*)")
     return tonumber(enchant) or 0
+end
+
+--- Emplacement enchantable et objet qui s'y enchante (voir ENCHANTABLE).
+function Gear.IsEnchantable(slot, link)
+    if not ENCHANTABLE[slot] then return false end
+    if slot ~= "MainHand" and slot ~= "SecondaryHand" then return true end
+    local equipLoc, classID, subclassID = NS.GetItemEquipInfo(link)
+    if classID == 2 and subclassID == FISHING_POLE_SUBCLASS then return false end
+    return WEAPON_LOCATIONS[equipLoc] or (slot == "SecondaryHand" and equipLoc == "INVTYPE_SHIELD") or false
 end
 
 local function Overlay(slot, prefix)
@@ -125,7 +140,7 @@ function Gear:Update()
             else
                 entry.level:Hide()
             end
-            local missing = active and db.missingEnchant and link and ENCHANTABLE[slot] and Gear.EnchantID(link) == 0
+            local missing = active and db.missingEnchant and link and Gear.IsEnchantable(slot, link) and Gear.EnchantID(link) == 0
             entry.enchant:SetShown(missing and true or false)
             if level then total, count = total + level, count + 1 end
         end
@@ -164,7 +179,7 @@ function Gear:UpdateInspect()
             else
                 entry.level:Hide()
             end
-            local missing = show and self.db.missingEnchant and link and ENCHANTABLE[slot] and Gear.EnchantID(link) == 0
+            local missing = show and self.db.missingEnchant and link and Gear.IsEnchantable(slot, link) and Gear.EnchantID(link) == 0
             entry.enchant:SetShown(missing and true or false)
         end
     end

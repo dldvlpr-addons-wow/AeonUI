@@ -65,6 +65,8 @@ Chaque module s'active ou se désactive séparément. Les changements s'applique
 - **Couleur d'accent** — couleur, défaut **#3FA8F4**
 - **Couleur de fond** — couleur, défaut **#0C0F14**
 - **Couleur de bordure** — couleur, défaut **#000000**
+- **Appliquer ces couleurs à tous les profils** — bouton
+- **Reprendre les couleurs du profil...** — liste
 - **Épaisseur des bordures (pixels)** — curseur, défaut **1**, 1 – 4, pas 1
 - **Échelle pixel perfect** — case, défaut **cochée**  
   _Met toute l'interface à l'échelle pour qu'une unité vaille un pixel d'écran : bordures nettes à 1 px. Décocher rend l'échelle précédente._
@@ -72,10 +74,18 @@ Chaque module s'active ou se désactive séparément. Les changements s'applique
   _Multiplie l'échelle (pixel perfect ou celle du jeu) : 1,00 = inchangée, 1,20 = plus grand. Hors combat._
 - **Taille de la fenêtre d'options** — curseur, défaut **1.00**, 0.8 – 1.5, pas 0.05
 
+### Lueurs
+
+- **Épaisseur de la lueur pixel** — curseur, défaut **2**, 1 – 4, pas 1
+- **Vitesse des lueurs animées** — curseur, défaut **1.0**, 0.5 – 2, pas 0.1
+
 ### Cadres mobiles
 
 - **Grille d'alignement en mode déverrouillé** — liste, défaut **Aucune**
-- **Déverrouiller / verrouiller les cadres mobiles** — bouton
+- **Déverrouiller / verrouiller les cadres mobiles** — bouton  
+  _Mode déverrouillé : glissez les cadres, cliquez sur l'un d'eux pour saisir ses coordonnées. Aussi via /musca unlock._
+- **Couleur perso du mode déverrouillé** — case, défaut **décochée**
+- **Couleur du mode déverrouillé** — couleur, défaut **#FFD100**
 - **Réinitialiser toutes les positions** — bouton
 
 ## Polices et textures
@@ -103,6 +113,8 @@ Police et texture de barre pour tout MuscaUI, puis par module quand l'un doit se
 - **Minuteur d'attaque : Texture des barres** — liste, défaut **Comme le thème**
 - **Barres de données MuscaUI : Police de MuscaUI** — liste, défaut **Comme le thème**
 - **Barres de données MuscaUI : Texture des barres** — liste, défaut **Comme le thème**
+- **Chat MuscaUI : Police de MuscaUI** — liste, défaut **Comme le thème**
+- **Suivi de quêtes MuscaUI : Police de MuscaUI** — liste, défaut **Comme le thème**
 
 ## Modules
 
@@ -335,6 +347,7 @@ Grands messages à l'écran : entrée et sortie de combat, mort d'un membre du g
 
 - **Afficher l'entrée et la sortie de combat** — case, défaut **cochée**
 - **Afficher** — liste, défaut **Entrée et sortie**
+- **Couleur de la classe** — case, défaut **décochée**
 - **Texte d'entrée (vide = défaut)** — zone de texte
 - **Couleur d'entrée** — couleur, défaut **#FF4C4C**
 - **Texte de sortie (vide = défaut)** — zone de texte
@@ -365,6 +378,7 @@ Les sorts de déplacement de ta classe affichés pendant leur recharge, avec une
 
 - **Taille des icônes** — curseur, défaut **36**, 16 – 64, pas 1
 - **Annoncer le retour d'un sort** — case, défaut **cochée**
+- **Afficher seulement en combat** — case, défaut **décochée**
 - **Identifiants de sorts en plus** — zone de texte
 
 ## Autre tank
@@ -392,6 +406,7 @@ Fenêtre de banque au thème, un onglet par coffre, cases habillées comme les s
 
 - **Colonnes** — curseur, défaut **14**, 4 – 24, pas 1
 - **Taille des boutons** — curseur, défaut **34**, 24 – 48, pas 1
+- **Échelle de la fenêtre** — curseur, défaut **1.00**, 0.5 – 2, pas 0.05
 
 ## Barre de recharge globale
 
@@ -410,6 +425,8 @@ Une fine barre en haut de l'écran : amis et guilde en ligne, heure, or, durabil
 - **Réinitialiser la position de la barre** — bouton
 - **Opacité du fond** — curseur, défaut **0.75**, 0 – 1, pas 0.05
 - **Garder FPS et latence visibles quand la barre est cachée** — case, défaut **cochée**
+- **Latence affichée** — liste, défaut **La pire des deux**
+- **Bloc Sacs rouge à partir de (emplacements libres)** — curseur, défaut **0**, 0 – 20, pas 1
 
 ### Visibilité
 
@@ -419,6 +436,7 @@ Une fine barre en haut de l'écran : amis et guilde en ligne, heure, or, durabil
 - **En raid** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 - **Au survol seulement** — case, défaut **décochée**
 
 ### Horloge
@@ -453,8 +471,11 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **Barre de posture (postures, formes, auras, furtivité)** — liste, défaut **Déplaçable (/musca unlock)**
 - **Barre de totems du chaman (Appel des éléments)** — liste, défaut **Déplaçable (/musca unlock)**
 - **Barre du familier** — liste, défaut **Déplaçable (/musca unlock)**
+- **La barre 1 change de page avec la forme (druide, furtivité, posture)** — case, défaut **cochée**
+- **Flèches et numéro de page de la barre 1** — case, défaut **décochée**
 - **Afficher les raccourcis sur les boutons** — case, défaut **cochée**
 - **Afficher le nom des macros sur les boutons** — case, défaut **cochée**
+- **Infobulle des boutons d'action** — liste, défaut **Toujours afficher**
 - **Survoler une barre « au survol » les révèle toutes** — case, défaut **décochée**
 
 ### Style des boutons
@@ -462,8 +483,23 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **Icônes** — liste, défaut **Blizzard**
 - **Recadrage de l'icône** — curseur, défaut **0.08**, 0 – 0.2, pas 0.01
 - **Bordure couleur de classe** — case, défaut **décochée**
+- **Bordure d'une couleur choisie** — case, défaut **décochée**
+- **Couleur de la bordure** — couleur, défaut **#4C4C4C**
+- **Appliquer le style aux flyouts de sorts** — case, défaut **décochée**
 - **Icônes grisées pendant la recharge** — case, défaut **cochée**
 - **Couleur du voile de recharge** — couleur, défaut **#000000**
+- **Opacité du voile de recharge** — curseur, défaut **0.8**, 0 – 1, pas 0.1
+- **Opacité de l'icône pendant la recharge** — curseur, défaut **1.0**, 0.1 – 1, pas 0.1
+- **Opacité du fond d'icône (emplacements vides)** — curseur, défaut **1.0**, 0 – 1, pas 0.1
+- **Masquer les nombres de recharge** — case, défaut **décochée**
+- **Afficher les nombres de recharge des charges** — case, défaut **décochée**
+- **Masquer le nombre de charges à 0** — case, défaut **décochée**
+- **Masquer les animations de lancement** — case, défaut **décochée**
+- **Teinter pressé, survol et sort en cours** — case, défaut **décochée**
+- **Teinte à la couleur de classe** — case, défaut **décochée**
+- **Couleur du bouton pressé** — couleur, défaut **#FFFFFF**
+- **Couleur du survol** — couleur, défaut **#FFFFFF**
+- **Couleur du sort en cours** — couleur, défaut **#FFFFFF**
 - **Lueur des sorts en surbrillance** — liste, défaut **Blizzard**
 - **Mode raccourcis (/musca kb)** — bouton  
   _Survoler un bouton et appuyer sur une touche pour la lier. Échap sur un bouton efface ses touches, Échap ailleurs ferme le mode._
@@ -482,6 +518,12 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **Espacement** — curseur, défaut **4**, 0 – 16, pas 1
 - **Opacité** — curseur, défaut **1.0**, 0.1 – 1, pas 0.1
 - **Visible seulement au survol** — case, défaut **décochée**
+- **Fond de barre** — case, défaut **décochée**
+- **Couleur du fond de barre** — couleur, défaut **#000000**
+- **Opacité du fond de barre** — curseur, défaut **0.5**, 0 – 1, pas 0.1
+- **Bordure de barre** — case, défaut **décochée**
+- **Couleur de la bordure de barre** — couleur, défaut **#4C4C4C**
+- **Embouts (gryphons)** — case, défaut **décochée**
 
 #### Visibilité
 
@@ -491,6 +533,7 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **En raid** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 
 ### Barre d'action 2
 
@@ -502,6 +545,12 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **Espacement** — curseur, défaut **4**, 0 – 16, pas 1
 - **Opacité** — curseur, défaut **1.0**, 0.1 – 1, pas 0.1
 - **Visible seulement au survol** — case, défaut **décochée**
+- **Fond de barre** — case, défaut **décochée**
+- **Couleur du fond de barre** — couleur, défaut **#000000**
+- **Opacité du fond de barre** — curseur, défaut **0.5**, 0 – 1, pas 0.1
+- **Bordure de barre** — case, défaut **décochée**
+- **Couleur de la bordure de barre** — couleur, défaut **#4C4C4C**
+- **Embouts (gryphons)** — case, défaut **décochée**
 
 #### Visibilité
 
@@ -511,6 +560,7 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **En raid** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 
 ### Barre d'action 3
 
@@ -522,6 +572,12 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **Espacement** — curseur, défaut **4**, 0 – 16, pas 1
 - **Opacité** — curseur, défaut **1.0**, 0.1 – 1, pas 0.1
 - **Visible seulement au survol** — case, défaut **décochée**
+- **Fond de barre** — case, défaut **décochée**
+- **Couleur du fond de barre** — couleur, défaut **#000000**
+- **Opacité du fond de barre** — curseur, défaut **0.5**, 0 – 1, pas 0.1
+- **Bordure de barre** — case, défaut **décochée**
+- **Couleur de la bordure de barre** — couleur, défaut **#4C4C4C**
+- **Embouts (gryphons)** — case, défaut **décochée**
 
 #### Visibilité
 
@@ -531,6 +587,7 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **En raid** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 
 ### Barre d'action 4
 
@@ -542,6 +599,12 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **Espacement** — curseur, défaut **4**, 0 – 16, pas 1
 - **Opacité** — curseur, défaut **1.0**, 0.1 – 1, pas 0.1
 - **Visible seulement au survol** — case, défaut **décochée**
+- **Fond de barre** — case, défaut **décochée**
+- **Couleur du fond de barre** — couleur, défaut **#000000**
+- **Opacité du fond de barre** — curseur, défaut **0.5**, 0 – 1, pas 0.1
+- **Bordure de barre** — case, défaut **décochée**
+- **Couleur de la bordure de barre** — couleur, défaut **#4C4C4C**
+- **Embouts (gryphons)** — case, défaut **décochée**
 
 #### Visibilité
 
@@ -551,6 +614,7 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **En raid** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 
 ### Barre d'action 5
 
@@ -562,6 +626,12 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **Espacement** — curseur, défaut **4**, 0 – 16, pas 1
 - **Opacité** — curseur, défaut **1.0**, 0.1 – 1, pas 0.1
 - **Visible seulement au survol** — case, défaut **décochée**
+- **Fond de barre** — case, défaut **décochée**
+- **Couleur du fond de barre** — couleur, défaut **#000000**
+- **Opacité du fond de barre** — curseur, défaut **0.5**, 0 – 1, pas 0.1
+- **Bordure de barre** — case, défaut **décochée**
+- **Couleur de la bordure de barre** — couleur, défaut **#4C4C4C**
+- **Embouts (gryphons)** — case, défaut **décochée**
 
 #### Visibilité
 
@@ -571,6 +641,7 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **En raid** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 
 ### Barre d'action 6
 
@@ -582,6 +653,12 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **Espacement** — curseur, défaut **4**, 0 – 16, pas 1
 - **Opacité** — curseur, défaut **1.0**, 0.1 – 1, pas 0.1
 - **Visible seulement au survol** — case, défaut **décochée**
+- **Fond de barre** — case, défaut **décochée**
+- **Couleur du fond de barre** — couleur, défaut **#000000**
+- **Opacité du fond de barre** — curseur, défaut **0.5**, 0 – 1, pas 0.1
+- **Bordure de barre** — case, défaut **décochée**
+- **Couleur de la bordure de barre** — couleur, défaut **#4C4C4C**
+- **Embouts (gryphons)** — case, défaut **décochée**
 
 #### Visibilité
 
@@ -591,6 +668,7 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **En raid** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 
 ### Barre d'action 7
 
@@ -602,6 +680,12 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **Espacement** — curseur, défaut **4**, 0 – 16, pas 1
 - **Opacité** — curseur, défaut **1.0**, 0.1 – 1, pas 0.1
 - **Visible seulement au survol** — case, défaut **décochée**
+- **Fond de barre** — case, défaut **décochée**
+- **Couleur du fond de barre** — couleur, défaut **#000000**
+- **Opacité du fond de barre** — curseur, défaut **0.5**, 0 – 1, pas 0.1
+- **Bordure de barre** — case, défaut **décochée**
+- **Couleur de la bordure de barre** — couleur, défaut **#4C4C4C**
+- **Embouts (gryphons)** — case, défaut **décochée**
 
 #### Visibilité
 
@@ -611,6 +695,7 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **En raid** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 
 ### Barre d'action 8
 
@@ -622,6 +707,12 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **Espacement** — curseur, défaut **4**, 0 – 16, pas 1
 - **Opacité** — curseur, défaut **1.0**, 0.1 – 1, pas 0.1
 - **Visible seulement au survol** — case, défaut **décochée**
+- **Fond de barre** — case, défaut **décochée**
+- **Couleur du fond de barre** — couleur, défaut **#000000**
+- **Opacité du fond de barre** — curseur, défaut **0.5**, 0 – 1, pas 0.1
+- **Bordure de barre** — case, défaut **décochée**
+- **Couleur de la bordure de barre** — couleur, défaut **#4C4C4C**
+- **Embouts (gryphons)** — case, défaut **décochée**
 
 #### Visibilité
 
@@ -631,12 +722,14 @@ Six barres d'action déplaçables faites de boutons Blizzard (icônes, recharges
 - **En raid** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 
 ## Barres d'auras
 
 Tes buffs et débuffs en barres horizontales avec le temps restant, les plus courts d'abord.
 
 - **Afficher** — liste, défaut **Buffs et débuffs**
+- **Ordre de tri** — liste, défaut **Plus court d'abord**
 - **Masquer les auras sans durée** — case, défaut **cochée**
 - **Enchantements d'arme (poisons, imprégnations)** — case, défaut **cochée**
 - **Nombre de barres maximum** — curseur, défaut **12**, 1 – 40, pas 1
@@ -644,6 +737,9 @@ Tes buffs et débuffs en barres horizontales avec le temps restant, les plus cou
 - **Épaisseur** — curseur, défaut **18**, 10 – 40, pas 1
 - **Espacement** — curseur, défaut **2**, 0 – 10, pas 1
 - **Empiler vers le haut** — case, défaut **décochée**
+- **Bordure des barres** — case, défaut **cochée**
+- **Ajustement de la taille du texte** — curseur, défaut **0**, -4 – 6, pas 1
+- **Dixièmes de seconde sous (0 = jamais), barres d'enchantement d'arme seulement** — curseur, défaut **0 s**, 0 – 60, pas 1
 - **Couleur des buffs** — couleur, défaut **#3FA8F4**
 
 ## Barres de données MuscaUI
@@ -662,6 +758,13 @@ Barre d'expérience (avec le bonus de repos, cachée au niveau maximum) et barre
 - **Longueur** — curseur, défaut **300**, 100 – 800, pas 10
 - **Épaisseur** — curseur, défaut **10**, 4 – 30, pas 1
 - **Texte sur la barre** — case, défaut **cochée**
+- **Fond sombre derrière le texte** — case, défaut **décochée**
+- **Taille du texte (écart)** — curseur, défaut **-2**, -6 – 8, pas 1
+- **Graduations** — liste, défaut **Aucune**
+- **Bordure** — case, défaut **cochée**
+- **Clic traversant (sans infobulle)** — case, défaut **décochée**
+- **Couleur de remplissage personnalisée** — case, défaut **décochée**
+  - **Couleur de remplissage** — couleur, défaut **#93008C**
 
 ### Réputation
 
@@ -670,6 +773,13 @@ Barre d'expérience (avec le bonus de repos, cachée au niveau maximum) et barre
 - **Longueur** — curseur, défaut **300**, 100 – 800, pas 10
 - **Épaisseur** — curseur, défaut **10**, 4 – 30, pas 1
 - **Texte sur la barre** — case, défaut **cochée**
+- **Fond sombre derrière le texte** — case, défaut **décochée**
+- **Taille du texte (écart)** — curseur, défaut **-2**, -6 – 8, pas 1
+- **Graduations** — liste, défaut **Aucune**
+- **Bordure** — case, défaut **cochée**
+- **Clic traversant (sans infobulle)** — case, défaut **décochée**
+- **Couleur de remplissage personnalisée** — case, défaut **décochée**
+  - **Couleur de remplissage** — couleur, défaut **#93008C**
 
 ## Barres de nom
 
@@ -716,6 +826,8 @@ Jusqu'à trois rangées d'icônes de sorts au choix, avec recharge et charges.
 - **En instance** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Avec une cible douce** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 
 ### Barre de recharges 2
 
@@ -745,6 +857,8 @@ Jusqu'à trois rangées d'icônes de sorts au choix, avec recharge et charges.
 - **En instance** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Avec une cible douce** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 
 ### Barre de recharges 3
 
@@ -774,6 +888,8 @@ Jusqu'à trois rangées d'icônes de sorts au choix, avec recharge et charges.
 - **En instance** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Avec une cible douce** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 
 ## Barres de ressources
 
@@ -781,6 +897,7 @@ Ta vie, ta puissance, tes points de combo et ta mana de druide en barres sépar�
 
 - **Orientation** — liste, défaut **Horizontale**
 - **Longueur** — curseur, défaut **220**, 60 – 500, pas 2
+- **Niveau d'affichage** — liste, défaut **Moyenne**
 - **Opacité hors combat** — curseur, défaut **1.00**, 0 – 1, pas 0.05
 
 ### Visibilité
@@ -792,6 +909,8 @@ Ta vie, ta puissance, tes points de combo et ta mana de druide en barres sépar�
 - **En instance** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Avec une cible douce** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 
 ### Vie
 
@@ -799,6 +918,12 @@ Ta vie, ta puissance, tes points de combo et ta mana de druide en barres sépar�
 - **Épaisseur** — curseur, défaut **14**, 4 – 40, pas 1
 - **Texte** — liste, défaut **Valeur | pourcentage**
 - **Couleur de classe** — case, défaut **cochée**
+- **Afficher les absorptions sur la barre** — case, défaut **décochée**
+- **Ancre du texte** — liste, défaut **Au centre**
+- **Décalage X du texte** — curseur, défaut **0**, -50 – 50, pas 1
+- **Décalage Y du texte** — curseur, défaut **0**, -30 – 30, pas 1
+- **Ajustement de la taille du texte** — curseur, défaut **0**, -4 – 8, pas 1
+- **Orientation** — liste, défaut **Comme le groupe**
 - **Couleur sous (%)** — curseur, défaut **0**, 0 – 90, pas 5
   - **Couleur** — couleur, défaut **#E52626**
 - **Deuxième couleur sous (%)** — curseur, défaut **0**, 0 – 95, pas 5
@@ -809,10 +934,16 @@ Ta vie, ta puissance, tes points de combo et ta mana de druide en barres sépar�
 
 - **Afficher** — case, défaut **cochée**
 - **Épaisseur** — curseur, défaut **12**, 4 – 40, pas 1
+- **Toujours afficher le mana** — case, défaut **décochée**
 - **Étincelle de la règle des 5 secondes sur la barre de mana** — case, défaut **décochée**
 - **Coût en mana du sort en cours d'incantation** — case, défaut **cochée**
 - **Texte** — liste, défaut **Valeur courante**
 - **Repère à (%, 0 = aucun)** — curseur, défaut **0**, 0 – 100, pas 5
+- **Ancre du texte** — liste, défaut **Au centre**
+- **Décalage X du texte** — curseur, défaut **0**, -50 – 50, pas 1
+- **Décalage Y du texte** — curseur, défaut **0**, -30 – 30, pas 1
+- **Ajustement de la taille du texte** — curseur, défaut **0**, -4 – 8, pas 1
+- **Orientation** — liste, défaut **Comme le groupe**
 - **Couleur sous (%)** — curseur, défaut **0**, 0 – 90, pas 5
   - **Couleur** — couleur, défaut **#E52626**
 - **Deuxième couleur sous (%)** — curseur, défaut **0**, 0 – 95, pas 5
@@ -823,11 +954,16 @@ Ta vie, ta puissance, tes points de combo et ta mana de druide en barres sépar�
 
 - **Afficher** — case, défaut **cochée**
 - **Épaisseur** — curseur, défaut **8**, 4 – 30, pas 1
+- **Couleur de remplissage** — couleur, défaut **#FFD100**
+- **Opacité propre hors combat** — case, défaut **décochée**
+  - **Opacité hors combat** — curseur, défaut **1.00**, 0 – 1, pas 0.05
+- **Orientation** — liste, défaut **Comme le groupe**
 
 ### Mana en forme de druide
 
 - **Afficher** — case, défaut **cochée**
 - **Épaisseur** — curseur, défaut **6**, 2 – 30, pas 1
+- **Orientation** — liste, défaut **Comme le groupe**
 
 ## Bulles de dialogue
 
@@ -841,6 +977,7 @@ Bulles au thème, bordure à la couleur du canal, canaux affichés un par un.
 - **PNJ** — case, défaut **cochée**
 - **Taille de police** — curseur, défaut **12**, 8 – 20, pas 1
 - **Bordure à la couleur du canal** — case, défaut **cochée**
+- **Masquer les bulles en instance** — case, défaut **décochée**
 
 ## Butin
 
@@ -864,6 +1001,8 @@ Gestionnaire de recharges (essentiel, utilitaire, icônes de buff, barres de buf
 - **Recharges : barres de buff** — liste, défaut **Déplaçable (/musca unlock)**
 - **Buffs** — liste, défaut **Déplaçable (/musca unlock)**
 - **Débuffs** — liste, défaut **Déplaçable (/musca unlock)**
+- **Alertes (succès, butin)** — liste, défaut **Déplaçable (/musca unlock)**
+- **Fenêtre de butin Blizzard** — liste, défaut **Laissé à Blizzard (Edit Mode)**
 - **Déverrouiller (déplacer les cadres)** — bouton
 
 ## Cadres d'unité
@@ -895,12 +1034,27 @@ Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du
 - **Couleur amicale** — couleur, défaut **#33BF33**
 - **Couleur déjà engagé** — couleur, défaut **#7F7F7F**
 - **Texte de vie** — liste, défaut **Valeur courante**
+- **Décimales du pourcentage de vie** — curseur, défaut **0**, 0 – 2, pas 1
+- **Couleur de la bordure de surbrillance** — couleur, défaut **#FFFFFF**
+- **Icône de la barre d'incantation** — liste, défaut **À gauche**
 - **Texte de puissance** — liste, défaut **Aucun**
 - **Opacité des cadres estompés** — curseur, défaut **0.35**, 0 – 0.9, pas 0.05
 - **Opacité hors de portée** — curseur, défaut **0.50**, 0.1 – 0.9, pas 0.05
 - **Barre d'incantation : cible du sort** — case, défaut **cochée**
+- **Barre d'incantation : nom du sort** — case, défaut **cochée**
+- **Barre d'incantation : temps restant** — case, défaut **décochée**
+- **Barre d'incantation : rang du sort** — case, défaut **décochée**
+- **Taille du texte de la barre d'incantation (écart)** — curseur, défaut **0**, -4 – 8, pas 1
+- **Couleur propre aux canalisations** — case, défaut **décochée**
+- **Couleur de canalisation** — couleur, défaut **#59B2FF**
+- **Couleur non interruptible** — couleur, défaut **#999999**
 - **Incantation du joueur : zone de latence** — case, défaut **cochée**
+- **Barre d'incantation : latence en ms** — case, défaut **décochée**
 - **Incantation du joueur : tops des canalisations** — case, défaut **cochée**
+- **Fond de la barre d'incantation** — case, défaut **cochée**
+- **Bordure de la barre d'incantation** — case, défaut **cochée**
+- **Opacité de la barre d'incantation** — curseur, défaut **1.00**, 0.2 – 1, pas 0.05
+- **Strate de la barre d'incantation** — liste, défaut **Celle du cadre**
 - **Incantation du joueur : fin de la recharge globale** — case, défaut **décochée**
 - **Barre d'incantation colorée quand ton interruption est prête** — case, défaut **cochée**
 - **Couleur « interruption prête »** — couleur, défaut **#33D859**
@@ -908,6 +1062,21 @@ Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du
 - **Couleur « sort important »** — couleur, défaut **#E54CE5**
 
 > Format personnalisé par cadre : texte libre avec [cur], [max], [perc], [missing], [status], [name], [level]. Exemple : [cur] / [max] ([perc]). Un format vide reprend le préréglage ci-dessus.
+
+### Texte des auras
+
+- **Afficher les piles** — case, défaut **cochée**
+- **Texte de durée** — liste, défaut **Chiffres du balayage**
+- **Lueur sur les buffs volables** — case, défaut **décochée**
+- **Clic droit sur tes buffs pour les annuler (hors combat)** — case, défaut **décochée**
+- **Taille des piles (écart)** — curseur, défaut **-2**, -6 – 6, pas 1
+- **Position des piles** — liste, défaut **En bas à droite**
+- **Décalage X des piles** — curseur, défaut **0**, -10 – 10, pas 1
+- **Décalage Y des piles** — curseur, défaut **0**, -10 – 10, pas 1
+- **Taille du texte de durée (écart)** — curseur, défaut **-1**, -6 – 6, pas 1
+- **Position du texte de durée** — liste, défaut **Au centre**
+- **Décalage X de la durée** — curseur, défaut **0**, -10 – 10, pas 1
+- **Décalage Y de la durée** — curseur, défaut **0**, -10 – 10, pas 1
 
 ### Listes d'auras (partagées)
 
@@ -925,22 +1094,44 @@ Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du
 - **Copier les réglages depuis** — liste
 - **Largeur** — curseur, défaut **220**, 60 – 400, pas 2
 - **Hauteur** — curseur, défaut **42**, 12 – 80, pas 1
+- **Échelle** — curseur, défaut **1.00**, 0.5 – 2, pas 0.05
 - **Barre de vie verticale (remplie de bas en haut)** — case, défaut **décochée**
+- **Strate des cadres** — liste, défaut **Basse**
+- **Bordure de surbrillance quand ciblé** — case, défaut **décochée**
+- **Bordure de surbrillance au survol** — case, défaut **décochée**
 - **Nom** — case, défaut **cochée**
+  - **Afficher la cible après le nom (nom > cible)** — case, défaut **décochée**
 - **Niveau** — case, défaut **cochée**
 - **Estomper hors combat quand rien ne se passe** — case, défaut **décochée**
 - **Portrait** — case, défaut **décochée**
+  - **Style du portrait** — liste, défaut **Portrait de l'unité**
 - **Icône élite ou rare** — case, défaut **décochée**
 - **Écusson de faction si marqué JcJ** — case, défaut **cochée**
 - **Bordure à la couleur de la menace** — case, défaut **cochée**
+  - **Icône de combat et de repos : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Icône de combat et de repos : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône de combat et de repos : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Marqueur de raid : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Marqueur de raid : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Marqueur de raid : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône élite ou rare : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Icône élite ou rare : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône élite ou rare : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Écusson JcJ : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Écusson JcJ : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Écusson JcJ : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
 - **Barre de points de combo** — case, défaut **cochée**
   - **Pastilles séparées** — case, défaut **décochée**
   - **Espace entre pastilles** — curseur, défaut **2**, 0 – 10, pas 1
   - **Couleur des points de combo** — couleur, défaut **#FFD100**
+  - **Barre de combo au-dessus du cadre** — case, défaut **décochée**
+  - **Hauteur de la barre de combo (0 = auto)** — curseur, défaut **0**, 0 – 20, pas 1
 - **Totems (barre déplaçable, clic droit : détruire)** — case, défaut **cochée**
   - **Taille des totems** — curseur, défaut **30**, 16 – 60, pas 2
 - **Barre de puissance** — case, défaut **cochée**
   - **Hauteur de la barre de puissance** — curseur, défaut **6**, 0 – 16, pas 1
+  - **Couleur de puissance personnalisée** — case, défaut **décochée**
+    - **Couleur de la barre de puissance** — couleur, défaut **#0070DD**
   - **Étincelle de la règle des 5 secondes sur la barre de mana** — case, défaut **décochée**
   - **Coût en mana du sort en cours d'incantation** — case, défaut **cochée**
 - **Barre d'incantation** — case, défaut **cochée**
@@ -949,6 +1140,7 @@ Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du
     - **Largeur de la barre d'incantation détachée** — curseur, défaut **260**, 100 – 500, pas 2
 - **Auras (buffs et débuffs)** — case, défaut **cochée**
   - **Auras au-dessus du cadre** — case, défaut **cochée**
+  - **Buffs du côté opposé aux débuffs** — case, défaut **décochée**
   - **Taille des icônes d'auras** — curseur, défaut **22**, 12 – 40, pas 1
   - **Filtre des débuffs** — liste, défaut **Tous**
 - **Format de vie (vide = préréglage)** — zone de texte
@@ -970,24 +1162,51 @@ Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du
 - **Copier les réglages depuis** — liste
 - **Largeur** — curseur, défaut **220**, 60 – 400, pas 2
 - **Hauteur** — curseur, défaut **42**, 12 – 80, pas 1
+- **Échelle** — curseur, défaut **1.00**, 0.5 – 2, pas 0.05
 - **Barre de vie verticale (remplie de bas en haut)** — case, défaut **décochée**
+- **Strate des cadres** — liste, défaut **Basse**
+- **Bordure de surbrillance quand ciblé** — case, défaut **décochée**
+- **Bordure de surbrillance au survol** — case, défaut **décochée**
 - **Nom** — case, défaut **cochée**
+  - **Afficher la cible après le nom (nom > cible)** — case, défaut **décochée**
 - **Niveau** — case, défaut **cochée**
 - **Estomper hors combat quand rien ne se passe** — case, défaut **décochée**
 - **Atténuer les ennemis hors de portée d'attaque** — case, défaut **décochée**
 - **Portrait** — case, défaut **décochée**
+  - **Style du portrait** — liste, défaut **Portrait de l'unité**
 - **Icône élite ou rare** — case, défaut **cochée**
 - **Écusson de faction si marqué JcJ** — case, défaut **cochée**
 - **Bordure à la couleur de la menace** — case, défaut **décochée**
 - **Pourcentage de menace au-dessus du cadre** — case, défaut **décochée**
+  - **Icône de combat et de repos : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Icône de combat et de repos : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône de combat et de repos : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Marqueur de raid : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Marqueur de raid : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Marqueur de raid : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône élite ou rare : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Icône élite ou rare : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône élite ou rare : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Écusson JcJ : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Écusson JcJ : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Écusson JcJ : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+- **Barre de points de combo** — case, défaut **décochée**
+  - **Pastilles séparées** — case, défaut **décochée**
+  - **Espace entre pastilles** — curseur, défaut **2**, 0 – 10, pas 1
+  - **Couleur des points de combo** — couleur, défaut **#FFD100**
+  - **Barre de combo au-dessus du cadre** — case, défaut **décochée**
+  - **Hauteur de la barre de combo (0 = auto)** — curseur, défaut **0**, 0 – 20, pas 1
 - **Barre de puissance** — case, défaut **cochée**
   - **Hauteur de la barre de puissance** — curseur, défaut **6**, 0 – 16, pas 1
+  - **Couleur de puissance personnalisée** — case, défaut **décochée**
+    - **Couleur de la barre de puissance** — couleur, défaut **#0070DD**
 - **Barre d'incantation** — case, défaut **cochée**
   - **Hauteur de la barre d'incantation** — curseur, défaut **18**, 8 – 30, pas 1
   - **Barre d'incantation détachée (son propre mover)** — case, défaut **décochée**
     - **Largeur de la barre d'incantation détachée** — curseur, défaut **260**, 100 – 500, pas 2
 - **Auras (buffs et débuffs)** — case, défaut **cochée**
   - **Auras au-dessus du cadre** — case, défaut **décochée**
+  - **Buffs du côté opposé aux débuffs** — case, défaut **décochée**
   - **Taille des icônes d'auras** — curseur, défaut **22**, 12 – 40, pas 1
   - **Filtre des débuffs** — liste, défaut **Tous**
 - **Format de vie (vide = préréglage)** — zone de texte
@@ -1009,23 +1228,44 @@ Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du
 - **Copier les réglages depuis** — liste
 - **Largeur** — curseur, défaut **110**, 60 – 400, pas 2
 - **Hauteur** — curseur, défaut **24**, 12 – 80, pas 1
+- **Échelle** — curseur, défaut **1.00**, 0.5 – 2, pas 0.05
 - **Barre de vie verticale (remplie de bas en haut)** — case, défaut **décochée**
+- **Strate des cadres** — liste, défaut **Basse**
+- **Bordure de surbrillance quand ciblé** — case, défaut **décochée**
+- **Bordure de surbrillance au survol** — case, défaut **décochée**
 - **Nom** — case, défaut **cochée**
+  - **Afficher la cible après le nom (nom > cible)** — case, défaut **décochée**
 - **Niveau** — case, défaut **décochée**
 - **Estomper hors combat quand rien ne se passe** — case, défaut **décochée**
 - **Atténuer les ennemis hors de portée d'attaque** — case, défaut **décochée**
 - **Portrait** — case, défaut **décochée**
+  - **Style du portrait** — liste, défaut **Portrait de l'unité**
 - **Icône élite ou rare** — case, défaut **décochée**
 - **Écusson de faction si marqué JcJ** — case, défaut **décochée**
 - **Bordure à la couleur de la menace** — case, défaut **décochée**
+  - **Icône de combat et de repos : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Icône de combat et de repos : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône de combat et de repos : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Marqueur de raid : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Marqueur de raid : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Marqueur de raid : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône élite ou rare : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Icône élite ou rare : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône élite ou rare : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Écusson JcJ : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Écusson JcJ : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Écusson JcJ : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
 - **Barre de puissance** — case, défaut **décochée**
   - **Hauteur de la barre de puissance** — curseur, défaut **0**, 0 – 16, pas 1
+  - **Couleur de puissance personnalisée** — case, défaut **décochée**
+    - **Couleur de la barre de puissance** — couleur, défaut **#0070DD**
 - **Barre d'incantation** — case, défaut **décochée**
   - **Hauteur de la barre d'incantation** — curseur, défaut **18**, 8 – 30, pas 1
   - **Barre d'incantation détachée (son propre mover)** — case, défaut **décochée**
     - **Largeur de la barre d'incantation détachée** — curseur, défaut **260**, 100 – 500, pas 2
 - **Auras (buffs et débuffs)** — case, défaut **décochée**
   - **Auras au-dessus du cadre** — case, défaut **décochée**
+  - **Buffs du côté opposé aux débuffs** — case, défaut **décochée**
   - **Taille des icônes d'auras** — curseur, défaut **22**, 12 – 40, pas 1
   - **Filtre des débuffs** — liste, défaut **Tous**
 - **Format de vie (vide = préréglage)** — zone de texte
@@ -1046,24 +1286,45 @@ Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du
 - **Copier les réglages depuis** — liste
 - **Largeur** — curseur, défaut **180**, 60 – 400, pas 2
 - **Hauteur** — curseur, défaut **36**, 12 – 80, pas 1
+- **Échelle** — curseur, défaut **1.00**, 0.5 – 2, pas 0.05
 - **Barre de vie verticale (remplie de bas en haut)** — case, défaut **décochée**
+- **Strate des cadres** — liste, défaut **Basse**
+- **Bordure de surbrillance quand ciblé** — case, défaut **décochée**
+- **Bordure de surbrillance au survol** — case, défaut **décochée**
 - **Nom** — case, défaut **cochée**
+  - **Afficher la cible après le nom (nom > cible)** — case, défaut **décochée**
 - **Niveau** — case, défaut **cochée**
 - **Estomper hors combat quand rien ne se passe** — case, défaut **décochée**
 - **Atténuer les ennemis hors de portée d'attaque** — case, défaut **décochée**
 - **Portrait** — case, défaut **décochée**
+  - **Style du portrait** — liste, défaut **Portrait de l'unité**
 - **Icône élite ou rare** — case, défaut **cochée**
 - **Écusson de faction si marqué JcJ** — case, défaut **décochée**
 - **Bordure à la couleur de la menace** — case, défaut **décochée**
 - **Pourcentage de menace au-dessus du cadre** — case, défaut **décochée**
+  - **Icône de combat et de repos : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Icône de combat et de repos : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône de combat et de repos : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Marqueur de raid : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Marqueur de raid : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Marqueur de raid : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône élite ou rare : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Icône élite ou rare : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône élite ou rare : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Écusson JcJ : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Écusson JcJ : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Écusson JcJ : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
 - **Barre de puissance** — case, défaut **cochée**
   - **Hauteur de la barre de puissance** — curseur, défaut **6**, 0 – 16, pas 1
+  - **Couleur de puissance personnalisée** — case, défaut **décochée**
+    - **Couleur de la barre de puissance** — couleur, défaut **#0070DD**
 - **Barre d'incantation** — case, défaut **cochée**
   - **Hauteur de la barre d'incantation** — curseur, défaut **18**, 8 – 30, pas 1
   - **Barre d'incantation détachée (son propre mover)** — case, défaut **décochée**
     - **Largeur de la barre d'incantation détachée** — curseur, défaut **260**, 100 – 500, pas 2
 - **Auras (buffs et débuffs)** — case, défaut **cochée**
   - **Auras au-dessus du cadre** — case, défaut **décochée**
+  - **Buffs du côté opposé aux débuffs** — case, défaut **décochée**
   - **Taille des icônes d'auras** — curseur, défaut **22**, 12 – 40, pas 1
   - **Filtre des débuffs** — liste, défaut **Tous**
 - **Format de vie (vide = préréglage)** — zone de texte
@@ -1085,23 +1346,44 @@ Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du
 - **Copier les réglages depuis** — liste
 - **Largeur** — curseur, défaut **110**, 60 – 400, pas 2
 - **Hauteur** — curseur, défaut **24**, 12 – 80, pas 1
+- **Échelle** — curseur, défaut **1.00**, 0.5 – 2, pas 0.05
 - **Barre de vie verticale (remplie de bas en haut)** — case, défaut **décochée**
+- **Strate des cadres** — liste, défaut **Basse**
+- **Bordure de surbrillance quand ciblé** — case, défaut **décochée**
+- **Bordure de surbrillance au survol** — case, défaut **décochée**
 - **Nom** — case, défaut **cochée**
+  - **Afficher la cible après le nom (nom > cible)** — case, défaut **décochée**
 - **Niveau** — case, défaut **décochée**
 - **Estomper hors combat quand rien ne se passe** — case, défaut **décochée**
 - **Atténuer les ennemis hors de portée d'attaque** — case, défaut **décochée**
 - **Portrait** — case, défaut **décochée**
+  - **Style du portrait** — liste, défaut **Portrait de l'unité**
 - **Icône élite ou rare** — case, défaut **décochée**
 - **Écusson de faction si marqué JcJ** — case, défaut **décochée**
 - **Bordure à la couleur de la menace** — case, défaut **décochée**
+  - **Icône de combat et de repos : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Icône de combat et de repos : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône de combat et de repos : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Marqueur de raid : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Marqueur de raid : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Marqueur de raid : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône élite ou rare : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Icône élite ou rare : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône élite ou rare : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Écusson JcJ : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Écusson JcJ : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Écusson JcJ : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
 - **Barre de puissance** — case, défaut **décochée**
   - **Hauteur de la barre de puissance** — curseur, défaut **0**, 0 – 16, pas 1
+  - **Couleur de puissance personnalisée** — case, défaut **décochée**
+    - **Couleur de la barre de puissance** — couleur, défaut **#0070DD**
 - **Barre d'incantation** — case, défaut **décochée**
   - **Hauteur de la barre d'incantation** — curseur, défaut **18**, 8 – 30, pas 1
   - **Barre d'incantation détachée (son propre mover)** — case, défaut **décochée**
     - **Largeur de la barre d'incantation détachée** — curseur, défaut **260**, 100 – 500, pas 2
 - **Auras (buffs et débuffs)** — case, défaut **décochée**
   - **Auras au-dessus du cadre** — case, défaut **décochée**
+  - **Buffs du côté opposé aux débuffs** — case, défaut **décochée**
   - **Taille des icônes d'auras** — curseur, défaut **22**, 12 – 40, pas 1
   - **Filtre des débuffs** — liste, défaut **Tous**
 - **Format de vie (vide = préréglage)** — zone de texte
@@ -1122,24 +1404,48 @@ Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du
 - **Copier les réglages depuis** — liste
 - **Largeur** — curseur, défaut **110**, 60 – 400, pas 2
 - **Hauteur** — curseur, défaut **24**, 12 – 80, pas 1
+- **Échelle** — curseur, défaut **1.00**, 0.5 – 2, pas 0.05
 - **Barre de vie verticale (remplie de bas en haut)** — case, défaut **décochée**
+- **Strate des cadres** — liste, défaut **Basse**
+- **Bordure de surbrillance quand ciblé** — case, défaut **décochée**
+- **Bordure de surbrillance au survol** — case, défaut **décochée**
 - **Nom** — case, défaut **cochée**
+  - **Afficher la cible après le nom (nom > cible)** — case, défaut **décochée**
 - **Niveau** — case, défaut **décochée**
 - **Estomper hors combat quand rien ne se passe** — case, défaut **décochée**
 - **Atténuer les ennemis hors de portée d'attaque** — case, défaut **décochée**
 - **Portrait** — case, défaut **décochée**
+  - **Style du portrait** — liste, défaut **Portrait de l'unité**
 - **Icône élite ou rare** — case, défaut **décochée**
 - **Écusson de faction si marqué JcJ** — case, défaut **décochée**
 - **Bordure à la couleur de la menace** — case, défaut **décochée**
 - **Humeur du familier de chasseur** — case, défaut **cochée**
+  - **Icône de combat et de repos : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Icône de combat et de repos : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône de combat et de repos : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Marqueur de raid : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Marqueur de raid : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Marqueur de raid : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône élite ou rare : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Icône élite ou rare : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône élite ou rare : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Écusson JcJ : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Écusson JcJ : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Écusson JcJ : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône d'humeur du familier : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Icône d'humeur du familier : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône d'humeur du familier : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
 - **Barre de puissance** — case, défaut **cochée**
   - **Hauteur de la barre de puissance** — curseur, défaut **4**, 0 – 16, pas 1
+  - **Couleur de puissance personnalisée** — case, défaut **décochée**
+    - **Couleur de la barre de puissance** — couleur, défaut **#0070DD**
 - **Barre d'incantation** — case, défaut **décochée**
   - **Hauteur de la barre d'incantation** — curseur, défaut **18**, 8 – 30, pas 1
   - **Barre d'incantation détachée (son propre mover)** — case, défaut **décochée**
     - **Largeur de la barre d'incantation détachée** — curseur, défaut **260**, 100 – 500, pas 2
 - **Auras (buffs et débuffs)** — case, défaut **décochée**
   - **Auras au-dessus du cadre** — case, défaut **décochée**
+  - **Buffs du côté opposé aux débuffs** — case, défaut **décochée**
   - **Taille des icônes d'auras** — curseur, défaut **22**, 12 – 40, pas 1
   - **Filtre des débuffs** — liste, défaut **Tous**
 - **Format de vie (vide = préréglage)** — zone de texte
@@ -1161,23 +1467,44 @@ Remplace les cadres Blizzard du joueur, de la cible, de la cible de la cible, du
 - **Copier les réglages depuis** — liste
 - **Largeur** — curseur, défaut **200**, 60 – 400, pas 2
 - **Hauteur** — curseur, défaut **36**, 12 – 80, pas 1
+- **Échelle** — curseur, défaut **1.00**, 0.5 – 2, pas 0.05
 - **Barre de vie verticale (remplie de bas en haut)** — case, défaut **décochée**
+- **Strate des cadres** — liste, défaut **Basse**
+- **Bordure de surbrillance quand ciblé** — case, défaut **décochée**
+- **Bordure de surbrillance au survol** — case, défaut **décochée**
 - **Nom** — case, défaut **cochée**
+  - **Afficher la cible après le nom (nom > cible)** — case, défaut **décochée**
 - **Niveau** — case, défaut **cochée**
 - **Estomper hors combat quand rien ne se passe** — case, défaut **décochée**
 - **Atténuer les ennemis hors de portée d'attaque** — case, défaut **décochée**
 - **Portrait** — case, défaut **décochée**
+  - **Style du portrait** — liste, défaut **Portrait de l'unité**
 - **Icône élite ou rare** — case, défaut **cochée**
 - **Écusson de faction si marqué JcJ** — case, défaut **décochée**
 - **Bordure à la couleur de la menace** — case, défaut **décochée**
+  - **Icône de combat et de repos : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Icône de combat et de repos : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône de combat et de repos : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Marqueur de raid : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Marqueur de raid : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Marqueur de raid : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône élite ou rare : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Icône élite ou rare : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Icône élite ou rare : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Écusson JcJ : taille (0 = défaut)** — curseur, défaut **0**, 0 – 48, pas 1
+  - **Écusson JcJ : décalage horizontal** — curseur, défaut **0**, -30 – 30, pas 1
+  - **Écusson JcJ : décalage vertical** — curseur, défaut **0**, -30 – 30, pas 1
 - **Barre de puissance** — case, défaut **cochée**
   - **Hauteur de la barre de puissance** — curseur, défaut **6**, 0 – 16, pas 1
+  - **Couleur de puissance personnalisée** — case, défaut **décochée**
+    - **Couleur de la barre de puissance** — couleur, défaut **#0070DD**
 - **Barre d'incantation** — case, défaut **cochée**
   - **Hauteur de la barre d'incantation** — curseur, défaut **18**, 8 – 30, pas 1
   - **Barre d'incantation détachée (son propre mover)** — case, défaut **décochée**
     - **Largeur de la barre d'incantation détachée** — curseur, défaut **260**, 100 – 500, pas 2
 - **Auras (buffs et débuffs)** — case, défaut **cochée**
   - **Auras au-dessus du cadre** — case, défaut **décochée**
+  - **Buffs du côté opposé aux débuffs** — case, défaut **décochée**
   - **Taille des icônes d'auras** — curseur, défaut **20**, 12 – 40, pas 1
   - **Filtre des débuffs** — liste, défaut **Tous**
 - **Format de vie (vide = préréglage)** — zone de texte
@@ -1253,15 +1580,25 @@ Remplace les cadres Blizzard de groupe et de raid par des grilles MuscaUI : vie,
   _Noms séparés par des virgules. Vide : les joueurs au rôle de tank._
 - **Cadres des boss alliés** — case, défaut **décochée**
 - **Mana des soigneurs (texte)** — liste, défaut **Désactivé**
+- **Taille du texte du mana des soigneurs** — curseur, défaut **0**, -4 – 6, pas 1
+- **Interligne du mana des soigneurs** — curseur, défaut **0**, 0 – 10, pas 1
+- **Sens du mana des soigneurs** — liste, défaut **Vers le bas**
+- **Couleur du mana des soigneurs personnalisée** — case, défaut **décochée**
+  - **Couleur du mana des soigneurs** — couleur, défaut **#FFFFFF**
 
 ### Barres
 
 - **Couleur de classe pour les joueurs (couleur de réaction sinon)** — case, défaut **cochée**
 - **Couleur de vie du rouge au vert selon le pourcentage** — case, défaut **décochée**
 - **Soins entrants et absorptions** — case, défaut **cochée**
+- **Opacité des soins entrants** — curseur, défaut **0.45**, 0.1 – 1, pas 0.05
 - **Barre de vie verticale (remplie de bas en haut)** — case, défaut **décochée**
+- **Animation douce des barres de vie et de puissance** — case, défaut **décochée**
+- **Couleur de mort** — couleur, défaut **#231616**
+- **Couleur hors ligne** — couleur, défaut **#666666**
 - **Barre de puissance** — case, défaut **cochée**
 - **Hauteur de la barre de puissance** — curseur, défaut **4**, 0 – 12, pas 1
+- **Barre de puissance par-dessus la vie** — case, défaut **décochée**
 - **Afficher pour les tanks** — case, défaut **cochée**
 - **Afficher pour les soigneurs** — case, défaut **cochée**
 - **Afficher pour les dégâts** — case, défaut **décochée**  
@@ -1273,23 +1610,50 @@ Remplace les cadres Blizzard de groupe et de raid par des grilles MuscaUI : vie,
 ### Textes et icônes
 
 - **Position du nom** — liste, défaut **En haut à gauche**
+- **Décalage X du nom** — curseur, défaut **0**, -20 – 20, pas 1
+- **Décalage Y du nom** — curseur, défaut **0**, -20 – 20, pas 1
+- **Taille du nom (écart au thème)** — curseur, défaut **0**, -4 – 6, pas 1
+- **Nom au-dessus des icônes d'aura** — case, défaut **décochée**
+- **Couleur de nom choisie (au lieu de la couleur de classe)** — case, défaut **décochée**
+- **Couleur du nom** — couleur, défaut **#FFFFFF**
 - **Longueur du nom (0 = entier)** — curseur, défaut **12**, 0 – 20, pas 1
+- **Format du nom** — liste, défaut **Nom entier**
+- **Noms sur les cadres de raid** — case, défaut **cochée**
+- **Noms colorés par classe** — case, défaut **cochée**
 - **Texte de vie** — liste, défaut **Aucun**
 - **Mort et hors ligne : fond teinté et texte** — case, défaut **cochée**
 - **Icônes de rôle** — case, défaut **cochée**
 - **Style de l'icône de rôle** — liste, défaut **Portrait**
 - **Taille de l'icône de rôle** — curseur, défaut **13**, 8 – 24, pas 1
 - **Coin de l'icône de rôle** — liste, défaut **En bas à gauche**
+  - **Décalage X** — curseur, défaut **0**, -20 – 20, pas 1
+  - **Décalage Y** — curseur, défaut **0**, -20 – 20, pas 1
 - **Afficher pour les tanks** — case, défaut **cochée**
 - **Afficher pour les soigneurs** — case, défaut **cochée**
 - **Afficher pour les dégâts** — case, défaut **décochée**
 - **Cacher les icônes de rôle en combat** — case, défaut **décochée**
 - **Icône du chef de groupe** — case, défaut **décochée**
+- **Taille** — curseur, défaut **12**, 8 – 24, pas 1
+- **Décalage X** — curseur, défaut **0**, -20 – 20, pas 1
+- **Décalage Y** — curseur, défaut **0**, -20 – 20, pas 1
+- **Icône de chef en combat** — case, défaut **cochée**
+- **Taille du marqueur de raid** — curseur, défaut **14**, 8 – 28, pas 1
+- **Position du marqueur de raid** — liste, défaut **En haut à droite**
+- **Décalage X** — curseur, défaut **0**, -20 – 20, pas 1
+- **Décalage Y** — curseur, défaut **0**, -20 – 20, pas 1
+- **Icône de combat** — case, défaut **décochée**
+- **Taille** — curseur, défaut **14**, 8 – 24, pas 1
+- **Position de l'icône de combat** — liste, défaut **En haut à gauche**
+- **Décalage X** — curseur, défaut **0**, -20 – 20, pas 1
+- **Décalage Y** — curseur, défaut **0**, -20 – 20, pas 1
 - **Icônes d'appel, d'invocation et de résurrection** — case, défaut **cochée**
 - **Appel prêt** — case, défaut **cochée**
 - **Invocations** — case, défaut **cochée**
 - **Résurrections (incantation, puis offre à accepter)** — case, défaut **cochée**
 - **Taille de l'icône d'état** — curseur, défaut **16**, 10 – 32, pas 1
+- **Position de l'icône d'état** — liste, défaut **Au centre**
+- **Décalage X** — curseur, défaut **0**, -20 – 20, pas 1
+- **Décalage Y** — curseur, défaut **0**, -20 – 20, pas 1
 
 ### Auras
 
@@ -1320,6 +1684,22 @@ Remplace les cadres Blizzard de groupe et de raid par des grilles MuscaUI : vie,
   - **Taille des icônes d'auras** — curseur, défaut **18**, 10 – 32, pas 1
   - **Nombre d'auras** — curseur, défaut **3**, 1 – 8, pas 1
 - **Afficher aussi les buffs** — case, défaut **décochée**
+- **Masquer les débuffs parasites (Rassasié, Longanimité, Âme affaiblie)** — case, défaut **cochée**
+- **Bordure des icônes d'aura** — case, défaut **cochée**
+- **Épaisseur de la bordure de dissipation (0 = bordure du thème)** — curseur, défaut **0**, 0 – 4, pas 1
+
+#### Texte des auras
+
+- **Afficher les piles** — case, défaut **cochée**
+- **Texte de durée** — liste, défaut **Chiffres du balayage**
+- **Taille des piles (écart)** — curseur, défaut **-2**, -6 – 6, pas 1
+- **Position des piles** — liste, défaut **En bas à droite**
+- **Décalage X des piles** — curseur, défaut **0**, -10 – 10, pas 1
+- **Décalage Y des piles** — curseur, défaut **0**, -10 – 10, pas 1
+- **Taille du texte de durée (écart)** — curseur, défaut **-1**, -6 – 6, pas 1
+- **Position du texte de durée** — liste, défaut **Au centre**
+- **Décalage X de la durée** — curseur, défaut **0**, -10 – 10, pas 1
+- **Décalage Y de la durée** — curseur, défaut **0**, -10 – 10, pas 1
 
 ### Alertes
 
@@ -1329,8 +1709,15 @@ Remplace les cadres Blizzard de groupe et de raid par des grilles MuscaUI : vie,
 - **Lueur de la couleur du type de débuff** — case, défaut **décochée**
 - **Afficher la menace (orange : instable, rouge : agro)** — case, défaut **cochée**
 - **Affichage de la menace** — liste, défaut **Lueur**
+- **Épaisseur de la bordure de menace (0 = bordure du thème)** — curseur, défaut **0**, 0 – 4, pas 1
 - **Bordure d'accent sur la cible** — case, défaut **cochée**
+- **Épaisseur du cadre de cible (0 = bordure du thème)** — curseur, défaut **0**, 0 – 4, pas 1
+- **Couleur de cible personnalisée** — case, défaut **décochée**
+  - **Couleur de la cible** — couleur, défaut **#FFD100**
 - **Surbrillance au survol** — case, défaut **cochée**
+- **Style du survol** — liste, défaut **Voile**
+- **Couleur du survol** — couleur, défaut **#FFFFFF**
+- **Strate des cadres** — liste, défaut **Moyenne**
 - **Atténuer les unités hors de portée** — case, défaut **cochée**
 - **Opacité hors de portée** — curseur, défaut **0.4**, 0.1 – 0.9, pas 0.1
 
@@ -1340,20 +1727,52 @@ Remplace les cadres Blizzard de groupe et de raid par des grilles MuscaUI : vie,
 
 - **Indicateur 1 : identifiants de sorts** — zone de texte
 - **Position** — liste, défaut **En haut à gauche**
+- **Rendu** — liste, défaut **Icône**
+- **Couleur du carré ou de la barre** — couleur, défaut **#FFD100**
+- **Afficher sur** — liste, défaut **Tous**
+- **Lueur** — liste, défaut **Aucune**
 - **Indicateur 2 : identifiants de sorts** — zone de texte
 - **Position** — liste, défaut **En haut à droite**
+- **Rendu** — liste, défaut **Icône**
+- **Couleur du carré ou de la barre** — couleur, défaut **#FFD100**
+- **Afficher sur** — liste, défaut **Tous**
+- **Lueur** — liste, défaut **Aucune**
 - **Indicateur 3 : identifiants de sorts** — zone de texte
 - **Position** — liste, défaut **En bas à gauche**
+- **Rendu** — liste, défaut **Icône**
+- **Couleur du carré ou de la barre** — couleur, défaut **#FFD100**
+- **Afficher sur** — liste, défaut **Tous**
+- **Lueur** — liste, défaut **Aucune**
 - **Indicateur 4 : identifiants de sorts** — zone de texte
 - **Position** — liste, défaut **En bas à droite**
+- **Rendu** — liste, défaut **Icône**
+- **Couleur du carré ou de la barre** — couleur, défaut **#FFD100**
+- **Afficher sur** — liste, défaut **Tous**
+- **Lueur** — liste, défaut **Aucune**
 - **Indicateur 5 : identifiants de sorts** — zone de texte
 - **Position** — liste, défaut **En haut**
+- **Rendu** — liste, défaut **Icône**
+- **Couleur du carré ou de la barre** — couleur, défaut **#FFD100**
+- **Afficher sur** — liste, défaut **Tous**
+- **Lueur** — liste, défaut **Aucune**
 - **Indicateur 6 : identifiants de sorts** — zone de texte
 - **Position** — liste, défaut **En bas**
+- **Rendu** — liste, défaut **Icône**
+- **Couleur du carré ou de la barre** — couleur, défaut **#FFD100**
+- **Afficher sur** — liste, défaut **Tous**
+- **Lueur** — liste, défaut **Aucune**
 - **Indicateur 7 : identifiants de sorts** — zone de texte
 - **Position** — liste, défaut **À gauche**
+- **Rendu** — liste, défaut **Icône**
+- **Couleur du carré ou de la barre** — couleur, défaut **#FFD100**
+- **Afficher sur** — liste, défaut **Tous**
+- **Lueur** — liste, défaut **Aucune**
 - **Indicateur 8 : identifiants de sorts** — zone de texte
 - **Position** — liste, défaut **À droite**
+- **Rendu** — liste, défaut **Icône**
+- **Couleur du carré ou de la barre** — couleur, défaut **#FFD100**
+- **Afficher sur** — liste, défaut **Tous**
+- **Lueur** — liste, défaut **Aucune**
 - **Taille des icônes** — curseur, défaut **10**, 6 – 20, pas 1
 - **Seulement mes propres sorts** — case, défaut **cochée**
 - **Ajouter : soins sur la durée** — bouton
@@ -1372,7 +1791,11 @@ Fenêtres de chat au thème (fond, police, onglets plats, boutons latéraux cach
 - **Texture du fond** — liste, défaut **Plate**
 - **Cacher la barre de défilement (la molette défile toujours)** — case, défaut **décochée**
 - **Taille de police** — curseur, défaut **12**, 9 – 20, pas 1
+- **Contour du texte** — liste, défaut **Comme le thème**
+- **Ombre du texte** — case, défaut **décochée**
+- **Masquer la bordure des fenêtres** — case, défaut **décochée**
 - **Onglets plats** — case, défaut **cochée**
+- **Couleur des onglets inactifs** — couleur, défaut **#A5A5A5**
 - **Taille de police des onglets** — curseur, défaut **12**, 8 – 20, pas 1
 - **Couleur de l'onglet actif** — couleur, défaut **#3FA8F4**
 - **Souligner l'onglet actif** — case, défaut **cochée**
@@ -1387,6 +1810,7 @@ Fenêtres de chat au thème (fond, police, onglets plats, boutons latéraux cach
 - **URL cliquables (clic pour copier)** — case, défaut **cochée**
 - **Bouton de copie au survol ([c], en haut à droite)** — case, défaut **cochée**
 - **Noms de canaux courts ([2] au lieu de [2. Commerce])** — case, défaut **cochée**
+- **Noms de canaux en une lettre** — case, défaut **décochée**
 - **Couleur de classe sur tous les canaux** — case, défaut **cochée**
 - **Horodatage** — liste, défaut **Aucun**
 
@@ -1415,6 +1839,7 @@ Fenêtres de chat au thème (fond, police, onglets plats, boutons latéraux cach
 ### Fenêtres
 
 - **Fenêtre principale à gauche, fenêtre détachée à droite (déplaçables par /musca unlock)** — case, défaut **cochée**
+- **Verrouiller la taille (poignée masquée)** — case, défaut **décochée**
 - **Largeur à gauche** — curseur, défaut **430**, 296 – 900, pas 2
 - **Hauteur à gauche** — curseur, défaut **180**, 120 – 600, pas 2
 - **Largeur à droite** — curseur, défaut **320**, 296 – 900, pas 2
@@ -1429,95 +1854,239 @@ Lance un sort sur un membre du groupe ou du raid d'un clic de souris et d'un mod
 > S'applique aux cadres de groupe et de raid MuscaUI, hors combat. Les clics sans liaison gardent cible (gauche) et menu (droit). Nom du sort sans rang : le rang le plus haut part.
 
 - **Aussi sur les cadres d'unité (joueur, cible, focus…)** — case, défaut **cochée**
+- **Clics natifs (cibler, menu)** — case, défaut **cochée**  
+  _Désactivé : un clic sans liaison ne fait rien sur les cadres de groupe._
+- **Membre mort : lancer la résurrection de ma classe à la place du sort lié** — case, défaut **décochée**  
+  _Prêtre, paladin et chaman. Remplace seulement les liaisons de type sort, pas les macros ni les objets. Le sort doit être appris ; réglage appliqué hors combat._
 - **Remplir avec le préréglage de ma classe** — bouton
 
-### Liaison 1
+### 1 - 8
+
+#### Liaison 1
 
 - **Action** — liste, défaut **Sort**
-- **Nom du sort, de la macro ou de l'objet** — zone de texte
+- **Nom du sort, de la macro ou de l'objet** — zone de texte  
+  _Glissez un sort du grimoire dans ce champ. Un rang inférieur est épinglé sous la forme Nom(Rang) ; le rang le plus haut reste sans rang et suit les rangs appris._
 
 >  
 
 - **Bouton de souris** — liste, défaut **Gauche**
 - **Modificateur** — liste, défaut **Maj**
-- **Touche au survol : aucune** — bouton
+- **Touche au survol : aucune** — bouton  
+  _Cliquez, puis appuyez sur une touche ou tournez la molette (modificateurs compris). Échap efface._
+- **Hors combat seulement** — case, défaut **décochée**
 
-### Liaison 2
+#### Liaison 2
 
 - **Action** — liste, défaut **Sort**
-- **Nom du sort, de la macro ou de l'objet** — zone de texte
+- **Nom du sort, de la macro ou de l'objet** — zone de texte  
+  _Glissez un sort du grimoire dans ce champ. Un rang inférieur est épinglé sous la forme Nom(Rang) ; le rang le plus haut reste sans rang et suit les rangs appris._
 
 >  
 
 - **Bouton de souris** — liste, défaut **Gauche**
 - **Modificateur** — liste, défaut **Maj**
-- **Touche au survol : aucune** — bouton
+- **Touche au survol : aucune** — bouton  
+  _Cliquez, puis appuyez sur une touche ou tournez la molette (modificateurs compris). Échap efface._
+- **Hors combat seulement** — case, défaut **décochée**
 
-### Liaison 3
+#### Liaison 3
 
 - **Action** — liste, défaut **Sort**
-- **Nom du sort, de la macro ou de l'objet** — zone de texte
+- **Nom du sort, de la macro ou de l'objet** — zone de texte  
+  _Glissez un sort du grimoire dans ce champ. Un rang inférieur est épinglé sous la forme Nom(Rang) ; le rang le plus haut reste sans rang et suit les rangs appris._
 
 >  
 
 - **Bouton de souris** — liste, défaut **Gauche**
 - **Modificateur** — liste, défaut **Maj**
-- **Touche au survol : aucune** — bouton
+- **Touche au survol : aucune** — bouton  
+  _Cliquez, puis appuyez sur une touche ou tournez la molette (modificateurs compris). Échap efface._
+- **Hors combat seulement** — case, défaut **décochée**
 
-### Liaison 4
+#### Liaison 4
 
 - **Action** — liste, défaut **Sort**
-- **Nom du sort, de la macro ou de l'objet** — zone de texte
+- **Nom du sort, de la macro ou de l'objet** — zone de texte  
+  _Glissez un sort du grimoire dans ce champ. Un rang inférieur est épinglé sous la forme Nom(Rang) ; le rang le plus haut reste sans rang et suit les rangs appris._
 
 >  
 
 - **Bouton de souris** — liste, défaut **Gauche**
 - **Modificateur** — liste, défaut **Maj**
-- **Touche au survol : aucune** — bouton
+- **Touche au survol : aucune** — bouton  
+  _Cliquez, puis appuyez sur une touche ou tournez la molette (modificateurs compris). Échap efface._
+- **Hors combat seulement** — case, défaut **décochée**
 
-### Liaison 5
+#### Liaison 5
 
 - **Action** — liste, défaut **Sort**
-- **Nom du sort, de la macro ou de l'objet** — zone de texte
+- **Nom du sort, de la macro ou de l'objet** — zone de texte  
+  _Glissez un sort du grimoire dans ce champ. Un rang inférieur est épinglé sous la forme Nom(Rang) ; le rang le plus haut reste sans rang et suit les rangs appris._
 
 >  
 
 - **Bouton de souris** — liste, défaut **Gauche**
 - **Modificateur** — liste, défaut **Maj**
-- **Touche au survol : aucune** — bouton
+- **Touche au survol : aucune** — bouton  
+  _Cliquez, puis appuyez sur une touche ou tournez la molette (modificateurs compris). Échap efface._
+- **Hors combat seulement** — case, défaut **décochée**
 
-### Liaison 6
+#### Liaison 6
 
 - **Action** — liste, défaut **Sort**
-- **Nom du sort, de la macro ou de l'objet** — zone de texte
+- **Nom du sort, de la macro ou de l'objet** — zone de texte  
+  _Glissez un sort du grimoire dans ce champ. Un rang inférieur est épinglé sous la forme Nom(Rang) ; le rang le plus haut reste sans rang et suit les rangs appris._
 
 >  
 
 - **Bouton de souris** — liste, défaut **Gauche**
 - **Modificateur** — liste, défaut **Maj**
-- **Touche au survol : aucune** — bouton
+- **Touche au survol : aucune** — bouton  
+  _Cliquez, puis appuyez sur une touche ou tournez la molette (modificateurs compris). Échap efface._
+- **Hors combat seulement** — case, défaut **décochée**
 
-### Liaison 7
+#### Liaison 7
 
 - **Action** — liste, défaut **Sort**
-- **Nom du sort, de la macro ou de l'objet** — zone de texte
+- **Nom du sort, de la macro ou de l'objet** — zone de texte  
+  _Glissez un sort du grimoire dans ce champ. Un rang inférieur est épinglé sous la forme Nom(Rang) ; le rang le plus haut reste sans rang et suit les rangs appris._
 
 >  
 
 - **Bouton de souris** — liste, défaut **Gauche**
 - **Modificateur** — liste, défaut **Maj**
-- **Touche au survol : aucune** — bouton
+- **Touche au survol : aucune** — bouton  
+  _Cliquez, puis appuyez sur une touche ou tournez la molette (modificateurs compris). Échap efface._
+- **Hors combat seulement** — case, défaut **décochée**
 
-### Liaison 8
+#### Liaison 8
 
 - **Action** — liste, défaut **Sort**
-- **Nom du sort, de la macro ou de l'objet** — zone de texte
+- **Nom du sort, de la macro ou de l'objet** — zone de texte  
+  _Glissez un sort du grimoire dans ce champ. Un rang inférieur est épinglé sous la forme Nom(Rang) ; le rang le plus haut reste sans rang et suit les rangs appris._
 
 >  
 
 - **Bouton de souris** — liste, défaut **Gauche**
 - **Modificateur** — liste, défaut **Maj**
-- **Touche au survol : aucune** — bouton
+- **Touche au survol : aucune** — bouton  
+  _Cliquez, puis appuyez sur une touche ou tournez la molette (modificateurs compris). Échap efface._
+- **Hors combat seulement** — case, défaut **décochée**
+
+### 9 - 16
+
+#### Liaison 9
+
+- **Action** — liste, défaut **Sort**
+- **Nom du sort, de la macro ou de l'objet** — zone de texte  
+  _Glissez un sort du grimoire dans ce champ. Un rang inférieur est épinglé sous la forme Nom(Rang) ; le rang le plus haut reste sans rang et suit les rangs appris._
+
+>  
+
+- **Bouton de souris** — liste, défaut **Gauche**
+- **Modificateur** — liste, défaut **Maj**
+- **Touche au survol : aucune** — bouton  
+  _Cliquez, puis appuyez sur une touche ou tournez la molette (modificateurs compris). Échap efface._
+- **Hors combat seulement** — case, défaut **décochée**
+
+#### Liaison 10
+
+- **Action** — liste, défaut **Sort**
+- **Nom du sort, de la macro ou de l'objet** — zone de texte  
+  _Glissez un sort du grimoire dans ce champ. Un rang inférieur est épinglé sous la forme Nom(Rang) ; le rang le plus haut reste sans rang et suit les rangs appris._
+
+>  
+
+- **Bouton de souris** — liste, défaut **Gauche**
+- **Modificateur** — liste, défaut **Maj**
+- **Touche au survol : aucune** — bouton  
+  _Cliquez, puis appuyez sur une touche ou tournez la molette (modificateurs compris). Échap efface._
+- **Hors combat seulement** — case, défaut **décochée**
+
+#### Liaison 11
+
+- **Action** — liste, défaut **Sort**
+- **Nom du sort, de la macro ou de l'objet** — zone de texte  
+  _Glissez un sort du grimoire dans ce champ. Un rang inférieur est épinglé sous la forme Nom(Rang) ; le rang le plus haut reste sans rang et suit les rangs appris._
+
+>  
+
+- **Bouton de souris** — liste, défaut **Gauche**
+- **Modificateur** — liste, défaut **Maj**
+- **Touche au survol : aucune** — bouton  
+  _Cliquez, puis appuyez sur une touche ou tournez la molette (modificateurs compris). Échap efface._
+- **Hors combat seulement** — case, défaut **décochée**
+
+#### Liaison 12
+
+- **Action** — liste, défaut **Sort**
+- **Nom du sort, de la macro ou de l'objet** — zone de texte  
+  _Glissez un sort du grimoire dans ce champ. Un rang inférieur est épinglé sous la forme Nom(Rang) ; le rang le plus haut reste sans rang et suit les rangs appris._
+
+>  
+
+- **Bouton de souris** — liste, défaut **Gauche**
+- **Modificateur** — liste, défaut **Maj**
+- **Touche au survol : aucune** — bouton  
+  _Cliquez, puis appuyez sur une touche ou tournez la molette (modificateurs compris). Échap efface._
+- **Hors combat seulement** — case, défaut **décochée**
+
+#### Liaison 13
+
+- **Action** — liste, défaut **Sort**
+- **Nom du sort, de la macro ou de l'objet** — zone de texte  
+  _Glissez un sort du grimoire dans ce champ. Un rang inférieur est épinglé sous la forme Nom(Rang) ; le rang le plus haut reste sans rang et suit les rangs appris._
+
+>  
+
+- **Bouton de souris** — liste, défaut **Gauche**
+- **Modificateur** — liste, défaut **Maj**
+- **Touche au survol : aucune** — bouton  
+  _Cliquez, puis appuyez sur une touche ou tournez la molette (modificateurs compris). Échap efface._
+- **Hors combat seulement** — case, défaut **décochée**
+
+#### Liaison 14
+
+- **Action** — liste, défaut **Sort**
+- **Nom du sort, de la macro ou de l'objet** — zone de texte  
+  _Glissez un sort du grimoire dans ce champ. Un rang inférieur est épinglé sous la forme Nom(Rang) ; le rang le plus haut reste sans rang et suit les rangs appris._
+
+>  
+
+- **Bouton de souris** — liste, défaut **Gauche**
+- **Modificateur** — liste, défaut **Maj**
+- **Touche au survol : aucune** — bouton  
+  _Cliquez, puis appuyez sur une touche ou tournez la molette (modificateurs compris). Échap efface._
+- **Hors combat seulement** — case, défaut **décochée**
+
+#### Liaison 15
+
+- **Action** — liste, défaut **Sort**
+- **Nom du sort, de la macro ou de l'objet** — zone de texte  
+  _Glissez un sort du grimoire dans ce champ. Un rang inférieur est épinglé sous la forme Nom(Rang) ; le rang le plus haut reste sans rang et suit les rangs appris._
+
+>  
+
+- **Bouton de souris** — liste, défaut **Gauche**
+- **Modificateur** — liste, défaut **Maj**
+- **Touche au survol : aucune** — bouton  
+  _Cliquez, puis appuyez sur une touche ou tournez la molette (modificateurs compris). Échap efface._
+- **Hors combat seulement** — case, défaut **décochée**
+
+#### Liaison 16
+
+- **Action** — liste, défaut **Sort**
+- **Nom du sort, de la macro ou de l'objet** — zone de texte  
+  _Glissez un sort du grimoire dans ce champ. Un rang inférieur est épinglé sous la forme Nom(Rang) ; le rang le plus haut reste sans rang et suit les rangs appris._
+
+>  
+
+- **Bouton de souris** — liste, défaut **Gauche**
+- **Modificateur** — liste, défaut **Maj**
+- **Touche au survol : aucune** — bouton  
+  _Cliquez, puis appuyez sur une touche ou tournez la molette (modificateurs compris). Échap efface._
+- **Hors combat seulement** — case, défaut **décochée**
 
 ## Confort automatique
 
@@ -1528,12 +2097,16 @@ Les petites corvées faites pour toi : réparation et vente des objets gris chez
 - **Réparer automatiquement chez le marchand** — case, défaut **cochée**
 - **Utiliser d'abord la banque de guilde si autorisé** — case, défaut **cochée**
 - **Vendre automatiquement les objets gris** — case, défaut **cochée**
+- **Afficher le gain de la vente en icônes de pièces** — case, défaut **décochée**
+- **Ajouter un bouton « Tout apprendre » chez l'entraîneur** — case, défaut **décochée**
 
 ### Butin et quêtes
 
 - **Butin rapide : tout ramasser d'un coup (Maj pour ramasser à la main)** — case, défaut **cochée**
 - **Accepter et rendre les quêtes automatiquement (Maj pour suspendre ; tu choisis toujours toi-même la récompense)** — case, défaut **décochée**
 - **Repérer la récompense de quête la plus chère (prix de revente ; le choix reste le tien)** — case, défaut **cochée**
+- **Choisir seul l'unique option de dialogue (Maj pour suspendre ; coupé en instance)** — case, défaut **décochée**
+- **Ouvrir seul les conteneurs des sacs (hors combat)** — case, défaut **décochée**
 
 ### À la mort
 
@@ -1546,7 +2119,10 @@ Les petites corvées faites pour toi : réparation et vente des objets gris chez
 - **Accepter les invitations de groupe des amis, de Battle.net et de la guilde** — case, défaut **décochée**
 - **Pré-remplir le mot de confirmation à la suppression d'un objet** — case, défaut **cochée**
 - **Passer les cinématiques et vidéos** — case, défaut **décochée**
+- **Délai avant de passer** — curseur, défaut **0 s**, 0 – 10, pas 1
 - **Prévenir le groupe quand tu réinitialises les instances** — case, défaut **décochée**
+- **Journal de combat automatique en raid** — case, défaut **décochée**
+- **Journal de combat automatique en donjon** — case, défaut **décochée**
 - **Remplacer les rangs inférieurs sur les barres d'action** — case, défaut **cochée**  
   _Quand vous apprenez un nouveau rang, ses rangs inférieurs sur vos barres d'action sont remplacés, hors combat._
 
@@ -1560,6 +2136,8 @@ Un anneau autour du curseur pour le retrouver tout de suite, et un réticule au 
 - **Seulement en combat** — case, défaut **cochée**
 - **Taille** — curseur, défaut **48**, 24 – 128, pas 4
 - **Couleur** — couleur, défaut **#3FA8F4**
+- **Couleur de la classe** — case, défaut **décochée**
+- **Opacité** — curseur, défaut **1.00**, 0.1 – 1, pas 0.05
 
 ### Réticule
 
@@ -1568,6 +2146,9 @@ Un anneau autour du curseur pour le retrouver tout de suite, et un réticule au 
 - **Taille** — curseur, défaut **20**, 8 – 64, pas 2
 - **Épaisseur** — curseur, défaut **2**, 1 – 6, pas 1
 - **Couleur** — couleur, défaut **#FFFFFF**
+- **Opacité** — curseur, défaut **0.90**, 0.1 – 1, pas 0.05
+- **Décalage horizontal** — curseur, défaut **0**, -200 – 200, pas 1
+- **Décalage vertical** — curseur, défaut **0**, -200 – 200, pas 1
 
 ## Écran d'absence
 
@@ -1582,7 +2163,36 @@ Déplacer les fenêtres Blizzard à la souris : Maj pour garder la place, Ctrl p
 
 > Maj + glisser : position gardée. Ctrl + glisser : jusqu'à la fermeture. Pas en combat.
 
+- **Déplacer sans Maj ni Ctrl (position gardée)** — case, défaut **décochée**
 - **Remettre les fenêtres à leur place** — bouton
+- **Réinitialiser CharacterFrame** — bouton
+- **Réinitialiser SpellBookFrame** — bouton
+- **Réinitialiser PlayerSpellsFrame** — bouton
+- **Réinitialiser FriendsFrame** — bouton
+- **Réinitialiser QuestLogFrame** — bouton
+- **Réinitialiser QuestFrame** — bouton
+- **Réinitialiser GossipFrame** — bouton
+- **Réinitialiser MerchantFrame** — bouton
+- **Réinitialiser MailFrame** — bouton
+- **Réinitialiser BankFrame** — bouton
+- **Réinitialiser TaxiFrame** — bouton
+- **Réinitialiser TradeFrame** — bouton
+- **Réinitialiser DressUpFrame** — bouton
+- **Réinitialiser PVEFrame** — bouton
+- **Réinitialiser AddonList** — bouton
+- **Réinitialiser InspectFrame** — bouton
+- **Réinitialiser TalentFrame** — bouton
+- **Réinitialiser ClassTalentFrame** — bouton
+- **Réinitialiser AuctionFrame** — bouton
+- **Réinitialiser AuctionHouseFrame** — bouton
+- **Réinitialiser TradeSkillFrame** — bouton
+- **Réinitialiser ProfessionsFrame** — bouton
+- **Réinitialiser MacroFrame** — bouton
+- **Réinitialiser ClassTrainerFrame** — bouton
+- **Réinitialiser AchievementFrame** — bouton
+- **Réinitialiser CommunitiesFrame** — bouton
+- **Réinitialiser ItemSocketingFrame** — bouton
+- **Réinitialiser PetStableFrame** — bouton
 
 ## Fiche de personnage
 
@@ -1602,6 +2212,9 @@ Objets, or, monnaies et réputation gagnés, en lignes brèves qui s'effacent.
 - **Taille des lignes** — curseur, défaut **20**, 14 – 32, pas 1
 - **Durée d'affichage (secondes)** — curseur, défaut **5**, 2 – 15, pas 1
 - **Afficher les gains de réputation** — case, défaut **cochée**
+- **Lignes au maximum** — curseur, défaut **6**, 1 – 6, pas 1
+- **Vers le haut (la plus récente en bas)** — case, défaut **décochée**
+- **Opacité du fond des lignes** — curseur, défaut **0.00**, 0 – 0.8, pas 0.05
 
 ## Gestionnaire de recharges
 
@@ -1627,12 +2240,24 @@ Réglages sort par sort du gestionnaire de recharges Blizzard : afficher ou masq
 ### Apparence, barre par barre
 
 - **Bordure du thème** — case, défaut **cochée**
+- **Toujours afficher le liseré de recharge** — case, défaut **décochée**
+- **Opacité (en plus du mode d'édition)** — curseur, défaut **1.00**, 0 – 1, pas 0.05
+- **Niveau d'affichage** — liste, défaut **Défaut de Blizzard**
 - **Taille des textes (0 = Blizzard)** — curseur, défaut **0**, 0 – 24, pas 1
 - **Bordure du thème** — case, défaut **cochée**
+- **Toujours afficher le liseré de recharge** — case, défaut **décochée**
+- **Opacité (en plus du mode d'édition)** — curseur, défaut **1.00**, 0 – 1, pas 0.05
+- **Niveau d'affichage** — liste, défaut **Défaut de Blizzard**
 - **Taille des textes (0 = Blizzard)** — curseur, défaut **0**, 0 – 24, pas 1
 - **Bordure du thème** — case, défaut **cochée**
+- **Toujours afficher le liseré de recharge** — case, défaut **décochée**
+- **Opacité (en plus du mode d'édition)** — curseur, défaut **1.00**, 0 – 1, pas 0.05
+- **Niveau d'affichage** — liste, défaut **Défaut de Blizzard**
 - **Taille des textes (0 = Blizzard)** — curseur, défaut **0**, 0 – 24, pas 1
 - **Bordure du thème** — case, défaut **cochée**
+- **Toujours afficher le liseré de recharge** — case, défaut **décochée**
+- **Opacité (en plus du mode d'édition)** — curseur, défaut **1.00**, 0 – 1, pas 0.05
+- **Niveau d'affichage** — liste, défaut **Défaut de Blizzard**
 - **Taille des textes (0 = Blizzard)** — curseur, défaut **0**, 0 – 24, pas 1
 - **Texture et couleur de barre du thème** — case, défaut **cochée**
   - **Couleur de la barre** — couleur, défaut **#3FA8F4**
@@ -1650,6 +2275,8 @@ Réglages sort par sort du gestionnaire de recharges Blizzard : afficher ou masq
 - **En instance** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Avec une cible douce** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 
 ### Visibilité : Recharges : utilitaire
 
@@ -1660,6 +2287,8 @@ Réglages sort par sort du gestionnaire de recharges Blizzard : afficher ou masq
 - **En instance** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Avec une cible douce** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 
 ### Visibilité : Recharges : icônes de buff
 
@@ -1670,6 +2299,8 @@ Réglages sort par sort du gestionnaire de recharges Blizzard : afficher ou masq
 - **En instance** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Avec une cible douce** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 
 ### Visibilité : Recharges : barres de buff
 
@@ -1680,6 +2311,8 @@ Réglages sort par sort du gestionnaire de recharges Blizzard : afficher ou masq
 - **En instance** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Avec une cible douce** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 
 ## Habillage
 
@@ -1700,6 +2333,13 @@ Infobulles sombres avec nom et bordure à la couleur de classe, et deux flèches
 - **Afficher le rang de guilde** — case, défaut **cochée**
 - **Afficher l'ID des sorts, objets et auras** — case, défaut **décochée**
 - **Masquer la barre de vie sous les infobulles d'unité** — case, défaut **décochée**
+- **Opacité du fond des infobulles** — curseur, défaut **94 %**, 0 – 100, pas 1
+- **Bordure des infobulles** — liste, défaut **Couleur d'accent**
+- **IDs et pile max affichés avec** — liste, défaut **Toujours**
+- **Afficher l'ID d'icône (sorts, objets)** — case, défaut **décochée**
+- **Afficher la pile max des objets** — case, défaut **décochée**
+- **Hauteur de la barre de vie de l'infobulle (0 = défaut)** — curseur, défaut **0**, 0 – 20, pas 1
+- **Texture du thème sur la barre de vie** — case, défaut **décochée**
 
 ### Icônes
 
@@ -1760,10 +2400,17 @@ Infobulles sombres avec nom et bordure à la couleur de classe, et deux flèches
 - **DropDownList1** — liste
 - **DropDownList2** — liste
 - **DropDownList3** — liste
+- **QuickKeybindFrame** — liste
+- **LFGDungeonReadyDialog** — liste
+- **LFGListApplicationDialog** — liste
 
 ## Interface épurée
 
 Moins d'encombrement et un accès direct à des réglages Blizzard. Tout réglage Blizzard changé ici est rendu quand tu coupes l'option.
+
+### Réglages du jeu (compte entier)
+
+- **Distance max de la caméra** — curseur, défaut **1.9**, 1 – 2.6, pas 0.1
 
 ### Encombrement
 
@@ -1779,9 +2426,21 @@ Moins d'encombrement et un accès direct à des réglages Blizzard. Tout réglag
 - **Opacité** — curseur, défaut **0.65**, 0 – 1, pas 0.05
 - **Masquer les alertes de sort sur les personnages MAGE** — case
 
+### Carte du monde
+
+- **Afficher les coordonnées du joueur et du curseur** — case, défaut **décochée**
+- **Afficher les niveaux de la zone** — case, défaut **décochée**
+- **Voir le jeu derrière la carte maximisée** — case, défaut **décochée**
+
+### Compteur d'images par seconde
+
+- **Compteur d'images par seconde** — case, défaut **décochée**
+- **Afficher la latence** — case, défaut **cochée**
+
 ### Barres d'action
 
 - **Toujours afficher les barres d'action, même les cases vides (mode débutant)** — case, défaut **décochée**
+- **/cd ouvre le gestionnaire de recharges Blizzard** — case, défaut **décochée**
 - **Chiffres de recharge sur tous les boutons et icônes** — case, défaut **décochée**
 - **Texte de recharge coloré sur les boutons et icônes MuscaUI** — case, défaut **décochée**
 - **Presque fini sous (secondes, avec une décimale)** — curseur, défaut **3**, 0 – 10, pas 1
@@ -1835,18 +2494,31 @@ Minimap carrée (ou ronde) à la taille voulue, bordure au thème, nom de zone e
 
 > Le décor Blizzard de la minimap revient après un /reload une fois ce module coupé.
 
-- **Taille** — curseur, défaut **180**, 100 – 400, pas 2
+- **Taille** — curseur, défaut **180**, 100 – 600, pas 2
 - **Carte carrée** — case, défaut **cochée**
 - **Cacher le décor Blizzard (bordure, boussole)** — case, défaut **cochée**
+- **Couleur de la bordure** — liste, défaut **Thème**
+  - **Couleur personnalisée** — couleur, défaut **#FFFFFF**
+  - **Épaisseur de la bordure** — curseur, défaut **1**, 1 – 6, pas 1
+- **Échelle des boutons Blizzard** — curseur, défaut **1.00**, 0.6 – 1.6, pas 0.05
 - **Nom de zone au-dessus de la carte** — case, défaut **cochée**
+- **Position du nom de zone** — liste, défaut **Au-dessus de la carte**
+- **Taille du nom de zone (écart)** — curseur, défaut **0**, -4 – 10, pas 1
 - **Coordonnées sous la carte** — case, défaut **décochée**
 - **Affichage des coordonnées** — liste, défaut **Rangée sous la carte, toujours**
 - **Décimales des coordonnées** — curseur, défaut **1**, 0 – 2, pas 1
+- **Taille des coordonnées (écart)** — curseur, défaut **-2**, -6 – 8, pas 1
 - **Images par seconde et latence sous la carte** — case, défaut **décochée**
+- **Latence affichée** — liste, défaut **La pire des deux**
+- **Intervalle de rafraîchissement (s)** — curseur, défaut **0.5**, 0.5 – 5, pas 0.5
+- **Taille du texte FPS (écart)** — curseur, défaut **-2**, -6 – 8, pas 1
+- **Suffixes fps / ms à la couleur d'accent** — case, défaut **décochée**
 - **Bouton de suivi** — case, défaut **cochée**
 - **Indicateur de courrier** — case, défaut **cochée**
 - **Difficulté d'instance** — case, défaut **cochée**
 - **Difficulté d'instance compacte (« 5 », « 10H »)** — case, défaut **décochée**
+  - **Colorer selon la difficulté** — case, défaut **décochée**
+  - **Taille de la difficulté (écart)** — curseur, défaut **0**, -4 – 10, pas 1
 - **Horloge** — case, défaut **décochée**
 - **Boutons de zoom** — case, défaut **décochée**
 - **La molette zoome** — case, défaut **cochée**
@@ -1871,6 +2543,14 @@ Une barre par arme jusqu'à ta prochaine attaque automatique. Demande l'événem
 - **Longueur** — curseur, défaut **200**, 60 – 400, pas 2
 - **Épaisseur** — curseur, défaut **10**, 4 – 30, pas 1
 - **Couleur de la barre** — couleur, défaut **#D8D8D8**
+- **Afficher le fond des barres** — case, défaut **cochée**
+- **Couleur de fond personnalisée** — case, défaut **décochée**
+- **Couleur du fond** — couleur, défaut **#0C0F14**
+- **Afficher la bordure des barres** — case, défaut **cochée**
+- **Taille du texte (écart)** — curseur, défaut **-2**, -6 – 8, pas 1
+- **Décalage X du texte** — curseur, défaut **0**, -40 – 40, pas 1
+- **Décalage Y du texte** — curseur, défaut **0**, -40 – 40, pas 1
+- **Niveau d'affichage** — liste, défaut **Défaut de Blizzard**
 - **Couleur de la main gauche** — couleur, défaut **#99BFF2**
 - **Couleur de la distance** — couleur, défaut **#8CD872**
 - **Couleur quand une attaque au prochain coup est en file** — couleur, défaut **#FF8C19**
@@ -1884,11 +2564,18 @@ Une barre par arme jusqu'à ta prochaine attaque automatique. Demande l'événem
 - **En instance** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Avec une cible douce** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 - **Au survol seulement** — case, défaut **décochée**
 
 ## Minuteur de vol
 
 Une barre de compte à rebours pendant les vols, apprise pour chaque trajet.
+
+- **Largeur** — curseur, défaut **220**, 100 – 500, pas 5
+- **Hauteur** — curseur, défaut **16**, 8 – 40, pas 1
+- **Couleur de la barre** — couleur, défaut **#59A5FF**
+- **Couleur de la classe** — case, défaut **décochée**
 
 ## Panneaux de données
 
@@ -1906,6 +2593,10 @@ Bandeaux d'informations libres sur les movers : coordonnées, quêtes, régéné
 - **Hauteur** — curseur, défaut **22**, 14 – 40, pas 1
 - **Emplacements** — curseur, défaut **4**, 1 – 10, pas 1
 - **Opacité du fond** — curseur, défaut **0.75**, 0 – 1, pas 0.05
+- **Bordure** — case, défaut **cochée**
+- **Alignement du texte** — liste, défaut **Centre**
+- **Taille du texte (écart)** — curseur, défaut **0**, -6 – 8, pas 1
+- **Éclaircir au survol** — case, défaut **décochée**
 - **Emplacement 1** — liste, défaut **Coordonnées**
 - **Emplacement 2** — liste, défaut **Vitesse de déplacement**
 - **Emplacement 3** — liste, défaut **Régénération de mana (par 5 s)**
@@ -1925,6 +2616,7 @@ Bandeaux d'informations libres sur les movers : coordonnées, quêtes, régéné
 - **En raid** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 - **Au survol seulement** — case, défaut **décochée**
 
 ## Plaques de nom MuscaUI
@@ -1938,12 +2630,26 @@ Remplace l'habillage Blizzard des plaques de nom par des barres MuscaUI : vie (c
 - **Nom** — case, défaut **cochée**
 - **Niveau** — case, défaut **cochée**
 - **Taille des textes (écart avec le thème)** — curseur, défaut **-1**, -4 – 4, pas 1
+- **Distance du nom à la barre** — curseur, défaut **+0**, -6 – 20, pas 1
+- **Format du nom** — liste, défaut **Nom entier**
+- **Couleur de nom personnalisée** — case, défaut **décochée**
+  - **Couleur du nom** — couleur, défaut **#FFFFFF**
+- **Couleur de niveau personnalisée** — case, défaut **décochée**
+  - **Couleur du niveau** — couleur, défaut **#FFD100**
+- **Masquer le nom ennemi pendant son incantation** — case, défaut **décochée**
+- **Taille du marqueur de raid (0 = défaut)** — curseur, défaut **0**, 0 – 40, pas 2
+- **Position du marqueur de raid** — liste, défaut **Haut**
 - **Texte de vie** — liste, défaut **Aucun**
 - **Format de vie (vide = préréglage)** — zone de texte
 - **Barre d'incantation** — case, défaut **cochée**
 - **Hauteur de la barre d'incantation** — curseur, défaut **10**, 6 – 24, pas 1
 - **Barre d'incantation : cible du sort** — case, défaut **cochée**
+- **Barre d'incantation : temps restant** — case, défaut **décochée**
 - **Barre d'incantation colorée quand ton interruption est prête** — case, défaut **cochée**
+- **Échelle pendant l'incantation** — curseur, défaut **1.00**, 1 – 1.5, pas 0.05
+- **Échelle de l'icône de sort** — curseur, défaut **1.0**, 0.5 – 2, pas 0.1
+- **Icône de sort à droite** — case, défaut **décochée**
+- **Étincelle de la barre d'incantation** — case, défaut **décochée**
   - **Couleur « interruption prête »** — couleur, défaut **#33D859**
 - **Barre d'incantation colorée quand le sort est marqué important** — case, défaut **cochée**
   - **Couleur « sort important »** — couleur, défaut **#E54CE5**
@@ -1963,6 +2669,18 @@ Remplace l'habillage Blizzard des plaques de nom par des barres MuscaUI : vie (c
 - **Portée des plaques (mètres)** — curseur, défaut **60**, 20 – 60, pas 5
 - **Masquer les noms flottants Blizzard (aucun nom au-delà de la portée des plaques)** — case, défaut **décochée**
 - **Surbrillance de la cible (bordure d'accent, les autres atténuées)** — case, défaut **cochée**
+- **Opacité des plaques non ciblées** — curseur, défaut **0.70**, 0.1 – 1, pas 0.05
+- **Échelle de la plaque de la cible** — curseur, défaut **1.00**, 1 – 1.5, pas 0.05
+- **Recouvrement de la cible** — case, défaut **décochée**
+  - **Couleur du recouvrement de cible** — couleur, défaut **#FFFFFF**
+- **Recouvrement du focus** — case, défaut **décochée**
+  - **Couleur du recouvrement de focus** — couleur, défaut **#66B2FF**
+- **Surbrillance au survol** — case, défaut **décochée**
+  - **Couleur du survol** — couleur, défaut **#FFFFFF**
+- **Lueur sur la plaque de la cible** — case, défaut **décochée**
+  - **Style de lueur** — liste, défaut **Traits pixel**
+- **Trait de seuil de vie (%, 0 = aucun)** — curseur, défaut **0**, 0 – 100, pas 5
+- **Sans bordure** — case, défaut **décochée**
 - **Couleur de menace en combat (rouge = agro sur toi)** — case, défaut **cochée**
 - **Lire la menace en tant que** — liste, défaut **Auto**
   - **Tank : agro tenue** — couleur, défaut **#33BF4C**
@@ -1979,6 +2697,8 @@ Remplace l'habillage Blizzard des plaques de nom par des barres MuscaUI : vie (c
 - **Élite** — couleur, défaut **#E57F26**
 - **Rare** — couleur, défaut **#BFC6D8**
 - **Lanceur de sorts** — couleur, défaut **#4C8CF2**
+- **Colorer les ennemis neutres** — case, défaut **décochée**
+- **Couleur des ennemis neutres** — couleur, défaut **#F2D84C**
 - **Assombrir les ennemis hors combat** — case, défaut **décochée**
 - **Atténuer les ennemis hors de portée d'attaque** — case, défaut **décochée**
 - **Opacité hors de portée** — curseur, défaut **0.50**, 0.1 – 0.9, pas 0.05
@@ -2101,6 +2821,10 @@ Hors combat uniquement : te prévient quand un buff de classe manque (seulement 
 - **Intelligence des Arcanes** — case, défaut **cochée**
 - **Buffs à garder (identifiants : 1234, 5678)** — zone de texte
 - **Icône cliquable qui lance le sort manquant (hors combat)** — case, défaut **cochée**
+- **Style de lueur** — liste, défaut **Traits pixel**
+- **Bordure de l'icône de lancement** — case, défaut **décochée**
+- **La pile suit le curseur (hors combat)** — case, défaut **décochée**  
+  _Clic du milieu sur un rappel : le masque jusqu'au prochain écran de chargement._
 - **Camouflage oublié (voleur, druide félin ; donjons et raids)** — case, défaut **décochée**
 - **Partout, pas seulement en donjon et raid** — case, défaut **décochée**
 - **Texte personnalisé (vide = défaut)** — zone de texte
@@ -2111,9 +2835,11 @@ Hors combat uniquement : te prévient quand un buff de classe manque (seulement 
 - **Durabilité basse** — case, défaut **cochée**
 - **Seuil** — curseur, défaut **20 %**, 5 – 50, pas 5
 - **Sacs pleins** — case, défaut **cochée**
+- **Points de talent non dépensés** — case, défaut **décochée**
 
 ### Son et position
 
+- **Ajustement de la taille du texte** — curseur, défaut **0**, -4 – 6, pas 1
 - **Jouer un son quand un rappel apparaît** — case, défaut **cochée**
 - **Son** — liste, défaut **Clic**
 - **Son importé (vide = son par défaut)** — zone de texte
@@ -2121,6 +2847,13 @@ Hors combat uniquement : te prévient quand un buff de classe manque (seulement 
 > Fichier .ogg ou .mp3, chemin depuis le dossier du jeu, ex. Interface\AddOns\MesSons\alerte.ogg. Relancer le jeu après avoir ajouté le fichier.
 
 - **Écouter** — bouton
+- **Son propre aux rappels d'équipement** — case, défaut **décochée**
+  - **Son** — liste, défaut **Clic**
+  - **Son importé (vide = son par défaut)** — zone de texte
+
+> Fichier .ogg ou .mp3, chemin depuis le dossier du jeu, ex. Interface\AddOns\MesSons\alerte.ogg. Relancer le jeu après avoir ajouté le fichier.
+
+  - **Écouter** — bouton
 - **Répéter le son tant que le rappel camouflage ou posture reste (0 = une fois)** — curseur, défaut **0 s**, 0 – 30, pas 1
 - **Déverrouiller / verrouiller les cadres mobiles** — bouton
 
@@ -2149,11 +2882,22 @@ Une seule fenêtre pour le sac à dos et les sacs équipés, sur son mover : rec
 
 - **Colonnes** — curseur, défaut **12**, 4 – 24, pas 1
 - **Taille des boutons** — curseur, défaut **34**, 24 – 48, pas 1
+- **Échelle de la fenêtre** — curseur, défaut **1.00**, 0.5 – 2, pas 0.05
+- **Strate des fenêtres** — liste, défaut **Haute**
+- **Verrouiller la taille de la fenêtre** — case, défaut **cochée**  
+  _Déverrouillée : tire le coin inférieur droit de la fenêtre des sacs pour changer le nombre de colonnes._
 - **Niveau d'objet sur l'équipement** — case, défaut **cochée**
 - **Pièce sur les objets gris (camelote)** — case, défaut **cochée**
 - **Flèche sur l'équipement de niveau supérieur** — case, défaut **cochée**
 - **Objets récents en tête** — case, défaut **cochée**
-- **Afficher LqE / LqB sous les objets non liés** — case, défaut **cochée**  
+- **Afficher LqE / LqB sous les objets non liés** — case, défaut **cochée**
+- **Bordure à la couleur de qualité** — case, défaut **cochée**
+- **Griser l'icône des objets camelote** — case, défaut **décochée**
+- **Zoom des icônes** — curseur, défaut **0 %**, 0 – 20, pas 1
+- **Taille du niveau d'objet (écart)** — curseur, défaut **-1**, -4 – 6, pas 1
+- **Couleur du niveau d'objet** — liste, défaut **Couleur de qualité**
+- **Afficher le bouton Trier** — case, défaut **cochée**
+- **Afficher le bouton Fusionner** — case, défaut **cochée**  
   _La recherche trouve aussi les objets non liés : lqe, lqr, lqb (ou boe, bop, wue)._
 - **Objets épinglés, identifiants (toujours en tête)** — zone de texte
 - **Objets marqués comme camelote (ID)** — zone de texte  
@@ -2208,6 +2952,10 @@ Le suivi d'objectifs Blizzard sur un support déplaçable, à la hauteur voulue,
 - **Cacher les journalières et hebdomadaires** — case, défaut **décochée**
 - **Suivre d'office les quêtes de la zone ou du donjon (25 au plus)** — case, défaut **cochée**
 - **Titres et objectifs : police du thème, tailles et couleurs par état** — case, défaut **décochée**
+- **Opacité des objectifs terminés** — curseur, défaut **100 %**, 0 – 100, pas 5
+- **Opacité du fond du suivi** — curseur, défaut **0 %**, 0 – 100, pas 5
+- **Filet d'accent en haut du suivi** — case, défaut **décochée**
+- **Couleur des titres et en-têtes** — liste, défaut **Couleurs choisies**
 - **Taille des titres de quête** — curseur, défaut **13**, 8 – 20, pas 1
 - **Taille des objectifs** — curseur, défaut **12**, 8 – 20, pas 1
 - **Couleur des titres** — couleur, défaut **#FFD100**
@@ -2225,6 +2973,8 @@ Le suivi d'objectifs Blizzard sur un support déplaçable, à la hauteur voulue,
 - **En instance** — liste, défaut **Indifférent**
 - **Sur une monture** — liste, défaut **Indifférent**
 - **Avec une cible** — liste, défaut **Indifférent**
+- **Avec une cible douce** — liste, défaut **Indifférent**
+- **Manette active** — liste, défaut **Indifférent**
 
 ## Suivi par ID
 
@@ -2245,6 +2995,10 @@ Bouton « Raid » sur son mover, visible en groupe : appel prêt, vérification 
 - **Disposition** — liste, défaut **Bouton et panneau**
 - **Afficher** — liste, défaut **En groupe**  
   _En raid, caché si tu n'es ni chef ni assistant : le serveur refuse alors marqueurs et appels._
+- **Afficher le bouton de vérification des rôles** — case, défaut **cochée**
+- **Afficher le bouton groupe / raid** — case, défaut **cochée**
+- **Afficher le bouton de dissolution du groupe** — case, défaut **cochée**
+- **Échelle du panneau** — curseur, défaut **1.00**, 0.5 – 2, pas 0.05
 - **Échelle de la bande** — curseur, défaut **1.00**, 0.75 – 1.5, pas 0.05
 - **Touche d'ouverture du panneau (ex. CTRL-R)** — zone de texte
 - **Compte à rebours 1 (secondes)** — curseur, défaut **5**, 3 – 30, pas 1

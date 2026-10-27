@@ -8,6 +8,7 @@
 --   interval          -> secondes entre deux rafraîchissements par minuterie (facultatif)
 --   secret            -> le texte peut être secret : largeur inconnue, exclu des emplacements
 --                        qui se dimensionnent au texte (barre du haut)
+--   nameKey           -> clé de locale du libellé, lue à l'affichage de la liste (langue active)
 --   name              -> libellé dans les listes, à défaut de L["DATATEXT_<CLÉ>"] (LibDataBroker)
 -- Les textes de la barre du haut (amis, guilde, heure, or…) sont inscrits par Modules/TopBar.lua.
 local _, NS = ...
@@ -28,7 +29,7 @@ function DataTexts:Choices(sizedSlot)
     local list = {}
     for key, def in pairs(self.registry) do
         if not (sizedSlot and def.secret) then
-            list[#list + 1] = { name = def.name or L["DATATEXT_" .. key:upper()] or key, value = key }
+            list[#list + 1] = { name = def.name or (def.nameKey and L[def.nameKey]) or L["DATATEXT_" .. key:upper()] or key, value = key }
         end
     end
     table.sort(list, function(a, b) return a.name < b.name end)
@@ -335,6 +336,49 @@ DataTexts:Register("itemlevel", {
     end,
     tooltip = function(tt) tt:AddLine(L.DATATEXT_ITEMLEVEL) end,
     events = { "PLAYER_EQUIPMENT_CHANGED", "PLAYER_AVG_ITEM_LEVEL_UPDATE" },
+})
+
+--- Niveau d'objet « équipé/total » (une décimale), comme le bloc Niveau d'objet d'EllesmereUI.
+DataTexts:Register("itemlevelfull", {
+    text = function()
+        local total, equipped = NS.GetAverageItemLevels()
+        total, equipped = Known(total), Known(equipped)
+        if not (total and equipped) then return Dim(L.DATATEXT_ITEMLEVEL_SHORT) .. " -" end
+        return Dim(L.DATATEXT_ITEMLEVEL_SHORT) .. string.format(" %.1f/%.1f", equipped, total)
+    end,
+    tooltip = function(tt) tt:AddLine(L.OPT_G_MAP_DATATEXT_ITEMLEVELFULL) end,
+    events = { "PLAYER_EQUIPMENT_CHANGED", "PLAYER_AVG_ITEM_LEVEL_UPDATE" },
+    nameKey = "OPT_G_MAP_DATATEXT_ITEMLEVELFULL",
+})
+
+--------------------------------------------------------------------------------
+-- Volume principal
+--------------------------------------------------------------------------------
+
+local VOLUME_STEP = 0.1
+
+--- Volume principal après un clic : gauche monte, droit baisse, borné à 0-1 ; nil si le volume est illisible.
+function DataTexts.NextVolume(volume, mouseButton)
+    if type(volume) ~= "number" then return nil end
+    local delta = mouseButton == "RightButton" and -VOLUME_STEP or VOLUME_STEP
+    return math.max(0, math.min(1, math.floor((volume + delta) * 10 + 0.5) / 10))
+end
+
+DataTexts:Register("audio", {
+    text = function()
+        local volume = NS.GetMasterVolume()
+        return Dim(L.OPT_G_MAP_DATATEXT_AUDIO_SHORT) .. " " .. (volume and (math.floor(volume * 100 + 0.5) .. "%") or "-")
+    end,
+    tooltip = function(tt)
+        tt:AddLine(L.OPT_G_MAP_DATATEXT_AUDIO)
+        tt:AddLine(L.OPT_G_MAP_DATATEXT_AUDIO_TIP, 0.5, 0.5, 0.5)
+    end,
+    click = function(_, mouseButton)
+        local volume = DataTexts.NextVolume(NS.GetMasterVolume(), mouseButton)
+        if volume then NS.SetMasterVolume(volume) end
+    end,
+    events = { "CVAR_UPDATE" },
+    nameKey = "OPT_G_MAP_DATATEXT_AUDIO",
 })
 
 --------------------------------------------------------------------------------

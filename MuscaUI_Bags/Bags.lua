@@ -19,6 +19,10 @@ local Bags = NS.Modules:Register("bags", {
         enabled = false,
         columns = 12,
         buttonSize = 34,
+        windowScale = 1,          -- échelle de la fenêtre (et de la fenêtre des réactifs)
+        windowStrata = "HIGH",    -- strate des fenêtres (LOW, MEDIUM, HIGH, DIALOG)
+        lockSize = true,          -- décochée : poignée en bas à droite, la largeur règle le nombre de colonnes
+        keyring = false,          -- cases du trousseau (Forever) dans la fenêtre quand il est ouvert
         itemLevel = true,
         junk = true,
         detachReagents = false,   -- sac de réactifs dans sa propre fenêtre (sur son mover)
@@ -33,6 +37,14 @@ local Bags = NS.Modules:Register("bags", {
                           quest = true, recipe = true, junk = true, special = true },   -- décochée : objets rangés dans « Divers »
         customCategories = "",    -- une ligne par groupe : « Potions = 118, 858 »
         bindText = true,          -- « LqE » / « LqB » sous l'icône d'un objet pas encore lié
+        itemLevelSize = -1,       -- écart de taille du niveau d'objet par rapport à la police du thème (-4 à 6)
+        itemLevelColor = "quality", -- "quality" (couleur de qualité) ou "white"
+        junkGray = false,         -- icône des objets gris désaturée
+        qualityBorder = true,     -- bordure à la couleur de qualité (vert et plus)
+        iconZoom = 0,             -- recadrage des icônes, en % de chaque bord (0 : icône Blizzard)
+        sortToBottom = false,     -- tri du client : objets rangés vers la fin des sacs
+        showSortButton = true,    -- boutons de l'en-tête
+        showStackButton = true,
     },
 })
 
@@ -62,11 +74,15 @@ local CATEGORY_KEYS = { "pinned", "custom", "new", "equipment", "consumable", "t
 local CLASS_CATEGORY = { [0] = "consumable", [2] = "equipment", [4] = "equipment", [5] = "tradegoods",
                          [7] = "tradegoods", [9] = "recipe", [12] = "quest" }
 local HEADER_HEIGHT = 16
+-- Strate au-dessus de celle de la fenêtre : celle des cadres Blizzard cachés, dont les boutons passent devant notre fond.
+local STRATA_ABOVE = { LOW = "MEDIUM", MEDIUM = "HIGH", HIGH = "DIALOG", DIALOG = "FULLSCREEN" }
 
 local active = false
 local window, reagentWindow
+local windowHolder, reagentHolder   -- supports des Movers : à l'échelle d'UIParent, taille de la fenêtre mise à l'échelle
 local buttons = {}          -- [bag] = { [slot] = bouton Blizzard }
 local blizzardFrames = {}   -- [cadre Blizzard] = true : cadres pris en main
+local concealed = {}        -- [cadre Blizzard] = true : caché hors écran et mis à l'échelle par nous
 local syncing = false
 local events = CreateFrame("Frame")
 
@@ -104,7 +120,9 @@ end
 local function IsInventoryFrame(frame)
     if frame == _G.ContainerFrameCombinedBags then return true end
     local id = frame:GetID()
-    return type(id) == "number" and ((id >= 0 and id <= NS.NUM_BAGS) or (NS.REAGENT_BAG ~= nil and id == NS.REAGENT_BAG))
+    if type(id) ~= "number" then return false end
+    if Bags.db.keyring and id == NS.GetKeyringBag() then return true end
+    return (id >= 0 and id <= NS.NUM_BAGS) or (NS.REAGENT_BAG ~= nil and id == NS.REAGENT_BAG)
 end
 
 local function BlizzardOpen()
@@ -119,10 +137,13 @@ local function ConcealBlizzard()
     -- Relevé à chaque passage : un cadre créé après l'activation (sac de réactifs) resterait
     -- sinon sous notre fenêtre, ses boutons masqués par notre fond.
     for _, frame in ipairs(BlizzardFrames()) do blizzardFrames[frame] = true end
+    local released
     for frame in pairs(blizzardFrames) do
         if IsInventoryFrame(frame) then
+            concealed[frame] = true
             -- Strate au-dessus de notre fenêtre : ses boutons (enfants) passent devant notre fond.
-            frame:SetFrameStrata("DIALOG")
+            frame:SetFrameStrata(STRATA_ABOVE[Bags.db.windowStrata] or "DIALOG")
+            frame:SetScale(Bags.db.windowScale)   -- les boutons suivent l'échelle de notre fenêtre
             frame:SetAlpha(0)
             frame:SetClampedToScreen(false)
             frame:ClearAllPoints()
@@ -130,8 +151,16 @@ local function ConcealBlizzard()
         else
             frame:SetFrameStrata("MEDIUM")
             frame:SetAlpha(1)
+            if concealed[frame] then   -- trousseau rendu à Blizzard pendant qu'il est ouvert
+                concealed[frame] = nil
+                frame:SetScale(1)
+                frame:SetClampedToScreen(true)
+                if frame:IsShown() and frame.UpdateItemLayout then frame:UpdateItemLayout() end
+                released = true
+            end
         end
     end
+    if released and _G.UpdateContainerFrameAnchors then UpdateContainerFrameAnchors() end
 end
 
 -- Rafales d'événements (GET_ITEM_INFO_RECEIVED, recharges, mise en page Blizzard) : une mise à
@@ -174,12 +203,43 @@ local function TakeBlizzard()
     end
 end
 
+local function ButtonIcon(button)
+    return button.icon or button.Icon or (button.GetName and button:GetName() and _G[button:GetName() .. "IconTexture"])
+end
+
+--- Icône : recadrage réglé, grisée pour la camelote si demandé ; l'état Blizzard est capturé et rendu.
+local function PaintIcon(button, item, isJunk, release)
+    local icon = ButtonIcon(button)
+    if not (icon and icon.SetTexCoord) then return end
+    local db = Bags.db
+    local zoom = release and 0 or (tonumber(db.iconZoom) or 0) / 100
+    if zoom > 0 then
+        if not button.muscaCoords then button.muscaCoords = { icon:GetTexCoord() } end
+        icon:SetTexCoord(zoom, 1 - zoom, zoom, 1 - zoom)
+    elseif button.muscaCoords then
+        icon:SetTexCoord(unpack(button.muscaCoords))
+        button.muscaCoords = nil
+    end
+    if db.junkGray and isJunk and not release then
+        icon:SetDesaturated(true)
+        button.muscaGray = true
+    elseif button.muscaGray then
+        icon:SetDesaturated(item and item.isLocked or false)
+        button.muscaGray = nil
+    end
+end
+
 --- Rend un bouton décoré à son état Blizzard (taille, fond, ajouts, alpha).
 local function RestoreButton(button)
     if button.SetIgnoreParentAlpha then button:SetIgnoreParentAlpha(false) end
+    PaintIcon(button, nil, false, true)   -- réglages d'icône rendus : un zoom ou un gris actif est retiré
+    Media:SetTextSizeDelta(button.muscaLevel, -1)
+    button.muscaLevelDelta = nil
     button.muscaLevel:Hide()
     button.muscaJunk:Hide()
     button.muscaBind:Hide()
+    button.muscaUpgrade:Hide()
+    button.muscaItem = nil
     button.muscaBg:Hide()
     for _, edge in pairs(button.muscaBorder) do edge:Hide() end
     button:SetAlpha(1)
@@ -190,8 +250,10 @@ local function RestoreBlizzard()
     for frame in pairs(blizzardFrames) do
         frame:SetFrameStrata("MEDIUM")
         frame:SetAlpha(1)
+        frame:SetScale(1)
         frame:SetClampedToScreen(true)
     end
+    wipe(concealed)
     for _, bagButtons in pairs(buttons) do
         for _, button in pairs(bagButtons) do RestoreButton(button) end
     end
@@ -264,8 +326,11 @@ local function BlizzardButtons()
             end
         end
     end
+    local keyring = NS.GetKeyringBag()
     table.sort(list, function(a, b)
         local bagA, bagB = a:GetBagID(), b:GetBagID()
+        if bagA == keyring then bagA = math.huge end   -- trousseau après les sacs
+        if bagB == keyring then bagB = math.huge end
         if bagA ~= bagB then return bagA < bagB end
         return a:GetID() < b:GetID()
     end)
@@ -449,6 +514,11 @@ function Bags.UpdateButton(button, bag, slot, query)
     local item = BagItem(bag, slot)
     button.muscaItem = item
     local r, g, b
+    local isJunk = false
+    if button.muscaLevelDelta ~= db.itemLevelSize then
+        button.muscaLevelDelta = db.itemLevelSize
+        Media:SetTextSizeDelta(button.muscaLevel, tonumber(db.itemLevelSize) or -1)
+    end
     if not item then
         button.muscaLevel:Hide()
         button.muscaJunk:Hide()
@@ -460,10 +530,12 @@ function Bags.UpdateButton(button, bag, slot, query)
         local level = db.itemLevel and not NO_LEVEL[EquipLocation(item)] and item.link
             and NS.GetItemLevel(item.link)
         button.muscaLevel:SetText(level and tostring(level) or "")
-        button.muscaLevel:SetTextColor(NS.QualityColor(item.quality))
+        if db.itemLevelColor == "white" then button.muscaLevel:SetTextColor(1, 1, 1)
+        else button.muscaLevel:SetTextColor(NS.QualityColor(item.quality)) end
         button.muscaLevel:SetShown(level and true or false)
         local marked = NS.ParseSpellList(db.junkMarked)[item.itemID]
-        button.muscaJunk:SetShown(marked or (db.junk and item.quality == 0 and not item.hasNoValue) or false)
+        isJunk = (item.quality == 0 and not item.hasNoValue) or false
+        button.muscaJunk:SetShown(marked or (db.junk and isJunk) or false)
         if marked then button.muscaJunk:SetVertexColor(1, 0.35, 0.35) else button.muscaJunk:SetVertexColor(1, 1, 1) end
         local itemLevel = db.upgrade and item.link and NS.GetItemLevel(item.link)
         button.muscaUpgrade:SetShown(itemLevel and Bags.IsUpgrade(item, itemLevel) or false)
@@ -472,10 +544,11 @@ function Bags.UpdateButton(button, bag, slot, query)
         button.muscaBind:SetText(bindLabel or "")
         button.muscaBind:SetTextColor(NS.QualityColor(item.quality))
         button.muscaBind:SetShown(bindLabel and true or false)
-        if item.quality and item.quality >= 2 then r, g, b = NS.QualityColor(item.quality)
+        if item.quality and item.quality >= 2 and db.qualityBorder then r, g, b = NS.QualityColor(item.quality)
         else local c = NS.db.theme.border r, g, b = c.r, c.g, c.b end
     end
     for _, edge in pairs(button.muscaBorder) do NS.SetSolidColor(edge, r, g, b, 1) end
+    PaintIcon(button, item, isJunk)
     Bags.ApplySearch(button, query)
 end
 
@@ -503,7 +576,13 @@ local function Build()
         if not syncing and BlizzardOpen() and _G.CloseAllBags then CloseAllBags() end
     end)
 
+    -- Les Movers posent leurs cadres à l'échelle d'UIParent : le support n'est pas mis à l'échelle,
+    -- la fenêtre (mise à l'échelle) s'y ancre à décalage 0.
+    windowHolder = CreateFrame("Frame", "MuscaUIBagsHolder", UIParent)
+    window:SetPoint("BOTTOMLEFT", windowHolder, "BOTTOMLEFT", 0, 0)
+    reagentHolder = CreateFrame("Frame", "MuscaUIBagsReagentsHolder", UIParent)
     reagentWindow = CreateFrame("Frame", "MuscaUIBagsReagents", UIParent)
+    reagentWindow:SetPoint("BOTTOMLEFT", reagentHolder, "BOTTOMLEFT", 0, 0)
     reagentWindow:SetFrameStrata("HIGH")
     reagentWindow:SetClampedToScreen(true)
     reagentWindow:EnableMouse(true)
@@ -550,6 +629,32 @@ local function Build()
     window.stack.label:SetText(L.BAGS_STACK)
     window.stack:SetScript("OnClick", function() Bags:StartMerge() end)
 
+    -- Poignée (déverrouillée) : tirer vers la droite ajoute ou retire des colonnes.
+    local handle = CreateFrame("Button", nil, window)
+    handle:SetSize(S(14), S(14))
+    handle:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", 0, 0)
+    handle:SetFrameLevel(window:GetFrameLevel() + 10)
+    handle.texture = handle:CreateTexture(nil, "OVERLAY")
+    handle.texture:SetAllPoints()
+    handle.texture:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    handle:SetScript("OnMouseDown", function(self)
+        -- Écart depuis le clic : le bord gauche bouge quand la fenêtre est ancrée à droite.
+        local startX, startColumns = GetCursorPosition() / window:GetEffectiveScale(), Bags.db.columns
+        self:SetScript("OnUpdate", function()
+            local cell = S(Bags.db.buttonSize) + S(SPACING)
+            local delta = GetCursorPosition() / window:GetEffectiveScale() - startX
+            local columns = startColumns + math.floor(delta / cell + 0.5)
+            columns = math.max(4, math.min(24, columns))
+            if columns ~= Bags.db.columns then
+                Bags.db.columns = columns
+                Bags:Update()
+            end
+        end)
+    end)
+    handle:SetScript("OnMouseUp", function(self) self:SetScript("OnUpdate", nil) end)
+    handle:SetScript("OnHide", function(self) self:SetScript("OnUpdate", nil) end)
+    window.resizeHandle = handle
+
     window.footer = Media:CreateText(window, "OVERLAY")
     window.footer:SetPoint("BOTTOMLEFT", window, "BOTTOMLEFT", S(8), S(6))
     window.money = Media:CreateText(window, "OVERLAY")
@@ -569,6 +674,14 @@ function Bags:UpdatePass()
     local size = S(db.buttonSize)
     local columns = math.max(4, math.min(24, tonumber(db.columns) or 12))
     ConcealBlizzard()
+    window:SetScale(db.windowScale)
+    reagentWindow:SetScale(db.windowScale)
+    local strata = STRATA_ABOVE[db.windowStrata] and db.windowStrata or "HIGH"
+    window:SetFrameStrata(strata)
+    reagentWindow:SetFrameStrata(strata)
+    window.resizeHandle:SetShown(not db.lockSize)
+    window.sort:SetShown(db.showSortButton)
+    window.stack:SetShown(db.showStackButton)
     local list = BlizzardButtons()
     -- Objets épinglés, puis arrivés récemment, puis l'ordre des sacs.
     local pinned = NS.ParseSpellList(db.pinned)
@@ -607,7 +720,7 @@ function Bags:UpdatePass()
     -- Mêmes boutons, mêmes sections, même taille : rien n'est replacé, sauf un bouton que Blizzard
     -- a réancré sur son cadre (réouverture, mise en page de ses sacs).
     local function Place(sections, parent)
-        local keyParts = { size, columns }
+        local keyParts = { size, columns, db.windowScale }
         for _, section in ipairs(sections) do
             keyParts[#keyParts + 1] = section.label or ""
             for _, button in ipairs(section.buttons) do keyParts[#keyParts + 1] = tostring(button) end
@@ -667,6 +780,8 @@ function Bags:UpdatePass()
     else Place({ { buttons = main } }, window) end
     Place({ { buttons = reagents } }, reagentWindow)
     reagentWindow:SetShown(window:IsShown() and #reagents > 0)
+    windowHolder:SetSize(window:GetWidth() * db.windowScale, window:GetHeight() * db.windowScale)
+    reagentHolder:SetSize(reagentWindow:GetWidth() * db.windowScale, reagentWindow:GetHeight() * db.windowScale)
     window.footer:SetText(string.format(L.BAGS_FREE, free, total))
     window.money:SetText(NS.FormatMoney(GetMoney()))
 end
@@ -734,13 +849,27 @@ end)
 
 function Bags:GetWindow() return window, buttons end
 
+-- Tri vers le bas : réglage du client. L'origine est gardée en base (survit au /reload), capturée
+-- au premier passage à true, rendue puis effacée quand l'option ou le module est coupé.
+function Bags:ApplySortToBottom()
+    local db = self.db
+    if active and db.sortToBottom then
+        if db.sortToBottomOriginal == nil then db.sortToBottomOriginal = NS.GetSortToBottom() end
+        NS.SetSortToBottom(true)
+    elseif db.sortToBottomOriginal ~= nil then
+        NS.SetSortToBottom(db.sortToBottomOriginal)
+        db.sortToBottomOriginal = nil
+    end
+end
+
 function Bags:OnEnable()
     active = true
+    self:ApplySortToBottom()
     if not window then Build() end
-    NS.Movers:Register("bagWindow", window, L.MOVER_BAG_WINDOW, "BOTTOMRIGHT", -60, 120)
+    NS.Movers:Register("bagWindow", windowHolder, L.MOVER_BAG_WINDOW, "BOTTOMRIGHT", -60, 120)
     NS.Movers:Load("bagWindow")
     if NS.REAGENT_BAG then
-        NS.Movers:Register("bagReagents", reagentWindow, L.MOVER_BAG_REAGENTS, "BOTTOMRIGHT", -500, 120)
+        NS.Movers:Register("bagReagents", reagentHolder, L.MOVER_BAG_REAGENTS, "BOTTOMRIGHT", -500, 120)
         NS.Movers:Load("bagReagents")
     end
     TakeBlizzard()
@@ -755,6 +884,7 @@ end
 
 function Bags:OnDisable()
     active = false
+    self:ApplySortToBottom()
     events:UnregisterAllEvents()
     RestoreBlizzard()
     if window then
@@ -766,17 +896,40 @@ function Bags:OnDisable()
     NS.Movers:Unregister("bagReagents")
 end
 
-function Bags:OnRefresh() if window and window:IsShown() then self:Update() end end
+function Bags:OnRefresh()
+    if not (active and window) then return end
+    self:ApplySortToBottom()
+    Sync()   -- trousseau pris ou rendu à Blizzard : fenêtre et cadres remis d'accord
+    if window:IsShown() then self:Update() end
+end
 
 function Bags:BuildOptions(o)
     o:Slider("columns", L.OPT_BAGS_COLUMNS, 4, 24, 1)
     o:Slider("buttonSize", L.OPT_BAGS_SIZE, 24, 48, 1)
+    o:Slider("windowScale", L.OPT_BAGS_SCALE, 0.5, 2, 0.05, nil, "%.2f")
+    o:Dropdown("windowStrata", L.OPT_BAGS_STRATA, {
+        { name = L.OPT_STRATA_LOW, value = "LOW" }, { name = L.OPT_STRATA_MEDIUM, value = "MEDIUM" },
+        { name = L.OPT_STRATA_HIGH, value = "HIGH" }, { name = L.OPT_STRATA_DIALOG, value = "DIALOG" },
+    })
+    o:Check("lockSize", L.OPT_BAGS_LOCK_SIZE)
+    o:Hint(L.OPT_BAGS_LOCK_SIZE_HINT)
+    if NS.GetKeyringBag() then o:Check("keyring", L.OPT_BAGS_KEYRING) end
     o:Check("itemLevel", L.OPT_BAGS_ITEM_LEVEL)
     o:Check("junk", L.OPT_BAGS_JUNK)
     if NS.REAGENT_BAG then o:Check("detachReagents", L.OPT_BAGS_DETACH_REAGENTS) end
     o:Check("upgrade", L.OPT_BAGS_UPGRADE)
     o:Check("newFirst", L.OPT_BAGS_NEW_FIRST)
     o:Check("bindText", L.OPT_BAGS_BIND_TEXT)
+    o:Check("qualityBorder", L.OPT_BAGS_G_QUALITY_BORDER)
+    o:Check("junkGray", L.OPT_BAGS_G_JUNK_GRAY)
+    o:Slider("iconZoom", L.OPT_BAGS_G_ICON_ZOOM, 0, 20, 1, nil, "%d %%")
+    o:Slider("itemLevelSize", L.OPT_BAGS_G_ILVL_SIZE, -4, 6, 1)
+    o:Dropdown("itemLevelColor", L.OPT_BAGS_G_ILVL_COLOR, {
+        { name = L.OPT_BAGS_G_ILVL_QUALITY, value = "quality" }, { name = L.OPT_BAGS_G_ILVL_WHITE, value = "white" },
+    })
+    if NS.GetSortToBottom() ~= nil then o:Check("sortToBottom", L.OPT_BAGS_G_SORT_BOTTOM) end
+    o:Check("showSortButton", L.OPT_BAGS_G_SHOW_SORT)
+    o:Check("showStackButton", L.OPT_BAGS_G_SHOW_STACK)
     o:Hint(L.OPT_BAGS_SEARCH_HINT)
     o:Advanced()
     o:EditBox("pinned", L.OPT_BAGS_PINNED, 1)

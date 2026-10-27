@@ -25,6 +25,8 @@ local Chat = NS.Modules:Register("chat", {
         enabled = false,
         skin = true,
         fontSize = 12,
+        fontOutline = "inherit",  -- contour du texte : "inherit" (thème) | "" | "OUTLINE" | "THICKOUTLINE"
+        fontShadow = false,       -- ombre portée du texte des fenêtres
         hideButtons = true,
         flatTabs = true,
         noFade = true,
@@ -33,11 +35,14 @@ local Chat = NS.Modules:Register("chat", {
         urls = true,
         copy = true,
         shortChannels = true,
+        channelLetters = false,   -- noms de canaux réduits à leur initiale : « [G] », « [P] », « [T] »
         classColors = true,
         timestamps = "none",      -- "none" | "%H:%M " | "%H:%M:%S "
         editBoxTop = false,
         background = { r = 0.05, g = 0.06, b = 0.08, a = 0.6 },   -- fond des fenêtres (couleur + opacité)
         backgroundTexture = "",   -- texture du fond (Media:StatusBarChoices), teintée par `background` ; "" : plat
+        lockSize = false,         -- poignée de redimensionnement cachée, tailles imposées par les options
+        hideBorder = false,       -- bordure du fond des fenêtres cachée
         hideScrollBar = false,    -- barre de défilement et bouton « vers le bas » cachés (molette gardée)
         history = true, historyLines = 100,        -- lignes rejouées au /reload, par fenêtre
         keywords = "",                             -- mots-clés séparés par des virgules
@@ -48,6 +53,7 @@ local Chat = NS.Modules:Register("chat", {
         tabFontSize = 12,                          -- onglets plats : taille, couleur de l'onglet actif, soulignement
         tabActiveColor = { r = 0.25, g = 0.66, b = 0.96 },
         tabUnderline = true,
+        tabInactiveColor = { r = 0.65, g = 0.65, b = 0.65 },   -- couleur du texte des onglets non sélectionnés
         sidebar = "none",                          -- barre de raccourcis : "none", "left", "right" de la fenêtre 1
         sidebarButtons = "copy, friends, channels, options",   -- ordre des boutons (liste libre)
         windows = true,                            -- fenêtre 1 à gauche, fenêtre détachée à droite, sur movers
@@ -100,15 +106,21 @@ function Chat.LinkURLs(text)
     return text
 end
 
---- « [2. Commerce] » devient « [2] ».
-function Chat.ShortenChannels(text)
+--- « [2. Commerce] » devient « [2] » ; avec `letters`, l'initiale du nom : « [C] » (« [Groupe] » devient « [G] »).
+-- Pattern d'un caractère UTF-8 : l'initiale d'un nom accentué ou cyrillique reste entière.
+local UTF8_CHAR = "[%z\1-\127\194-\244][\128-\191]*"
+function Chat.ShortenChannels(text, letters)
+    if letters then
+        text = text:gsub("(|Hchannel:[^|]+|h)%[%d+%.%s*(" .. UTF8_CHAR .. ")[^%]]*%]|h", "%1[%2]|h")
+        return (text:gsub("(|Hchannel:[^|]+|h)%[(" .. UTF8_CHAR .. ")[^%]%d]*%]|h", "%1[%2]|h"))
+    end
     return (text:gsub("|Hchannel:([^|]+)|h%[(%d+)%.%s[^%]]+%]|h", "|Hchannel:%1|h[%2]|h"))
 end
 
 function Chat.Transform(text)
     local db = Chat.db
     if NS.IsSecret(text) or type(text) ~= "string" then return text end
-    if db.shortChannels then text = Chat.ShortenChannels(text) end
+    if db.shortChannels then text = Chat.ShortenChannels(text, db.channelLetters) end
     if db.urls then text = Chat.LinkURLs(text) end
     return text
 end
@@ -410,6 +422,7 @@ end
 local function OnWindowResized(frame)
     if not (active and Chat.db.windows) then return end
     local db = Chat.db
+    if db.lockSize then Chat.ApplyWindows() return end   -- taille verrouillée : celle des options revient
     if frame == ChatFrame1 or frame.isDocked then
         db.leftWidth, db.leftHeight = math.floor(ChatFrame1:GetWidth() + 0.5), math.floor(ChatFrame1:GetHeight() + 0.5)
     elseif frame == ManagedRight() then   -- pas une fenêtre qui vient d'être détachée
@@ -428,7 +441,8 @@ end
 local function Entry(frame)
     local entry = frames[frame]
     if entry then return entry end
-    entry = { original = { font = { frame:GetFont() }, timeVisible = frame.GetTimeVisible and frame:GetTimeVisible(),
+    entry = { original = { font = { frame:GetFont() }, shadowOffset = { frame:GetShadowOffset() },
+                           shadowColor = { frame:GetShadowColor() }, timeVisible = frame.GetTimeVisible and frame:GetTimeVisible(),
                            maxLines = frame.GetMaxLines and frame:GetMaxLines(),
                            clampInsets = frame.GetClampRectInsets and { frame:GetClampRectInsets() } } }
     local bg, edges = Media:CreateBackdrop(frame)
@@ -473,22 +487,48 @@ local function ShowBackdrop(entry, shown, color, texture)
     for _, edge in pairs(b.edges or {}) do if shown then edge:Show() else edge:Hide() end end
 end
 
+-- Ombre d'origine (ChatFontNormal en porte une) : décochée, l'option ne la retire pas.
+local function RestoreShadow(frame, entry)
+    frame:SetShadowOffset(unpack(entry.original.shadowOffset))
+    frame:SetShadowColor(unpack(entry.original.shadowColor))
+end
+
+--- Poignée de redimensionnement cachée (taille verrouillée) ou rendue à Blizzard.
+function Chat.ApplyLockSize(frame)
+    local handle = frame.ResizeButton
+    if not handle then return end
+    if active and Chat.db.windows and Chat.db.lockSize then handle:Hide()
+    elseif _G.FCF_UpdateResizeButton then FCF_UpdateResizeButton(frame) end
+end
+
 local function SkinWindow(frame)
     local db, name = Chat.db, frame:GetName()
     local entry = Entry(frame)
     local index = name:match("ChatFrame(%d+)")
     ShowBackdrop(entry, db.skin, db.background, db.backgroundTexture)
+    if db.hideBorder then
+        for _, edge in pairs(entry.backdrop.edges or {}) do edge:Hide() end
+    end
+    Chat.ApplyLockSize(frame)
     for _, key in ipairs({ "ScrollBar", "ScrollToBottomButton" }) do
         if db.hideScrollBar then NS.HideRegion(frame[key]) else NS.ShowRegion(frame[key]) end
     end
     if db.skin then
         SetTexturesAlpha(name, frame, CHAT_FRAME_TEXTURES or {}, 0)
-        local path = Media:Font()
-        frame:SetFont(path, db.fontSize, Media:Outline())
+        local path = Media:Font("chat")
+        -- SetFont exige des flags non nil : "" sans contour.
+        frame:SetFont(path, db.fontSize, db.fontOutline ~= "inherit" and db.fontOutline or Media:Outline() or "")
+        if db.fontShadow then
+            frame:SetShadowOffset(1, -1)
+            frame:SetShadowColor(0, 0, 0, 1)
+        else
+            RestoreShadow(frame, entry)
+        end
         if frame.SetClampRectInsets then frame:SetClampRectInsets(0, 0, 0, 0) end
     else
         SetTexturesAlpha(name, frame, CHAT_FRAME_TEXTURES or {}, 1)
         frame:SetFont(unpack(entry.original.font))
+        RestoreShadow(frame, entry)
     end
     if frame.SetFading then frame:SetFading(not db.noFade) end
     if not db.noFade and frame.SetTimeVisible then frame:SetTimeVisible(db.fadeTime) end
@@ -532,7 +572,6 @@ end
 -- Onglets
 --------------------------------------------------------------------------------
 
-local TAB_INACTIVE = 0.65
 
 local function SelectedFrame() return _G.SELECTED_CHAT_FRAME or _G.ChatFrame1 end
 
@@ -546,9 +585,10 @@ local function StyleTab(frame)
     local styled = active and db.flatTabs
     local selected = frame == SelectedFrame()
     if styled and text then
-        text:SetFont(Media:Font(), db.tabFontSize, Media:Outline())
+        text:SetFont(Media:Font("chat"), db.tabFontSize, Media:Outline())
         local color = db.tabActiveColor
-        if selected then text:SetTextColor(color.r, color.g, color.b) else text:SetTextColor(TAB_INACTIVE, TAB_INACTIVE, TAB_INACTIVE) end
+        local inactive = db.tabInactiveColor
+        if selected then text:SetTextColor(color.r, color.g, color.b) else text:SetTextColor(inactive.r, inactive.g, inactive.b) end
     end
     if styled and db.tabUnderline and not entry.tabUnderline then
         entry.tabUnderline = tab:CreateTexture(nil, "OVERLAY")
@@ -703,7 +743,7 @@ local function CopyFrame()
     edit:SetAutoFocus(false)
     edit:SetWidth(510)
     -- Police posée à la main : l'interligne de ChatFontNormal décale le curseur du texte.
-    edit:SetFont(Media:Font(), Chat.db.fontSize or 12, "")
+    edit:SetFont(Media:Font("chat"), Chat.db.fontSize or 12, "")
     edit:SetScript("OnEscapePressed", function() copyFrame:Hide() end)
     scroll:SetScrollChild(edit)
     copyFrame.edit = edit
@@ -782,6 +822,7 @@ local function Restore()
             for _, point in ipairs(entry.original.editPoints) do editBox:SetPoint(unpack(point)) end
         end
         frame:SetFont(unpack(entry.original.font))
+        RestoreShadow(frame, entry)
         if frame.SetFading then frame:SetFading(true) end
         if entry.original.timeVisible and frame.SetTimeVisible then frame:SetTimeVisible(entry.original.timeVisible) end
         -- SetMaxLines vide la fenêtre : seulement si la valeur a changé.
@@ -791,6 +832,7 @@ local function Restore()
         NS.ShowRegion(_G[name .. "ButtonFrame"] or frame.buttonFrame)
         NS.ShowRegion(frame.ScrollBar)
         NS.ShowRegion(frame.ScrollToBottomButton)
+        Chat.ApplyLockSize(frame)
         if entry.copyButton then entry.copyButton:Hide() end
         if entry.tabUnderline then entry.tabUnderline:Hide() end
         local tabText = (_G[name .. "Tab"] or frame.Tab or {}).Text
@@ -816,6 +858,11 @@ function Chat:OnEnable()
         -- Changement d'onglet, et Blizzard qui recolore les onglets : on repasse derrière.
         for _, name in ipairs({ "FCF_Tab_OnClick", "FCFTab_UpdateColors" }) do
             if _G[name] then hooksecurefunc(name, function() if active then Chat.StyleTabs() end end) end
+        end
+        if _G.FCF_UpdateResizeButton then
+            hooksecurefunc("FCF_UpdateResizeButton", function(frame)
+                if active and Chat.db.windows and Chat.db.lockSize and frame.ResizeButton then frame.ResizeButton:Hide() end
+            end)
         end
         if _G.FCF_SavePositionAndDimensions then hooksecurefunc("FCF_SavePositionAndDimensions", OnWindowResized) end
         if _G.ChatFrame1 and ChatFrame1.EditMode_OnResized then
@@ -865,8 +912,16 @@ function Chat:BuildOptions(o)
     o:EndAdvanced()
     o:Check("hideScrollBar", L.OPT_CHAT_HIDE_SCROLLBAR)
     o:Slider("fontSize", L.OPT_CHAT_FONT_SIZE, 9, 20, 1)
+    o:Advanced()
+    o:Dropdown("fontOutline", L.OPT_FONT_OUTLINE, {
+        { name = L.OPT_MEDIA_INHERIT, value = "inherit" }, { name = L.OUTLINE_NONE, value = "" },
+        { name = L.OUTLINE_THIN, value = "OUTLINE" }, { name = L.OUTLINE_THICK, value = "THICKOUTLINE" } }, 36)
+    o:Check("fontShadow", L.OPT_CHAT_FONT_SHADOW, 36)
+    o:EndAdvanced()
+    o:Check("hideBorder", L.OPT_G_SOCIAL_CHAT_HIDE_BORDER)
     o:Check("flatTabs", L.OPT_CHAT_FLAT_TABS)
     o:Advanced()
+    o:Color("tabInactiveColor", L.OPT_G_SOCIAL_CHAT_TAB_INACTIVE_COLOR, 36)
     o:Slider("tabFontSize", L.OPT_CHAT_TAB_FONT_SIZE, 8, 20, 1, 36)
     o:Color("tabActiveColor", L.OPT_CHAT_TAB_ACTIVE_COLOR, 36)
     o:Check("tabUnderline", L.OPT_CHAT_TAB_UNDERLINE, 36)
@@ -889,11 +944,14 @@ function Chat:BuildOptions(o)
     o:Check("urls", L.OPT_CHAT_URLS)
     o:Check("copy", L.OPT_CHAT_COPY)
     o:Check("shortChannels", L.OPT_CHAT_SHORT_CHANNELS)
+    o:Check("channelLetters", L.OPT_G_SOCIAL_CHAT_CHANNEL_LETTERS, 36)
     o:Check("classColors", L.OPT_CHAT_CLASS_COLORS)
     o:Dropdown("timestamps", L.OPT_CHAT_TIMESTAMPS, {
         { name = L.CHAT_TIMESTAMPS_NONE, value = "none" },
         { name = "12:34", value = "%H:%M " },
         { name = "12:34:56", value = "%H:%M:%S " },
+        { name = "12:34 PM", value = "%I:%M %p " },
+        { name = "12:34:56 PM", value = "%I:%M:%S %p " },
     })
     o:Title(L.OPT_CHAT_HISTORY_TITLE)
     o:Check("history", L.OPT_CHAT_HISTORY)
@@ -916,6 +974,7 @@ function Chat:BuildOptions(o)
     o:EndAdvanced()
     o:Title(L.OPT_CHAT_WINDOWS_TITLE)
     o:Check("windows", L.OPT_CHAT_WINDOWS)
+    o:Check("lockSize", L.OPT_G_SOCIAL_CHAT_LOCK_SIZE, 36)
     o:Slider("leftWidth", L.OPT_CHAT_LEFT_WIDTH, CHAT_MIN_WIDTH, 900, 2, 36)
     o:Slider("leftHeight", L.OPT_CHAT_LEFT_HEIGHT, CHAT_MIN_HEIGHT, 600, 2, 36)
     o:Slider("rightWidth", L.OPT_CHAT_RIGHT_WIDTH, CHAT_MIN_WIDTH, 900, 2, 36)

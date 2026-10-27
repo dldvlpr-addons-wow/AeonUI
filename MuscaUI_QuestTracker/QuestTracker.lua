@@ -32,6 +32,10 @@ local QuestTracker = NS.Modules:Register("questtracker", {
         titleColor = { r = 1, g = 0.82, b = 0 },
         objectiveColor = { r = 0.8, g = 0.8, b = 0.8 },
         completeColor = { r = 0.25, g = 1, b = 0.35 },   -- quête terminée : titre et objectifs
+        colorSource = "custom",   -- titres et en-têtes : "custom" (couleurs ci-dessus), "class", "accent"
+        dimCompleted = 100,       -- opacité des objectifs terminés (quête terminée comprise), en %
+        backgroundOpacity = 0,    -- fond derrière le suivi, en % (0 : aucun)
+        accentLine = false,       -- filet d'accent en haut du suivi
         questItemKey = "",        -- touche qui utilise l'objet de quête (suivie d'abord), vide = aucune
         sortMode = "proximity",   -- "proximity" (Blizzard, distance) | "log" | "level" | "name"
         completedPosition = "mixed", -- quêtes terminées : "mixed" | "top" | "bottom"
@@ -53,6 +57,7 @@ local anchoring, hooked = false, false
 local autoCollapsed = false      -- replié par nous (combat ou instance) : à rouvrir
 local headerBackgrounds = {}     -- fonds cachés
 local originalFonts = setmetatable({}, { __mode = "k" })   -- [FontString] = { police d'origine }
+local dimmedLines = setmetatable({}, { __mode = "k" })     -- [ligne d'objectif] = true : opacité baissée par nous
 local inEncounter = false
 local UpdateFilterButton
 
@@ -123,7 +128,7 @@ local function StyleFont(fontString, size, color)
     if not (fontString and fontString.SetFont) then return end
     if not originalFonts[fontString] then originalFonts[fontString] = { fontString:GetFont() } end
     -- Relu sur le widget (Blizzard repose la couleur à sa mise à jour) : écrit seulement si différent.
-    local path, outline = Media:Font(), Media:Outline()
+    local path, outline = Media:Font("questtracker"), Media:Outline()
     local currentPath, currentSize, currentOutline = fontString:GetFont()
     if currentPath ~= path or currentSize ~= size or (currentOutline or "") ~= (outline or "") then
         fontString:SetFont(path, size, outline)
@@ -162,18 +167,63 @@ local function RestoreFont(fontString)
     if fontString and originalFonts[fontString] then fontString:SetFont(unpack(originalFonts[fontString])) end
 end
 
+--- Couleur des titres et des en-têtes : celle choisie, sinon classe ou accent.
+function QuestTracker:SourceColor(custom)
+    local source = self.db.colorSource
+    if source == "accent" then
+        local r, g, b = Media:Accent()
+        return { r = r, g = g, b = b }
+    elseif source == "class" and _G.UnitClass then
+        local _, classFile = UnitClass("player")
+        if classFile and not NS.IsSecret(classFile) then
+            local r, g, b = NS.ClassColor(classFile)
+            return { r = r, g = g, b = b }
+        end
+    end
+    return custom
+end
+
+--- Objectif `key` du bloc terminé ? (quête terminée, ou objectif fini selon le journal.)
+function QuestTracker.ObjectiveDone(block, key, complete)
+    if complete then return true end
+    local id = block.id
+    if type(key) ~= "number" or type(id) ~= "number" or not (C_QuestLog and C_QuestLog.GetQuestObjectives) then return false end
+    local objectives = C_QuestLog.GetQuestObjectives(id)
+    local objective = type(objectives) == "table" and objectives[key]
+    local finished = type(objective) == "table" and objective.finished
+    return not NS.IsSecret(finished) and finished == true
+end
+
+--- Opacité des objectifs terminés (rendue à 1 pour une ligne qu'on avait baissée).
+local function DimLines(block, lines)
+    local alpha = (tonumber(QuestTracker.db.dimCompleted) or 100) / 100
+    local complete = QuestTracker.QuestComplete(block)
+    for key, line in pairs(lines) do
+        if type(line) == "table" and line.SetAlpha then
+            if alpha < 1 and QuestTracker.ObjectiveDone(block, key, complete) then
+                line:SetAlpha(alpha)
+                dimmedLines[line] = true
+            elseif dimmedLines[line] then
+                line:SetAlpha(1)
+                dimmedLines[line] = nil
+            end
+        end
+    end
+end
+
 function QuestTracker:StyleBlocks()
     local db = self.db
     if not active then return end
     EachBlock(function(block)
         local lines = type(block.usedLines) == "table" and block.usedLines or {}
+        DimLines(block, lines)
         if not db.styleText then
             RestoreFont(block.HeaderText)
             for _, line in pairs(lines) do if type(line) == "table" then RestoreFont(line.Text) end end
             return
         end
         local complete = QuestTracker.QuestComplete(block)
-        StyleFont(block.HeaderText, db.titleFontSize, complete and db.completeColor or db.titleColor)
+        StyleFont(block.HeaderText, db.titleFontSize, complete and db.completeColor or self:SourceColor(db.titleColor))
         for _, line in pairs(lines) do
             if type(line) == "table" then
                 StyleFont(line.Text, db.objectiveFontSize, complete and db.completeColor or db.objectiveColor)
@@ -235,12 +285,19 @@ local function SkinHeaders()
             if not header.foreverOriginalFont then header.foreverOriginalFont = { text:GetFont() } end
             local path, size, flags
             if db.skinHeaders then
-                path, size, flags = Media:Font(), db.headerFontSize, Media:Outline()
+                path, size, flags = Media:Font("questtracker"), db.headerFontSize, Media:Outline()
             else
                 path, size, flags = unpack(header.foreverOriginalFont)
             end
             local curPath, curSize, curFlags = text:GetFont()   -- SetFont relance une mise en page : seulement si ça change
             if curPath ~= path or curSize ~= size or curFlags ~= flags then text:SetFont(path, size, flags) end
+            -- Couleur de classe ou d'accent ; la couleur Blizzard est capturée puis rendue.
+            if text.SetTextColor then
+                if not header.muscaOriginalColor then header.muscaOriginalColor = { text:GetTextColor() } end
+                local custom = QuestTracker:SourceColor(nil)
+                if db.skinHeaders and custom then text:SetTextColor(custom.r, custom.g, custom.b)
+                else text:SetTextColor(unpack(header.muscaOriginalColor)) end
+            end
         end
     end
 end
@@ -248,6 +305,13 @@ end
 local function Build()
     holder = CreateFrame("Frame", "MuscaUI_QuestTracker", UIParent)
     holder:SetFrameStrata("LOW")
+    -- Fond et filet d'accent : sur le support, pas sur le cadre Blizzard (Edit Mode).
+    holder.background = holder:CreateTexture(nil, "BACKGROUND")
+    holder.background:SetAllPoints(holder)
+    holder.accentLine = holder:CreateTexture(nil, "BORDER")
+    holder.accentLine:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, 0)
+    holder.accentLine:SetPoint("TOPRIGHT", holder, "TOPRIGHT", 0, 0)
+    holder.accentLine:SetHeight(2)
     if not hooked then
         hooked = true
         hooksecurefunc(Tracker(), "SetPoint", function()
@@ -255,6 +319,18 @@ local function Build()
         end)
         if Tracker().Update then hooksecurefunc(Tracker(), "Update", QueueStyle) end
     end
+end
+
+--- Fond (opacité) et filet d'accent du support. ponytail: sur toute la hauteur réglée, pas celle du contenu.
+function QuestTracker:ApplyBackground()
+    if not holder then return end
+    local opacity = (tonumber(self.db.backgroundOpacity) or 0) / 100
+    local c = NS.db.theme.backdrop
+    NS.SetSolidColor(holder.background, c.r, c.g, c.b, opacity)
+    holder.background:SetShown(opacity > 0)
+    local r, g, b = Media:Accent()
+    NS.SetSolidColor(holder.accentLine, r, g, b, 1)
+    holder.accentLine:SetShown(self.db.accentLine and true or false)
 end
 
 function QuestTracker:Apply()
@@ -267,6 +343,7 @@ function QuestTracker:Apply()
     NS.Movers:Register("questtracker", holder, L.MOVER_QUESTTRACKER, "TOPRIGHT", -40, -260)
     NS.Movers:Load("questtracker")
     AnchorTracker()
+    self:ApplyBackground()
     SkinHeaders()
     self:UpdateCollapse()
     self:UpdateVisibility()
@@ -562,7 +639,8 @@ local SORT_EVENTS = { QUEST_WATCH_LIST_CHANGED = true, QUEST_LOG_UPDATE = true, 
                       ZONE_CHANGED = true, ZONE_CHANGED_NEW_AREA = true, PLAYER_REGEN_ENABLED = true,
                       ENCOUNTER_END = true, PLAYER_ENTERING_WORLD = true, QUEST_WATCH_UPDATE = true }
 local VISIBILITY_EVENTS = { PLAYER_TARGET_CHANGED = true, PLAYER_MOUNT_DISPLAY_CHANGED = true,
-                            ENCOUNTER_START = true, ENCOUNTER_END = true, GROUP_ROSTER_UPDATE = true }
+                            ENCOUNTER_START = true, ENCOUNTER_END = true, GROUP_ROSTER_UPDATE = true,
+                            PLAYER_SOFT_ENEMY_CHANGED = true, GAME_PAD_ACTIVE_CHANGED = true }
 
 events:SetScript("OnEvent", function(_, event, questID)
     if not active then return end
@@ -601,7 +679,8 @@ function QuestTracker:OnEnable()
     for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_ENTERING_WORLD",
                              "ZONE_CHANGED_NEW_AREA", "QUEST_WATCH_LIST_CHANGED", "QUEST_LOG_UPDATE",
                              "PLAYER_TARGET_CHANGED", "PLAYER_MOUNT_DISPLAY_CHANGED", "ENCOUNTER_START", "ENCOUNTER_END",
-                             "GROUP_ROSTER_UPDATE", "ZONE_CHANGED", "QUEST_ACCEPTED", "QUEST_WATCH_UPDATE" }) do
+                             "GROUP_ROSTER_UPDATE", "ZONE_CHANGED", "QUEST_ACCEPTED", "QUEST_WATCH_UPDATE",
+                             "PLAYER_SOFT_ENEMY_CHANGED", "GAME_PAD_ACTIVE_CHANGED" }) do
         NS.RegisterEventSafe(events, event)
     end
     if not mapHooked and _G.WorldMapFrame then
@@ -623,7 +702,10 @@ function QuestTracker:OnDisable()
     for background in pairs(headerBackgrounds) do NS.ShowRegion(background) end
     for _, header in ipairs(Headers()) do
         if header.foreverOriginalFont and header.Text then header.Text:SetFont(unpack(header.foreverOriginalFont)) end
+        if header.muscaOriginalColor and header.Text then header.Text:SetTextColor(unpack(header.muscaOriginalColor)) end
     end
+    for line in pairs(dimmedLines) do line:SetAlpha(1) end
+    wipe(dimmedLines)
     for fontString in pairs(originalFonts) do RestoreFont(fontString) end
     Tracker():SetAlpha(1)
     holder:Hide()
@@ -674,6 +756,13 @@ function QuestTracker:BuildOptions(o)
     o:Check("hideRepeatable", L.OPT_QT_HIDE_REPEATABLE)
     o:Check("autoTrackZone", L.OPT_QT_AUTO_TRACK)
     o:Check("styleText", L.OPT_QT_STYLE_TEXT)
+    o:Slider("dimCompleted", L.OPT_G_SKIN_QT_DIM, 0, 100, 5, nil, "%d %%")
+    o:Slider("backgroundOpacity", L.OPT_G_SKIN_QT_BACKGROUND, 0, 100, 5, nil, "%d %%")
+    o:Check("accentLine", L.OPT_G_SKIN_QT_ACCENT_LINE)
+    o:Dropdown("colorSource", L.OPT_G_SKIN_QT_COLOR_SOURCE, {
+        { name = L.OPT_G_SKIN_QT_COLOR_CUSTOM, value = "custom" }, { name = L.OPT_G_SKIN_QT_COLOR_CLASS, value = "class" },
+        { name = L.OPT_G_SKIN_QT_COLOR_ACCENT, value = "accent" },
+    })
     o:Advanced()
     o:Slider("titleFontSize", L.OPT_QT_TITLE_FONT_SIZE, 8, 20, 1, 36)
     o:Slider("objectiveFontSize", L.OPT_QT_OBJECTIVE_FONT_SIZE, 8, 20, 1, 36)

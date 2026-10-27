@@ -153,6 +153,10 @@ pages[1] = { key = "install", titleKey = "SETUP_PAGE_INSTALL", build = function(
                 if not NS.Install.ImportHud() then NS.Print(L.SETUP_HUD_FAILED) end
             end)
         end)
+    else
+        -- Sans Musca Auras : le HUD de classe reste annoncé, avec où le trouver.
+        layout:Header(L.SETUP_PAGE_HUD)
+        layout:Note(L.SETUP_HUD_MISSING)
     end
     return { layout }
 end }

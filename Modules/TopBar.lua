@@ -41,6 +41,8 @@ local TopBar = NS.Modules:Register("topbar", {
         use24h = true,
         showResting = true,
         visibility = NS.Visibility.Spec(),   -- conditions communes (Core/Visibility)
+        latencyMode = "worst",     -- latence affichée : "worst" | "home" | "world" | "both" (FPS/latence et blocs séparés)
+        bagsAlertThreshold = 0,    -- emplacements libres à partir desquels le bloc Sacs passe au rouge (0 : sacs pleins seulement)
         perfInCombat = true,       -- FPS/latence restent visibles quand la barre se masque en combat
         extraLeft = "none",        -- data text de l'emplacement libre de gauche (NS.DataTexts)
         extraRight = "none",       -- data text de l'emplacement libre de droite
@@ -125,7 +127,7 @@ end
 function TEXT.bags()
     local free = 0
     for bag = 0, NS.NUM_BAGS do free = free + NS.GetBagFreeSlots(bag, true) end
-    local color = free == 0 and "|cffff4040" or "|cffffffff"
+    local color = free <= TopBar.db.bagsAlertThreshold and "|cffff4040" or "|cffffffff"
     return Dim(L.TOPBAR_BAGS) .. " " .. color .. free .. "|r"
 end
 
@@ -142,13 +144,27 @@ function TopBar.Grade(value, warn, bad, higherIsBetter)
     return "|cffffffff"
 end
 
-function TEXT.perf()
-    local fps = math.floor(GetFramerate() + 0.5)
-    local _, _, home, world = GetNetStats()
-    local ms = math.max(home or 0, world or 0)
-    return TopBar.Grade(fps, 50, 30, true) .. fps .. "|r " .. Dim(L.TOPBAR_FPS) .. "  "
-        .. TopBar.Grade(ms, 100, 200, false) .. ms .. "|r " .. Dim(L.TOPBAR_MS)
+--- Latence colorée selon `mode` : la pire des deux, domicile, monde, ou « domicile/monde ».
+function TopBar.LatencyText(home, world, mode)
+    local function graded(ms) return TopBar.Grade(ms, 100, 200, false) .. ms .. "|r" end
+    if mode == "both" then return graded(home) .. "/" .. graded(world) .. " " .. Dim(L.TOPBAR_MS) end
+    local ms = mode == "home" and home or mode == "world" and world or math.max(home, world)
+    return graded(ms) .. " " .. Dim(L.TOPBAR_MS)
 end
+
+local function FpsText()
+    local fps = math.floor(GetFramerate() + 0.5)
+    return TopBar.Grade(fps, 50, 30, true) .. fps .. "|r " .. Dim(L.TOPBAR_FPS)
+end
+
+local function LatencyText()
+    local _, _, home, world = GetNetStats()
+    return TopBar.LatencyText(home or 0, world or 0, TopBar.db.latencyMode)
+end
+
+function TEXT.perf() return FpsText() .. "  " .. LatencyText() end
+function TEXT.fps() return FpsText() end
+function TEXT.latency() return LatencyText() end
 
 function TEXT.travel()
     return Accent(L.TOPBAR_TRAVEL)
@@ -696,6 +712,13 @@ do
             events = eventsOf[key], interval = interval[key], noCombatTooltip = noCombat[key],
         })
     end
+    -- FPS et latence en deux blocs séparés, pour les panneaux de données.
+    for _, key in ipairs({ "fps", "latency" }) do
+        NS.DataTexts:Register(key, {
+            text = TEXT[key], tooltip = TOOLTIP.perf, click = CLICK.perf, interval = 1, noCombatTooltip = true,
+            nameKey = "OPT_G_MAP_DATATEXT_" .. key:upper(),
+        })
+    end
 end
 
 local eventFrame = CreateFrame("Frame")
@@ -786,6 +809,11 @@ function TopBar:BuildOptions(o)
     o:Slider("backgroundAlpha", L.OPT_TOPBAR_ALPHA, 0, 1, 0.05, 20, "%.2f")
     o:EndAdvanced()
     o:Check("perfInCombat", L.OPT_TOPBAR_PERF_COMBAT, 20)
+    o:Dropdown("latencyMode", L.OPT_G_MAP_LATENCY, {
+        { name = L.OPT_G_MAP_LATENCY_WORST, value = "worst" }, { name = L.OPT_G_MAP_LATENCY_HOME, value = "home" },
+        { name = L.OPT_G_MAP_LATENCY_WORLD, value = "world" }, { name = L.OPT_G_MAP_LATENCY_BOTH, value = "both" },
+    })
+    o:Slider("bagsAlertThreshold", L.OPT_G_MAP_BAGS_ALERT, 0, 20, 1)
     o:Visibility("visibility", L.OPT_VISIBILITY, { secure = true })
     o:Title(L.OPT_TOPBAR_CLOCK)
     o:Check("use24h", L.OPT_TOPBAR_24H)

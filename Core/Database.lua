@@ -60,6 +60,10 @@ Database.PROFILE_DEFAULTS = {
         optionsScale = 1,         -- taille de la fenêtre d'options (0,8 à 1,5), en plus de uiScale
         grid = 0,                 -- 0, 16 ou 32 px, visible en mode déverrouillé
         snap = true,              -- aimant du mode déverrouillé (Maj le coupe le temps d'un glisser)
+        moverCustom = false,      -- vrai : couleur du mode déverrouillé choisie (sinon l'accent)
+        moverColor = { r = 1, g = 0.82, b = 0 },
+        glowThickness = 2,        -- épaisseur des traits de la lueur « pixel », en pixels (1 à 4)
+        glowSpeed = 1,            -- vitesse des lueurs animées (pixel, autocast), 0,5 à 2
         accentPreset = "custom",  -- "custom" (accent ci-dessus), "class", "faction" (lus pour chaque personnage)
         darkMode = false,         -- palette sombre partagée des barres de vie (Media:SetHealthColor)
         moduleMedia = {},         -- [module] = { font, statusbar } : exception au thème, absent = hérité
@@ -97,7 +101,7 @@ end
 local RENAMED_MODULES = { quickdraw = "radialmenu", shifter = "movablewindows" }
 
 --- Réglages d'un module renommé repris sous son nouveau nom. Joué par la migration v7 et à
--- l'import : les chaînes de profil ne portent pas de version.
+-- l'import : les chaînes d'avant la v10 ne portent pas de version.
 function Database.RenameModules(profile)
     if type(profile) ~= "table" then return end
     local media = type(profile.theme) == "table" and type(profile.theme.moduleMedia) == "table"
@@ -595,6 +599,10 @@ local function ProfileDefaults(mirror)
     return defaults
 end
 
+-- Borne de lecture des défauts joints à la sauvegarde : une donnée à nous, qui grossit à chaque
+-- module ajouté. La borne des imports collés (PastedLimit, 32 000) ne vaut que pour une chaîne tierce.
+Database.BACKUP_DEFAULTS_LIMIT = 96000
+
 -- Défauts de la session en chaîne d'export, calculés une fois (ils ne bougent pas en session).
 local backupDefaults
 
@@ -635,7 +643,7 @@ function Database:RestoreBackup()
     -- Sauvegarde réduite : ses défauts d'origine d'abord, avant la migration et les défauts actuels.
     -- Sur une copie : en échec de migration, la sauvegarde reste réduite et rejouable.
     local restored = backup.profiles
-    local defaults = type(backup.defaults) == "string" and self.Deserialize(backup.defaults, self.PastedLimit(true))
+    local defaults = type(backup.defaults) == "string" and self.Deserialize(backup.defaults, self.BACKUP_DEFAULTS_LIMIT)
     -- Défauts joints illisibles : restauration sur les défauts actuels, signalée à l'appelant.
     local defaultsLost = backup.defaults ~= nil and not defaults
     if defaults then
@@ -676,6 +684,37 @@ function Database:ResetActiveProfile()
     local name = self:ActiveProfileName()
     self.global.profiles[name] = self.FillProfile({})
     return self.global.profiles[name]
+end
+
+-- Couleurs du thème qu'on peut recopier d'un profil à l'autre.
+Database.THEME_COLOR_KEYS = { "accentPreset", "accent", "backdrop", "border", "moverCustom", "moverColor" }
+
+--- Recopie les couleurs du thème du profil `from` dans le profil `to` (sur place : le profil actif
+-- garde ses tables). Faux si l'un manque ou s'ils sont identiques.
+function Database:CopyThemeColors(from, to)
+    local profiles = self.global.profiles
+    local source, target = profiles[from], profiles[to]
+    if from == to or not (source and target and source.theme and target.theme) then return false end
+    for _, key in ipairs(self.THEME_COLOR_KEYS) do
+        local value = source.theme[key]
+        if type(value) == "table" and type(target.theme[key]) == "table" then
+            for field, part in pairs(value) do target.theme[key][field] = part end
+        elseif value ~= nil then
+            target.theme[key] = self.DeepCopy(value)
+        end
+    end
+    return true
+end
+
+--- Les couleurs du profil `from` copiées dans tous les autres profils ; écarts des variantes refaits.
+function Database:CopyThemeColorsToAll(from)
+    local count = 0
+    self:SyncVariants(NS.db)   -- l'écart des variantes est calculé avant la copie : les couleurs copiées s'y ajoutent
+    for name in pairs(self.global.profiles) do
+        if self:CopyThemeColors(from, name) then count = count + 1 end
+    end
+    self:CaptureVariants()
+    return count
 end
 
 --------------------------------------------------------------------------------
@@ -867,7 +906,7 @@ end
 -- AEON2 : la chaîne AEON1 compressée (LibDeflate) puis rendue imprimable. Bornes : une chaîne
 -- tierce ne doit pas faire gonfler la mémoire (un deflate peut multiplier la taille par 1000).
 Database.COMPRESSED_PREFIX = "AEON2:"
-local MAX_COMPRESSED, MAX_EXPANDED = 12000, 262144   -- export complet actuel : ~5,4 Ko
+local MAX_COMPRESSED, MAX_EXPANDED = 32000, 262144   -- comme le miroir CVar ; export complet par défaut : ~12 Ko compressé
 local MAX_ENTRIES = 20000   -- valeurs d'une chaîne tierce : borne large, bien au-dessus d'un export réel
 
 local function Deflate() return _G.LibStub and LibStub("LibDeflate", true) end
@@ -882,8 +921,17 @@ function Database.Export(profile, level)
     return Database.COMPRESSED_PREFIX .. deflate:EncodeForPrint(compressed)
 end
 
+--- Chaîne de partage d'un profil (ou d'un extrait) : marquée de la version du schéma, pour que
+-- l'import la migre (Database:ImportProfile).
+function Database.ExportProfile(profile)
+    local stamped = {}
+    for key, value in pairs(profile) do stamped[key] = value end
+    stamped.version = Database.VERSION
+    return Database.Export(stamped)
+end
+
 --- AEON2 -> AEON1 ; nil si la chaîne est tronquée, trop grande ou illisible.
--- `maxCompressed` : borne propre au miroir CVar (32 000) ; les chaînes reçues gardent 12 000.
+-- `maxCompressed` : borne propre au miroir CVar ; les chaînes reçues gardent 32 000.
 local function Expand(text, maxCompressed)
     local deflate = Deflate()
     local body = text:sub(#Database.COMPRESSED_PREFIX + 1)
@@ -1071,6 +1119,39 @@ function Database:ImportProfile(text, allowAccount, sections, anchorKeys)
     local imported, reason = self.Deserialize(text, self.PastedLimit(allowAccount))
     if not imported then return nil, reason end
     if imported.account and not allowAccount then return nil, "account" end
+    -- Chaîne d'une version antérieure : migrée comme la table du compte. Sans version (chaîne
+    -- d'avant ce marquage), elle est prise pour actuelle.
+    local version = tonumber(imported.version)
+    imported.version = nil
+    -- Chaîne tierce : la version borne la boucle de Migrate (-inf, NaN ou 1e-9 la rendraient sans fin).
+    if version and (version ~= math.floor(version) or version < 1) then return nil, "migration" end
+    if version and version < self.VERSION then
+        -- Extrait : une migration écrite pour un profil complet peut créer une section absente, que
+        -- MergePartial poserait ensuite sur celle du joueur. Seules les sections présentes restent.
+        local present
+        if imported.partial then
+            present = { modules = {} }
+            for key in pairs(imported) do present[key] = true end
+            for key in pairs(type(imported.modules) == "table" and imported.modules or {}) do present.modules[key] = true end
+        end
+        local migrated = { version = version,
+                           profiles = imported.account and imported.profiles or { imported = imported } }
+        -- Échec propre à la chaîne : rien à annoncer à la connexion ni dans /musca diag.
+        local rolledBack, errorCount = self.migrationRolledBack, #self.migrationErrors
+        self.Migrate(migrated)
+        self.migrationRolledBack = rolledBack
+        for index = #self.migrationErrors, errorCount + 1, -1 do self.migrationErrors[index] = nil end
+        if migrated.version ~= self.VERSION then return nil, "migration" end
+        if imported.account then imported.profiles = migrated.profiles else imported = migrated.profiles.imported end
+        if present then
+            for key in pairs(imported) do
+                if not present[key] then imported[key] = nil end
+            end
+            for key in pairs(type(imported.modules) == "table" and imported.modules or {}) do
+                if not present.modules[key] then imported.modules[key] = nil end
+            end
+        end
+    end
     self:SaveBackup("import")
     local report = self.NewImportReport()
     local name = self:ActiveProfileName()
@@ -1134,7 +1215,7 @@ end
 --- Tous les profils du compte, réduits à ce qui diffère des défauts (FillProfile les rend à
 -- l'import), pour un export d'un bloc (Database.Export).
 function Database:AccountExport()
-    return { account = true, profiles = self:MirrorTable().profiles }
+    return { account = true, version = self.VERSION, profiles = self:MirrorTable().profiles }
 end
 
 --- Borne de la chaîne compressée collée à la main : celle du miroir, plus large que l'envoi reçu.

@@ -11,6 +11,7 @@ local MovableWindows = NS.Modules:Register("movablewindows", {
     descKey = "MOVABLE_WINDOWS_DESC",
     defaults = {
         enabled = false,
+        dragWithoutModifier = false,   -- glisser sans Maj ni Ctrl : la position est gardée
         positions = {},           -- [nom du cadre] = { point, relativePoint, x, y } (relatif à UIParent)
     },
 })
@@ -42,11 +43,15 @@ function MovableWindows.Restore(frame)
     if position then Place(frame, position) end
 end
 
+local origin = setmetatable({}, { __mode = "k" })   -- coin haut-gauche au début du glisser
+
 local function StartDrag(frame, button)
     if not active or button ~= "LeftButton" or NS.InCombat() then return end
-    local mode = (IsShiftKeyDown() and "save") or (IsControlKeyDown() and "temporary") or nil
+    local mode = (IsShiftKeyDown() and "save") or (IsControlKeyDown() and "temporary")
+        or (MovableWindows.db.dragWithoutModifier and "save") or nil
     if not mode then return end
     dragging[frame] = mode
+    origin[frame] = { frame:GetLeft(), frame:GetTop() }
     frame:StartMoving()
 end
 
@@ -55,6 +60,12 @@ local function StopDrag(frame)
     if not mode then return end
     dragging[frame] = nil
     frame:StopMovingOrSizing()
+    -- Simple clic : moins de 2 px de déplacement, on ne garde rien.
+    local start = origin[frame]
+    origin[frame] = nil
+    local left, top = frame:GetLeft(), frame:GetTop()
+    if start and start[1] and left and top
+        and math.abs(left - start[1]) < 2 and math.abs(top - start[2]) < 2 then return end
     if frame.SetUserPlaced then frame:SetUserPlaced(false) end   -- pas de cache de mise en page Blizzard
     local point, _, relativePoint, x, y = frame:GetPoint(1)
     if not point then return end
@@ -110,7 +121,40 @@ function MovableWindows:OnDisable()
     events:UnregisterAllEvents()
 end
 
+--- Oublie la position gardée d'une seule fenêtre ; elle reprend sa place Blizzard à la prochaine ouverture.
+function MovableWindows.ResetWindow(name)
+    MovableWindows.db.positions[name] = nil
+    local frame = _G[name]
+    if frame then temporary[frame] = nil end
+end
+
+-- Libellé lisible : chaîne globale Blizzard quand elle existe (présentes dans le source), sinon le nom du cadre.
+local LABEL_GLOBALS = {
+    CharacterFrame = "CHARACTER_BUTTON", SpellBookFrame = "SPELLBOOK", QuestLogFrame = "QUESTLOG_BUTTON",
+    MerchantFrame = "MERCHANT", BankFrame = "BANK", TradeFrame = "TRADE", DressUpFrame = "DRESSUP_FRAME",
+    AddonList = "ADDONS", InspectFrame = "INSPECT", TalentFrame = "TALENTS", MacroFrame = "MACROS",
+    AchievementFrame = "ACHIEVEMENTS", FriendsFrame = "SOCIAL_BUTTON",
+}
+
+local function WindowLabel(name)
+    local text = _G[LABEL_GLOBALS[name] or ""]
+    return type(text) == "string" and text or name
+end
+
 function MovableWindows:BuildOptions(o)
     o.layout:Note(L.NOTE_MOVABLE_WINDOWS, 20)
-    o:Button(L.OPT_MOVABLE_WINDOWS_RESET, function() MovableWindows.db.positions = {} end, 20)
+    o:Check("dragWithoutModifier", L.OPT_G_QOL_MOVABLE_NO_MODIFIER)
+    o:Button(L.OPT_MOVABLE_WINDOWS_RESET, function()
+        MovableWindows.db.positions = {}
+        o.layout:Refresh()
+    end, 20)
+    -- Une entrée par fenêtre, grisée tant qu'aucune position n'est gardée.
+    for _, name in ipairs(FRAMES) do
+        o:Button(string.format(L.OPT_MOVABLE_WINDOWS_RESET_ONE, WindowLabel(name)), function()
+            MovableWindows.ResetWindow(name)
+            o.layout:Refresh()
+        end, 20)
+        o.layout.dependents[#o.layout.dependents + 1] = { frame = o.layout.last,
+            conditions = { function() return MovableWindows.db.positions[name] ~= nil end } }
+    end
 end

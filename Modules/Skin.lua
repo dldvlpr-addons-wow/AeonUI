@@ -41,6 +41,13 @@ local Skin = NS.Modules:Register("skin", {
         guildRank = true,          -- rang de guilde après le nom de guilde
         tooltipIDs = false,        -- identifiant des sorts, objets et auras
         hideHealthBar = false,     -- barre de vie sous les infobulles d'unité
+        tooltipOpacity = 94,       -- opacité du fond des infobulles, en %
+        tooltipBorder = "accent",  -- bordure : "accent" (teinte de l'accent), "theme" (couleur de bordure du thème), "none"
+        tooltipIDModifier = "always", -- identifiants et pile max : "always", "shift", "ctrl", "alt"
+        tooltipIconID = false,     -- ajoute l'identifiant d'icône (sorts, objets)
+        tooltipStackSize = false,  -- ligne « pile max » des objets empilables
+        healthBarHeight = 0,       -- hauteur de la barre de vie, 0 : celle de Blizzard
+        healthBarTexture = false,  -- barre de vie à la texture du thème
     },
 })
 
@@ -70,12 +77,28 @@ local function SetColors(tooltip, bg, border)
     end
 end
 
+--- Fond (opacité réglée) et bordure (style réglé) des infobulles.
+local function TooltipColors()
+    local db = Skin.db
+    local background = { BACKGROUND[1], BACKGROUND[2], BACKGROUND[3], (tonumber(db.tooltipOpacity) or 94) / 100 }
+    local border
+    if db.tooltipBorder == "none" then
+        border = { 0, 0, 0, 0 }
+    elseif db.tooltipBorder == "theme" then
+        local c = NS.db.theme.border
+        border = { c.r, c.g, c.b, 1 }
+    else
+        local r, g, b = Media:Accent()
+        border = { r * 0.6, g * 0.6, b * 0.6, 1 }
+    end
+    return background, border
+end
+
 local function StyleTooltip(tooltip)
     if not active or not Skin.db.tooltips then return end
     -- Infobulle interdite (boutique, protégée) : y toucher lève une erreur.
     if tooltip.IsForbidden and tooltip:IsForbidden() then return end
-    local r, g, b = Media:Accent()
-    SetColors(tooltip, BACKGROUND, { r * 0.6, g * 0.6, b * 0.6, 1 })
+    SetColors(tooltip, TooltipColors())
 end
 
 local function RestoreTooltip(tooltip)
@@ -133,18 +156,69 @@ function Skin.AddUnitDetails(tooltip, unit)
     end
 end
 
---- Identifiant de sort, d'objet ou d'aura (post-call TooltipDataProcessor : data.id).
-local function AddID(tooltip, data)
-    if not active or not Skin.db.tooltipIDs or type(data) ~= "table" or not Known(data.id) then return end
+--- Le modificateur choisi est-il tenu ? (« always » : toujours.)
+function Skin.ModifierHeld()
+    local modifier = Skin.db.tooltipIDModifier
+    if modifier == "shift" then return IsShiftKeyDown() == true end
+    if modifier == "ctrl" then return IsControlKeyDown() == true end
+    if modifier == "alt" then return IsAltKeyDown() == true end
+    return true
+end
+
+local function IconID(kind, id)
+    if kind == "Item" then
+        local getInstant = (C_Item and C_Item.GetItemInfoInstant) or _G.GetItemInfoInstant
+        return getInstant and select(5, getInstant(id))
+    end
+    local getTexture = C_Spell and C_Spell.GetSpellTexture or _G.GetSpellTexture
+    return getTexture and getTexture(id)
+end
+
+--- Identifiant (et icône, pile max) d'un sort, d'un objet ou d'une aura (post-call TooltipDataProcessor : data.id).
+local function AddID(tooltip, data, kind)
+    local db = Skin.db
+    if not active or type(data) ~= "table" or not Known(data.id) then return end
+    if not (db.tooltipIDs or db.tooltipIconID or (kind == "Item" and db.tooltipStackSize)) then return end
     if tooltip.IsForbidden and tooltip:IsForbidden() then return end
-    tooltip:AddLine(string.format(L.TOOLTIP_ID, tostring(data.id)), 0.6, 0.6, 0.6)
+    if not Skin.ModifierHeld() then return end
+    if db.tooltipIDs then tooltip:AddLine(string.format(L.TOOLTIP_ID, tostring(data.id)), 0.6, 0.6, 0.6) end
+    if db.tooltipIconID then
+        local icon = IconID(kind, data.id)
+        if Known(icon) and icon then tooltip:AddLine(string.format(L.OPT_G_SKIN_LINE_ICON_ID, tostring(icon)), 0.6, 0.6, 0.6) end
+    end
+    if kind == "Item" and db.tooltipStackSize then
+        local max = NS.GetItemMaxStack(data.id)
+        if Known(max) and type(max) == "number" and max > 1 then
+            tooltip:AddLine(string.format(L.OPT_G_SKIN_LINE_STACK_SIZE, max), 0.6, 0.6, 0.6)
+        end
+    end
     tooltip:Show()
+end
+
+-- Barre de vie des infobulles d'unité : hauteur et texture réglables, état d'origine capturé.
+local healthBarOriginal
+function Skin:ApplyHealthBar()
+    local bar = _G.GameTooltipStatusBar
+    if not bar then return end
+    if not healthBarOriginal then
+        local texture = bar.GetStatusBarTexture and bar:GetStatusBarTexture()
+        healthBarOriginal = { height = bar:GetHeight(), texture = texture and texture:GetTexture() }
+    end
+    local db = self.db
+    local height = active and tonumber(db.healthBarHeight) or 0
+    if height and height > 0 then bar:SetHeight(height)
+    elseif healthBarOriginal.height and healthBarOriginal.height > 0 then bar:SetHeight(healthBarOriginal.height) end
+    if bar.SetStatusBarTexture then
+        if active and db.healthBarTexture then bar:SetStatusBarTexture(Media:StatusBarTexture())
+        elseif healthBarOriginal.texture then bar:SetStatusBarTexture(healthBarOriginal.texture) end
+    end
 end
 
 --- Nom et bordure à la couleur de classe. Toute valeur secrète (unité en combat) : on s'abstient.
 local function OnTooltipUnit(tooltip)
     if not active then return end
     if Skin.db.hideHealthBar and _G.GameTooltipStatusBar then GameTooltipStatusBar:Hide() end   -- même unité secrète
+    Skin:ApplyHealthBar()
     local unit = NS.TooltipUnit(tooltip)
     if NS.IsSecret(unit) or not unit then return end
     if Skin.db.hideUnitTooltipInCombat and NS.InCombat() then
@@ -161,7 +235,10 @@ local function OnTooltipUnit(tooltip)
     local r, g, b = NS.ClassColor(classFile)
     local nameLine = _G[tooltip:GetName() .. "TextLeft1"]
     if nameLine then nameLine:SetTextColor(r, g, b) end
-    if Skin.db.tooltips then SetColors(tooltip, BACKGROUND, { r, g, b, 1 }) end
+    if Skin.db.tooltips then
+        local background = TooltipColors()
+        SetColors(tooltip, background, { r, g, b, 1 })
+    end
 end
 
 -- Sens de croissance -> coin de l'infobulle posé sur le même coin du mover.
@@ -211,7 +288,9 @@ local function HookTooltips()
             if tooltip == GameTooltip then OnTooltipUnit(tooltip) end
         end)
         for _, kind in ipairs({ "Spell", "Item", "UnitAura" }) do
-            if Enum.TooltipDataType[kind] then TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType[kind], AddID) end
+            if Enum.TooltipDataType[kind] then
+                TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType[kind], function(tooltip, data) AddID(tooltip, data, kind) end)
+            end
         end
     else
         GameTooltip:HookScript("OnTooltipSetUnit", OnTooltipUnit)
@@ -306,6 +385,7 @@ local WINDOWS = {
     "CollectionsJournal", "AddonList", "HelpFrame", "ChannelFrame", "RaidParentFrame", "CommunitiesFrame",
     "WorldMapFrame", "ReadyCheckFrame", "StaticPopup1", "StaticPopup2", "StaticPopup3", "StaticPopup4",
     "DropDownList1", "DropDownList2", "DropDownList3",
+    "QuickKeybindFrame", "LFGDungeonReadyDialog", "LFGListApplicationDialog",   -- dialogues (absents : ignorés)
 }
 Skin.WINDOWS = WINDOWS
 local STYLES = { theme = true, dark = true, blizzard = true }
@@ -488,6 +568,7 @@ function Skin:OnEnable()
         for _, tooltip in ipairs(Tooltips()) do StyleTooltip(tooltip) end
     end
     self:UpdateTooltipAnchor()
+    self:ApplyHealthBar()
     UpdateIconEvents()
     NS.RegisterEventSafe(events, "PLAYER_ENTERING_WORLD")
     NS.RegisterEventSafe(events, "ADDON_LOADED")
@@ -501,6 +582,7 @@ function Skin:OnDisable()
     active = false
     events:UnregisterAllEvents()
     for _, tooltip in ipairs(Tooltips()) do RestoreTooltip(tooltip) end
+    self:ApplyHealthBar()
     self:UpdateTooltipAnchor()
     self:ApplyIcons(true)   -- active = false : rognage Blizzard d'origine
     self:ApplyWindows()
@@ -511,6 +593,7 @@ function Skin:OnRefresh()
         if self.db.tooltips then StyleTooltip(tooltip) else RestoreTooltip(tooltip) end
     end
     self:UpdateTooltipAnchor()
+    self:ApplyHealthBar()
     UpdateIconEvents()
     self:ApplyIcons(true)
     self:ApplyWindows()
@@ -542,6 +625,21 @@ function Skin:BuildOptions(o)
     o:Check("tooltipIDs", L.OPT_SKIN_TOOLTIP_IDS)
     o:EndAdvanced()
     o:Check("hideHealthBar", L.OPT_SKIN_HIDE_HEALTHBAR)
+    o:Advanced()
+    o:Slider("tooltipOpacity", L.OPT_G_SKIN_TOOLTIP_OPACITY, 0, 100, 1, 36, "%d %%")
+    o:Dropdown("tooltipBorder", L.OPT_G_SKIN_TOOLTIP_BORDER, {
+        { name = L.OPT_G_SKIN_BORDER_ACCENT, value = "accent" }, { name = L.OPT_G_SKIN_BORDER_THEME, value = "theme" },
+        { name = L.OPT_G_SKIN_BORDER_NONE, value = "none" },
+    }, 36)
+    o:Dropdown("tooltipIDModifier", L.OPT_G_SKIN_ID_MODIFIER, {
+        { name = L.OPT_G_SKIN_MODIFIER_ALWAYS, value = "always" }, { name = "Shift", value = "shift" },
+        { name = "Ctrl", value = "ctrl" }, { name = "Alt", value = "alt" },
+    }, 36)
+    o:Check("tooltipIconID", L.OPT_G_SKIN_ICON_ID, 36)
+    o:Check("tooltipStackSize", L.OPT_G_SKIN_STACK_SIZE, 36)
+    o:Slider("healthBarHeight", L.OPT_G_SKIN_HEALTHBAR_HEIGHT, 0, 20, 1, 36)
+    o:Check("healthBarTexture", L.OPT_G_SKIN_HEALTHBAR_TEXTURE, 36)
+    o:EndAdvanced()
     o:Title(L.OPT_SKIN_ICONS_TITLE)
     o:Check("iconZoom", L.OPT_SKIN_ICON_ZOOM)
     o:Advanced()

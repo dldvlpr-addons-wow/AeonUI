@@ -1,11 +1,12 @@
 ## Interface: 16001
 ## Title: |cff3fa9f5Musca|rUI
-## Notes: Barre d'infos, confort automatique, rappels et habillage pour WoW Forever (addon non officiel). Modules activables un par un, sans dépendance. /musca
+## Notes: Barre d'infos, confort automatique, rappels et habillage pour WoW Forever (addon non officiel). Modules activables un par un. Requiert ForeverMeter ; HUD de classe avec Musca Auras. /musca
 ## Version: @project-version@
 ## X-Curse-Project-ID: 1711484
-## X-Wago-ID: 
+## X-Wago-ID:
 ## SavedVariables: MuscaUIDB
-## OptionalDeps: LibSharedMedia-3.0
+## Dependencies: ForeverMeter
+## OptionalDeps: LibSharedMedia-3.0, WeakAuras
 ## IconTexture: Interface\AddOns\MuscaUI\Media\Logo
 ## AddonCompartmentFunc: MuscaUI_AddonCompartmentFunc
 ## Category: User Interface

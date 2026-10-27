@@ -41,6 +41,17 @@ local ResourceBars = NS.Modules:Register("resourcebars", {
         comboHeight = 8,
         druidMana = true,
         druidManaHeight = 6,
+        strata = "MEDIUM",          -- niveau d'affichage des barres ("LOW", "MEDIUM", "HIGH")
+        healthOrientation = "inherit", powerOrientation = "inherit",   -- "inherit" : orientation commune
+        comboOrientation = "inherit", druidManaOrientation = "inherit",
+        healthAbsorb = false,       -- absorptions superposées à la barre de vie
+        powerForceMana = false,     -- la barre de puissance montre le mana, quelle que soit la forme
+        comboColor = { r = 1, g = 0.82, b = 0 },
+        comboAlphaOwn = false,      -- opacité hors combat propre aux points de combo
+        comboAlpha = 1,
+        -- Texte des barres de vie et de puissance : ancre, décalages, taille ajoutée.
+        healthTextAnchor = "CENTER", healthTextX = 0, healthTextY = 0, healthTextSizeBonus = 0,
+        powerTextAnchor = "CENTER", powerTextX = 0, powerTextY = 0, powerTextSizeBonus = 0,
     },
 })
 
@@ -71,10 +82,25 @@ local function Build()
         Media:CreateBackdrop(holder)
         local bar = Media:CreateStatusBar(holder)
         bar:SetAllPoints(holder)
-        bar.text = Media:CreateText(bar, "OVERLAY", -2)
+        -- Texte porté par un cadre au-dessus de l'overlay d'absorption.
+        local textLayer = CreateFrame("Frame", nil, bar)
+        textLayer:SetAllPoints(bar)
+        textLayer:SetFrameLevel(bar:GetFrameLevel() + 2)
+        bar.text = Media:CreateText(textLayer, "OVERLAY", -2)
         bar.text:SetPoint("CENTER")
         bar.ticks = {}
         bar.holder = holder
+        if spec.key == "health" then
+            -- Absorptions : remplissage inversé depuis le bout de la barre.
+            -- StatusBar nue : le fond opaque de CreateStatusBar masquerait la vie et son texte.
+            bar.absorb = CreateFrame("StatusBar", nil, bar)
+            bar.absorb:SetAllPoints(bar)
+            bar.absorb:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+            bar.absorb:SetFrameLevel(bar:GetFrameLevel() + 1)
+            bar.absorb:SetStatusBarColor(0.9, 0.9, 1, 0.5)
+            if bar.absorb.SetReverseFill then bar.absorb:SetReverseFill(true) end
+            bar.absorb:Hide()
+        end
         holder:Hide()
         bars[spec.key] = bar
     end
@@ -97,19 +123,47 @@ local function UpdateHealth(db)
     Media:SetHealthColor(bar, Elements.BandColor("player", "health", bar.steps, r, g, b))
     Elements.SetUnitText(bar.text, "player", "health", Elements.TextFormat(nil, db.healthText))
     Elements.SetHashLines(bar, bar.hashPercents, bar.vertical, bar.vertical and bar:GetHeight() or bar:GetWidth() or db.width)
+    local absorb = bar.absorb
+    if absorb then
+        local amount
+        if db.healthAbsorb then
+            local _, predicted = NS.GetHealPrediction(bar, "player")
+            amount = predicted
+            if not NS.IsSecret(amount) and amount == nil and _G.UnitGetTotalAbsorbs then amount = UnitGetTotalAbsorbs("player") end
+        end
+        if NS.IsSecret(amount) or amount ~= nil then   -- montant peut-être secret : passé sans comparaison
+            absorb:SetOrientation(bar.vertical and "VERTICAL" or "HORIZONTAL")
+            absorb:SetMinMaxValues(0, UnitHealthMax("player"))
+            absorb:SetValue(amount)
+            absorb:Show()
+        else
+            absorb:Hide()
+        end
+    end
     return true
 end
 
 local function UpdatePower(db)
     local bar = bars.power
-    local max = UnitPowerMax("player")
+    -- Mana forcé : type de puissance explicite (druide en forme), sinon la puissance affichée.
+    local powerType = db.powerForceMana and ManaType() or nil
+    if powerType then   -- classe sans mana (guerrier, voleur) : la barre de puissance reste
+        local manaMax = Known(UnitPowerMax("player", powerType))
+        if manaMax and manaMax <= 0 then powerType = nil end
+    end
+    local max = UnitPowerMax("player", powerType)
     local knownMax = Known(max)
     if knownMax and knownMax <= 0 then return false end
     bar:SetMinMaxValues(0, max)
-    bar:SetValue(UnitPower("player"))
+    bar:SetValue(UnitPower("player", powerType))
     local r, g, b = Elements.PowerColor("player")
-    bar:SetStatusBarColor(Elements.BandColor("player", "power", bar.steps, r, g, b))
-    Elements.SetUnitText(bar.text, "player", "power", Elements.TextFormat(nil, db.powerText))
+    if powerType then
+        local mana = _G.PowerBarColor and PowerBarColor.MANA
+        if mana then r, g, b = mana.r, mana.g, mana.b end
+    end
+    if powerType then bar:SetStatusBarColor(r, g, b)   -- paliers calculés sur la puissance, pas sur le mana
+    else bar:SetStatusBarColor(Elements.BandColor("player", "power", bar.steps, r, g, b)) end
+    Elements.SetUnitText(bar.text, "player", powerType and "mana" or "power", Elements.TextFormat(nil, db.powerText))
     Elements.SetManaSpark(bar, db.manaSpark)
     Elements.SetManaCostPrediction(bar, db.manaCostPrediction)
     -- Largeur lue sur la barre : celle reprise d'une cible comprise.
@@ -118,10 +172,11 @@ local function UpdatePower(db)
 end
 
 -- Même rendu que les points de combo du cadre joueur (graduations comprises).
-local comboHost = { comboAllowed = true, unit = "player" }
+local comboHost = { comboAllowed = true, unit = "player", cfg = {} }
 local function UpdateCombo()
     local bar = bars.combo
     comboHost.combo = bar
+    comboHost.cfg.comboColor = ResourceBars.db.comboColor
     bar.width = bar:GetWidth()
     Elements.UpdateCombo(comboHost)
     return bar:IsShown()
@@ -158,15 +213,17 @@ function ResourceBars:Update(event)
         bar.wanted = wanted
         local shown = wanted and UPDATERS[spec.key](db) or false
         holder:SetShown(shown and true or false)
-        holder:SetAlpha((inCombat or NS:Previewing()) and 1 or db.outOfCombatAlpha)
+        local idleAlpha = (spec.key == "combo" and db.comboAlphaOwn) and db.comboAlpha or db.outOfCombatAlpha
+        holder:SetAlpha((inCombat or NS:Previewing()) and 1 or idleAlpha)
     end
 end
 
 function ResourceBars:Layout()
     local db = self.db
-    local vertical = db.orientation == "VERTICAL"
     for _, spec in ipairs(BARS) do
         local bar = bars[spec.key]
+        local own = db[spec.key .. "Orientation"]
+        local vertical = (own == "inherit" or own == nil) and db.orientation == "VERTICAL" or own == "VERTICAL"
         local thickness = db[spec.key .. "Height"]
         -- Verticale : la longueur passe en hauteur, l'épaisseur en largeur.
         if vertical then bar.holder:SetSize(thickness, db.width) else bar.holder:SetSize(db.width, thickness) end
@@ -175,6 +232,13 @@ function ResourceBars:Layout()
         bar.hashPercents = Elements.HashPercents(db[spec.key .. "HashLines"], spec.key == "power" and db.threshold)
         bar:SetOrientation(vertical and "VERTICAL" or "HORIZONTAL")
         if bar.SetRotatesTexture then bar:SetRotatesTexture(vertical) end
+        bar.holder:SetFrameStrata(db.strata)
+        if bar.text and db[spec.key .. "TextAnchor"] then   -- vie et puissance : texte réglable
+            local anchor = db[spec.key .. "TextAnchor"]
+            bar.text:ClearAllPoints()
+            bar.text:SetPoint(anchor, bar, anchor, db[spec.key .. "TextX"], db[spec.key .. "TextY"])
+            Media:SetTextSizeDelta(bar.text, -2 + db[spec.key .. "TextSizeBonus"])
+        end
     end
 end
 
@@ -188,12 +252,13 @@ function ResourceBars:GetBars() return bars end
 local POWER_BARS = { "power", "combo", "druidMana" }
 local UNIT_EVENT_BARS = {
     UNIT_HEALTH = { "health" }, UNIT_MAXHEALTH = { "health" },
+    UNIT_ABSORB_AMOUNT_CHANGED = { "health" }, UNIT_HEAL_ABSORB_AMOUNT_CHANGED = { "health" },
     UNIT_POWER_FREQUENT = POWER_BARS, UNIT_MAXPOWER = POWER_BARS, UNIT_DISPLAYPOWER = POWER_BARS,
 }
 local EVENTS = { "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_TARGET_CHANGED",
                  "UPDATE_SHAPESHIFT_FORM", "PLAYER_ENTERING_WORLD", "GROUP_ROSTER_UPDATE",
                  "ZONE_CHANGED_NEW_AREA", "PLAYER_MOUNT_DISPLAY_CHANGED",
-                 "COMBO_TARGET_CHANGED" }
+                 "COMBO_TARGET_CHANGED", "PLAYER_SOFT_ENEMY_CHANGED", "GAME_PAD_ACTIVE_CHANGED" }
 
 local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event)
@@ -250,6 +315,25 @@ end
 NS:On("PREVIEW", function() if bars.power then ResourceBars:Update() end end)
 
 --- Paliers de couleur et repères d'une barre (`key` : "health" ou "power").
+local function TextOptions(o, key)
+    o:Advanced()
+    o:Dropdown(key .. "TextAnchor", L.OPT_G_RES_TEXT_ANCHOR, Elements.AuraTextPointChoices(), 36)
+    o:Slider(key .. "TextX", L.OPT_G_RES_TEXT_X, -50, 50, 1, 36)
+    o:Slider(key .. "TextY", L.OPT_G_RES_TEXT_Y, -30, 30, 1, 36)
+    o:Slider(key .. "TextSizeBonus", L.OPT_G_RES_TEXT_SIZE, -4, 8, 1, 36)
+    o:EndAdvanced()
+end
+
+--- Orientation propre à une barre (hérite de la commune par défaut).
+local function OrientationOption(o, key)
+    o:Advanced()
+    o:Dropdown(key .. "Orientation", L.OPT_BAR_ORIENTATION, {
+        { name = L.OPT_G_RES_ORIENTATION_INHERIT, value = "inherit" },
+        { name = L.OPT_BAR_HORIZONTAL, value = "HORIZONTAL" }, { name = L.OPT_BAR_VERTICAL, value = "VERTICAL" },
+    }, 36)
+    o:EndAdvanced()
+end
+
 local function BandOptions(o, key)
     o:Advanced()
     o:Slider(key .. "Low", L.OPT_BAND_LOW, 0, 90, 5, 36)
@@ -266,6 +350,10 @@ function ResourceBars:BuildOptions(o)
     })
     o:Slider("width", L.OPT_RESOURCE_WIDTH, 60, 500, 2)
     o:Advanced()
+    o:Dropdown("strata", L.OPT_G_RES_STRATA, {
+        { name = L.OPT_STRATA_LOW, value = "LOW" }, { name = L.OPT_STRATA_MEDIUM, value = "MEDIUM" },
+        { name = L.OPT_STRATA_HIGH, value = "HIGH" },
+    })
     o:Slider("outOfCombatAlpha", L.OPT_RESOURCE_ALPHA, 0, 1, 0.05, nil, "%.2f")
     o:EndAdvanced()
     o:Visibility("visibility", L.OPT_VISIBILITY,{ noMouseover = true })
@@ -274,23 +362,34 @@ function ResourceBars:BuildOptions(o)
     o:Slider("healthHeight", L.OPT_RESOURCE_HEIGHT, 4, 40, 1, 36)
     o:Dropdown("healthText", L.OPT_RESOURCE_TEXT, modes, 36)
     o:Check("classColor", L.OPT_RESOURCE_CLASS_COLOR, 36)
+    o:Check("healthAbsorb", L.OPT_G_RES_ABSORB, 36)
+    TextOptions(o, "health")
+    OrientationOption(o, "health")
     BandOptions(o, "health")
     o:Title(L.OPT_RESOURCE_POWER)
     o:Check("power", L.OPT_RESOURCE_SHOW)
     o:Slider("powerHeight", L.OPT_RESOURCE_HEIGHT, 4, 40, 1, 36)
+    o:Check("powerForceMana", L.OPT_G_RES_FORCE_MANA, 36)
     o:Check("manaSpark", L.OPT_MANA_SPARK, 36)
     o:Check("manaCostPrediction", L.OPT_MANA_COST_PREDICTION, 36)
     o:Dropdown("powerText", L.OPT_RESOURCE_TEXT, modes, 36)
     o:Advanced()
     o:Slider("threshold", L.OPT_RESOURCE_THRESHOLD, 0, 100, 5, 36)
     o:EndAdvanced()
+    TextOptions(o, "power")
+    OrientationOption(o, "power")
     BandOptions(o, "power")
     o:Title(L.OPT_RESOURCE_COMBO)
     o:Check("combo", L.OPT_RESOURCE_SHOW)
     o:Slider("comboHeight", L.OPT_RESOURCE_HEIGHT, 4, 30, 1, 36)
+    o:Color("comboColor", L.OPT_G_RES_COMBO_COLOR, 36)
+    o:Check("comboAlphaOwn", L.OPT_G_RES_COMBO_ALPHA_OWN, 36)
+    o:Slider("comboAlpha", L.OPT_RESOURCE_ALPHA, 0, 1, 0.05, 52, "%.2f")
+    OrientationOption(o, "combo")
     o:Title(L.OPT_RESOURCE_DRUID_MANA)
     o:Check("druidMana", L.OPT_RESOURCE_SHOW)
     o:Slider("druidManaHeight", L.OPT_RESOURCE_HEIGHT, 2, 30, 1, 36)
+    OrientationOption(o, "druidMana")
 end
 
 --- Aperçu des options : barres affichées dans leur ordre, à leur largeur et épaisseur (côte à

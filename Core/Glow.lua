@@ -95,21 +95,32 @@ function Glow.PerimeterPoint(p, width, height)
     return 0, -(height - p), false
 end
 
--- Tailles arrondies au pixel physique, refaites seulement quand le multiplicateur change.
+--- Réglages communs du thème : épaisseur des traits « pixel » (1 à 4 px) et vitesse (0,5 à 2).
+-- Défauts = rendu d'origine (PIXEL.thickness, vitesse 1).
+function Glow.Settings()
+    local theme = NS.db and NS.db.theme or {}
+    local thickness = math.max(1, math.min(4, tonumber(theme.glowThickness) or PIXEL.thickness))
+    local speed = math.max(0.5, math.min(2, tonumber(theme.glowSpeed) or 1))
+    return thickness, speed
+end
+
+-- Tailles arrondies au pixel physique, refaites quand le multiplicateur ou l'épaisseur change.
 local scaled = {}
-local function Scaled()
-    if scaled.mult ~= NS.Pixel.mult then
-        scaled.mult = NS.Pixel.mult
+local function Scaled(thickness)
+    if scaled.mult ~= NS.Pixel.mult or scaled.setting ~= thickness then
+        scaled.mult, scaled.setting = NS.Pixel.mult, thickness
         scaled.pixel, scaled.autocast = S(PIXEL.offset), S(AUTOCAST.offset)
-        scaled.length, scaled.thickness = S(PIXEL.length), S(PIXEL.thickness)
+        scaled.length, scaled.thickness = S(PIXEL.length), S(thickness)
     end
     return scaled
 end
 
 local function Animate(frame, style, now)
     local width, height = frame:GetWidth(), frame:GetHeight()
-    if not (width and height) or width <= 0 or height <= 0 then return end
-    local sizes = Scaled()
+    if not (width and height) or NS.IsSecret(width) or NS.IsSecret(height) or width <= 0 or height <= 0 then return end
+    local thicknessSetting, speed = Glow.Settings()
+    local sizes = Scaled(thicknessSetting)
+    now = now * speed
     local offset = sizes[style]
     width, height = width + 2 * offset, height + 2 * offset
     local perimeter = 2 * (width + height)
@@ -118,8 +129,8 @@ local function Animate(frame, style, now)
         local p = ((now / part.period + part.phase) % 1) * perimeter
         local x, y, horizontal = Glow.PerimeterPoint(p, width, height)
         -- Rien à refaire si la position n'a pas bougé depuis le dernier tick.
-        if part.lastX ~= x or part.lastY ~= y then
-            part.lastX, part.lastY = x, y
+        if part.lastX ~= x or part.lastY ~= y or part.lastThickness ~= thickness then
+            part.lastX, part.lastY, part.lastThickness = x, y, thickness
             part:ClearAllPoints()
             part:SetPoint("CENTER", frame, "TOPLEFT", x - offset, y + offset)
             if style == "pixel" then
@@ -137,7 +148,8 @@ local function Tick(_, elapsed)
     sinceTick = 0
     local now = GetTime()
     for frame, style in pairs(Glow.animated) do
-        if frame:IsVisible() then Animate(frame, style, now) end
+        local visible = frame:IsVisible()   -- peut être secret en combat sur un cadre du moteur
+        if not NS.IsSecret(visible) and visible then Animate(frame, style, now) end
     end
 end
 

@@ -169,10 +169,13 @@ local function PercentText(unit, kind)
         local percent
         if kind == "health" then percent = Call(api.percent, unit, true, scale)
         else percent = Call(api.percent, unit, api.powerType, true, scale) end
-        if isSecret(percent) or percent ~= nil then return string.format("%.0f%%", percent) end
+        if isSecret(percent) or percent ~= nil then return string.format("%." .. (Elements.percentDecimals or 0) .. "f%%", percent) end
     end
     local cur, max = Known(Call(api.cur, unit, api.powerType)), Known(Call(api.max, unit, api.powerType))
-    if cur and max and max > 0 then return string.format("%d%%", math.floor(cur / max * 100 + 0.5)) end
+    if cur and max and max > 0 then
+        if Elements.percentDecimals then return string.format("%." .. Elements.percentDecimals .. "f%%", cur / max * 100) end
+        return string.format("%d%%", math.floor(cur / max * 100 + 0.5))
+    end
     return ValueText(Call(api.cur, unit, api.powerType))
 end
 
@@ -241,6 +244,21 @@ function Elements.TextModeChoices()
     local list = {}
     for _, mode in ipairs(Elements.TEXT_PRESET_ORDER) do
         list[#list + 1] = { name = L["TEXT_MODE_" .. mode:upper()], value = mode }
+    end
+    return list
+end
+
+--- Choix du texte de durée des auras (balayage, texte propre, rien) pour un o:Dropdown.
+function Elements.AuraDurationChoices()
+    return { { name = L.UF_AURA_DURATION_SWIPE, value = "swipe" }, { name = L.UF_AURA_DURATION_TEXT, value = "text" },
+             { name = L.UF_AURA_DURATION_NONE, value = "none" } }
+end
+
+--- Les neuf points du cadre d'une aura, pour le coin du texte des piles ou de la durée.
+function Elements.AuraTextPointChoices()
+    local list = {}
+    for _, point in ipairs({ "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }) do
+        list[#list + 1] = { name = L["POINT_" .. point], value = point }
     end
     return list
 end
@@ -362,7 +380,7 @@ function Elements.Build(frame)
     frame.comboPips:Hide()
 
     local castbar = Media:CreateStatusBar(frame)
-    Media:CreateBackdrop(castbar)
+    castbar.backdropBackground, castbar.backdropEdges = Media:CreateBackdrop(castbar)   -- masquables (castBackground, castBorder)
     -- L'icône a son propre cadre : sa bordure 1 px suit le thème et l'échelle toute seule.
     castbar.iconFrame = CreateFrame("Frame", nil, castbar)
     castbar.icon = castbar.iconFrame:CreateTexture(nil, "ARTWORK")
@@ -371,6 +389,9 @@ function Elements.Build(frame)
     Media:CreateBackdrop(castbar.iconFrame)
     castbar.text = Media:CreateText(castbar, "OVERLAY", -1)
     castbar.text:SetJustifyH("LEFT")
+    castbar.timeText = Media:CreateText(castbar, "OVERLAY", -1)   -- temps restant, à droite
+    castbar.timeText:SetJustifyH("RIGHT")
+    castbar.timeText:Hide()
     -- Éclair blanc à l'interruption, estompé pendant la tenue rouge.
     castbar.flash = castbar:CreateTexture(nil, "OVERLAY")
     castbar.flash:SetAllPoints(castbar)
@@ -381,6 +402,9 @@ function Elements.Build(frame)
     castbar.latency = castbar:CreateTexture(nil, "OVERLAY")
     NS.SetSolidColor(castbar.latency, 0.9, 0.15, 0.15, 0.45)
     castbar.latency:Hide()
+    castbar.latencyText = Media:CreateText(castbar, "OVERLAY", -2)   -- « 45 ms » au bout de la barre (castLatencyText)
+    castbar.latencyText:SetPoint("RIGHT", castbar.timeText, "LEFT", -4, 0)   -- dans la barre, à gauche du temps restant
+    castbar.latencyText:Hide()
     castbar.owner = frame
     castbar.holdTime = 0
     castbar:SetScript("OnUpdate", function(bar, elapsed) Elements.CastOnUpdate(bar, elapsed) end)
@@ -395,6 +419,17 @@ end
 local function Place(region, point, relTo, relPoint, x, y)
     region:ClearAllPoints()
     region:SetPoint(point, relTo, relPoint, x, y)
+end
+
+--- Hauteur de la barre de combo du cadre (cfg.comboHeight, sinon celle de la puissance).
+local function ComboHeight(cfg)
+    if (cfg.comboHeight or 0) > 0 then return S(cfg.comboHeight) end
+    return S((cfg.powerHeight or 0) > 0 and cfg.powerHeight or 6)
+end
+
+--- Place prise au-dessus du cadre par la barre de combo (cfg.comboAbove) : textes et auras du dessus la dépassent.
+local function ComboAboveSpace(cfg)
+    return (cfg.combo and cfg.comboAbove) and ComboHeight(cfg) + S(4) or 0
 end
 
 --- Pose tailles et positions d'après frame.cfg. Le cadre lui-même est dimensionné ici.
@@ -490,32 +525,37 @@ function Elements.Layout(frame)
         frame.portrait:Hide()
     end
 
+    -- Taille (0 : celle d'origine) et décalages réglables de chaque indicateur (cfg.<clé>Size, OffsetX, OffsetY).
+    local function PlaceIndicator(region, key, defaultSize, point, relPoint, x, y)
+        local size = (cfg[key .. "Size"] or 0) > 0 and S(cfg[key .. "Size"]) or defaultSize
+        region:SetSize(size, size)
+        Place(region, point, frame, relPoint, x + S(cfg[key .. "OffsetX"] or 0), y + S(cfg[key .. "OffsetY"] or 0))
+    end
     local icon = S(16)
-    frame.combat:SetSize(icon, icon)
-    Place(frame.combat, "CENTER", frame, "TOPLEFT", 0, 0)
-    frame.resting:SetSize(icon, icon)
-    Place(frame.resting, "CENTER", frame, "TOPLEFT", 0, 0)
+    PlaceIndicator(frame.combat, "combatIcon", icon, "CENTER", "TOPLEFT", 0, 0)
+    PlaceIndicator(frame.resting, "combatIcon", icon, "CENTER", "TOPLEFT", 0, 0)
     frame.leader:SetSize(S(14), S(14))
     Place(frame.leader, "CENTER", frame, "TOPLEFT", S(18), 0)
-    frame.raidIcon:SetSize(S(18), S(18))
-    Place(frame.raidIcon, "CENTER", frame, "TOP", 0, 0)
-    frame.classification:SetSize(icon, icon)
-    Place(frame.classification, "CENTER", frame, "TOPRIGHT", 0, 0)
-    frame.pvp:SetSize(S(20), S(20))
-    Place(frame.pvp, "CENTER", frame, "BOTTOMLEFT", 0, 0)
-    Place(frame.threat, "BOTTOMRIGHT", frame, "TOPRIGHT", 0, S(2))
-    frame.happiness:SetSize(height, height)
-    Place(frame.happiness, "LEFT", frame, "RIGHT", S(2), 0)
+    PlaceIndicator(frame.raidIcon, "raidIcon", S(18), "CENTER", "TOP", 0, 0)
+    PlaceIndicator(frame.classification, "classificationIcon", icon, "CENTER", "TOPRIGHT", 0, 0)
+    PlaceIndicator(frame.pvp, "pvpIcon", S(20), "CENTER", "BOTTOMLEFT", 0, 0)
+    Place(frame.threat, "BOTTOMRIGHT", frame, "TOPRIGHT", 0, S(2) + ComboAboveSpace(cfg))
+    PlaceIndicator(frame.happiness, "happinessIcon", height, "LEFT", "RIGHT", S(2), 0)
 
     local gap = S(4)
     local below = frame
     if cfg.combo then
-        local comboHeight = S((cfg.powerHeight or 0) > 0 and cfg.powerHeight or 6)
-        Place(frame.combo, "TOPLEFT", frame, "BOTTOMLEFT", 0, -gap)
-        frame.combo:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", 0, -gap)
+        local comboHeight = ComboHeight(cfg)
+        if cfg.comboAbove then   -- au-dessus du cadre : le reste (incantation, auras) reste sous le cadre
+            Place(frame.combo, "BOTTOMLEFT", frame, "TOPLEFT", 0, gap)
+            frame.combo:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, gap)
+        else
+            Place(frame.combo, "TOPLEFT", frame, "BOTTOMLEFT", 0, -gap)
+            frame.combo:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", 0, -gap)
+            below = frame.combo
+        end
         frame.combo:SetHeight(comboHeight)
         frame.combo.width = width
-        below = frame.combo
     end
     frame.comboAllowed = cfg.combo and true or false
 
@@ -530,14 +570,40 @@ function Elements.Layout(frame)
         castbar:ClearAllPoints()
         castbar:SetSize(S(cfg.castbarWidth or width), castHeight)
     else
-        Place(castbar, "TOPLEFT", below, "BOTTOMLEFT", castHeight + gap, -gap)
-        castbar:SetPoint("TOPRIGHT", below, "BOTTOMRIGHT", 0, -gap)
+        -- Icône à gauche (défaut), à droite ou absente (réglage commun castIcon) : la barre lui laisse la place.
+        local iconSide = (frame.global or {}).castIcon or "left"
+        local leftRoom = iconSide == "left" and castHeight + gap or 0
+        local rightRoom = iconSide == "right" and castHeight + gap or 0
+        Place(castbar, "TOPLEFT", below, "BOTTOMLEFT", leftRoom, -gap)
+        castbar:SetPoint("TOPRIGHT", below, "BOTTOMRIGHT", -rightRoom, -gap)
         castbar:SetHeight(castHeight)
     end
     castbar.iconFrame:SetSize(castHeight, castHeight)
-    Place(castbar.iconFrame, "RIGHT", castbar, "LEFT", -gap, 0)
+    local iconSide = (frame.global or {}).castIcon or "left"
+    if iconSide == "right" then Place(castbar.iconFrame, "LEFT", castbar, "RIGHT", gap, 0)
+    else Place(castbar.iconFrame, "RIGHT", castbar, "LEFT", -gap, 0) end
+    castbar.iconFrame:SetShown(iconSide ~= "none")
     Place(castbar.text, "LEFT", castbar, "LEFT", inset, 0)
-    castbar.text:SetWidth((castbar.detached and S(cfg.castbarWidth or width) or width) - castHeight - gap - 2 * inset)
+    -- Textes de la barre (réglages globaux, absents des plaques et groupes : comportement d'origine).
+    local castGlobal = frame.global or {}
+    local sizeDelta = castGlobal.castTextSize or 0
+    Media:SetTextSizeDelta(castbar.text, -1 + sizeDelta)
+    Media:SetTextSizeDelta(castbar.timeText, -1 + sizeDelta)
+    castbar.text:SetShown(castGlobal.castText ~= false)
+    -- Habillage (réglages communs, défauts = rendu d'origine) : fond, bordure, opacité, strate.
+    castbar.bg:SetShown(castGlobal.castBackground ~= false)
+    castbar.backdropBackground:SetShown(castGlobal.castBackground ~= false)
+    for _, edge in pairs(castbar.backdropEdges) do edge:SetShown(castGlobal.castBorder ~= false) end
+    castbar:SetAlpha(castGlobal.castAlpha or 1)
+    local castStrata = castGlobal.castStrata
+    if castStrata and castStrata ~= "" then castbar:SetFrameStrata(castStrata)
+    else castbar:SetFrameStrata(castbar.detached and UIParent:GetFrameStrata() or frame:GetFrameStrata()) end
+    castbar.showTimer = castGlobal.castTimer == true
+    Place(castbar.timeText, "RIGHT", castbar, "RIGHT", -inset, 0)
+    if not castbar.showTimer then castbar.timeText:Hide() end
+    local shownIcon = ((frame.global or {}).castIcon or "left") ~= "none"
+    local barWidth = (castbar.detached and S(cfg.castbarWidth or width) or width) - (shownIcon and castHeight + gap or 0) - 2 * inset
+    castbar.text:SetWidth(math.max(1, barWidth - (castbar.showTimer and 40 or 0)))
     if not castbar.enabled then castbar:Hide() end
     if castbar.enabled and not castbar.detached then below = castbar end
 
@@ -610,9 +676,12 @@ end
 --- Textes de la barre de vie : ils peuvent porter [name] et [level], rafraîchis aussi sur ces événements.
 function Elements.UpdateHealthTexts(frame)
     local bar, global = frame.health, frame.global
+    -- Décimales du pourcentage (cadres d'unité) : posées le temps de ces deux textes, jamais pour les autres modules.
+    Elements.percentDecimals = global and (global.percentDecimals or 0) > 0 and global.percentDecimals or nil
     Elements.SetUnitText(bar.text, frame.unit, "health",
         Elements.TextFormat(frame.cfg and frame.cfg.healthFormat, global and global.healthText or "current"))
     if bar.centerText then Elements.SetUnitText(bar.centerText, frame.unit, "health", frame.cfg and frame.cfg.centerFormat) end
+    Elements.percentDecimals = nil
 end
 
 --- Classe en cache par cadre, clé = GUID lisible (la classe d'un GUID ne change pas) ; la couleur
@@ -644,14 +713,22 @@ local function LowHealthSteps(global)
     return cache.steps
 end
 
+--- Pose la valeur d'une barre ; animation douce si le réglage commun `smoothBars` est actif.
+-- L'interpolation n'est jamais passée à nil : sans l'énumération, valeur directe.
+local function SetBarValue(bar, value, global)
+    local mode = global and global.smoothBars and Enum and Enum.StatusBarInterpolation
+        and Enum.StatusBarInterpolation.ExponentialEaseOut
+    if mode then bar:SetValue(value, mode) else bar:SetValue(value) end
+end
+
 --- Vie, couleur et textes, sans la prédiction de soins (UpdateHealthAndPrediction).
 -- `skipTexts` : l'appelant rafraîchit les textes lui-même (UpdateAll).
 function Elements.UpdateHealth(frame, skipTexts)
     local unit = frame.unit
     local bar = frame.health
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
-    bar:SetValue(UnitHealth(unit))
     local global = frame.global
+    SetBarValue(bar, UnitHealth(unit), global)
     local applied, r, g, b = false
     if global and global.healthGradient then applied, r, g, b = NS.HealthGradient(unit) end
     if applied then Media:SetHealthColor(bar, r, g, b)   -- r, g, b peut-être secrets : jamais testés
@@ -716,7 +793,17 @@ end
 --- Portrait 2D de l'unité (cfg.portrait).
 function Elements.UpdatePortrait(frame)
     if not (frame.portrait and frame.cfg and frame.cfg.portrait) or not _G.SetPortraitTexture then return end
-    pcall(SetPortraitTexture, frame.portrait.texture, frame.unit)
+    local texture = frame.portrait.texture
+    -- Style « classe » : icône de la classe d'un joueur ; autre unité : portrait habituel.
+    local classFile = frame.cfg.portraitStyle == "class" and PlayerClass(frame.unit)
+    local coords = classFile and _G.CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[classFile]
+    if coords then
+        texture:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
+        texture:SetTexCoord(unpack(coords))
+        return
+    end
+    texture:SetTexCoord(0.15, 0.85, 0.15, 0.85)
+    pcall(SetPortraitTexture, texture, frame.unit)
 end
 
 function Elements.UpdatePower(frame)
@@ -727,8 +814,9 @@ function Elements.UpdatePower(frame)
     local knownMax = Known(max)
     if knownMax and knownMax <= 0 then bar:Hide() return end
     bar:SetMinMaxValues(0, max)
-    bar:SetValue(UnitPower(unit))
-    bar:SetStatusBarColor(Elements.PowerColor(unit))
+    SetBarValue(bar, UnitPower(unit), frame.global)
+    local custom = frame.cfg.powerColorCustom and frame.cfg.powerColor   -- couleur choisie, avant celle de la ressource
+    if custom then bar:SetStatusBarColor(custom.r, custom.g, custom.b) else bar:SetStatusBarColor(Elements.PowerColor(unit)) end
     Elements.SetUnitText(bar.text, unit, "power",
         Elements.TextFormat(frame.cfg and frame.cfg.powerFormat, frame.global and frame.global.powerText))
     Elements.SetManaSpark(bar, unit == "player" and frame.cfg.manaSpark)
@@ -919,6 +1007,12 @@ function Elements.TruncateName(name, count)
     return table.concat(out)
 end
 
+--- Mot du nom gardé selon `format` : "first" prénom, "last" dernier mot ; autre : nom entier.
+function Elements.FormatName(name, format)
+    if not name or (format ~= "first" and format ~= "last") then return name end
+    return name:match(format == "first" and "^(%S+)" or "(%S+)$") or name
+end
+
 function Elements.UpdateName(frame, skipTexts)
     local unit = frame.unit
     if not skipTexts then Elements.UpdateHealthTexts(frame) end
@@ -926,9 +1020,19 @@ function Elements.UpdateName(frame, skipTexts)
     -- Nom secret (identité masquée) : aucun test booléen dessus, il part tel quel au widget.
     local name = UnitName(unit)
     if not isSecret(name) and name == nil then name = "" end
+    if not NS.IsSecret(name) then name = Elements.FormatName(name, frame.cfg.nameFormat) end
     if frame.cfg.nameLength and not NS.IsSecret(name) then name = Elements.TruncateName(name, frame.cfg.nameLength) end
     frame.name:SetText(name)
-    if frame.global and frame.global.classColor then
+    if frame.cfg.nameTarget then   -- « nom > cible » ; valeurs secrètes passées au widget sans test
+        local targetName = UnitName(unit .. "target")
+        if isSecret(targetName) or (targetName and targetName ~= "") then
+            frame.name:SetFormattedText("%s > %s", name, targetName)
+        end
+    end
+    local custom = frame.cfg.nameColor   -- cadres de groupe : couleur choisie, avant celle de classe
+    if custom then
+        frame.name:SetTextColor(custom.r, custom.g, custom.b)
+    elseif frame.global and frame.global.classColor then
         frame.name:SetTextColor(Elements.HealthColor(unit, true))
     else
         frame.name:SetTextColor(1, 1, 1)
@@ -1103,7 +1207,8 @@ function Elements.UpdateCombo(frame)
     -- Aussi appelé par des barres sans pastilles (ResourceBars) : ni holder ni cfg.
     local bar, holder, cfg = frame.combo, frame.comboPips, frame.cfg or {}
     if holder then holder:Hide() end
-    if not frame.comboAllowed or frame.unit ~= "player" then bar:Hide() return end
+    -- Joueur ou cible : les points sont toujours ceux du joueur sur sa cible.
+    if not frame.comboAllowed or (frame.unit ~= "player" and frame.unit ~= "target") then bar:Hide() return end
     local max = UnitPowerMax("player", ComboPowerType())
     local knownMax = Known(max)
     if not knownMax or knownMax <= 0 then bar:Hide() return end
@@ -1209,6 +1314,7 @@ local function UpdateCastMarks(frame, name, startTime, endTime, channeling, spel
     local duration = s and e and e > s and (e - s) / 1000 or nil
     local percents = {}
     bar.latency:Hide()
+    bar.latencyText:Hide()
     if frame.unit == "player" and global and duration then
         local width = bar:GetWidth() or 0
         if channeling and global.castTicks then
@@ -1227,6 +1333,10 @@ local function UpdateCastMarks(frame, name, startTime, endTime, channeling, spel
                 bar.latency:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
                 bar.latency:SetWidth(math.max(1, width * math.min(1, latency / duration)))
                 bar.latency:Show()
+                if global.castLatencyText then
+                    bar.latencyText:SetFormattedText("%d ms", math.floor(latency * 1000 + 0.5))
+                    bar.latencyText:Show()
+                end
             end
         end
         Elements.SetHashLines(bar, percents, false, width)
@@ -1253,8 +1363,14 @@ function Elements.StartCast(frame)
     bar.manual = nil
     bar.flash:Hide()
     if not (isSecret(text) or text ~= nil) then text = name end
-    -- Cible du sort (cadres autres que le joueur) : son nom après celui du sort, peut-être secret.
     local global = frame.global
+    -- Rang du sort (clients à rangs) : ajouté au libellé quand ni le libellé ni l'identifiant ne sont secrets.
+    if global and global.castRank and spellID and not isSecret(spellID) and not isSecret(text)
+        and type(text) == "string" then
+        local rank = NS.GetSpellRankText(spellID)
+        if rank then text = text .. " (" .. rank .. ")" end
+    end
+    -- Cible du sort (cadres autres que le joueur) : son nom après celui du sort, peut-être secret.
     local targetName = global and global.castTarget and unit ~= "player" and UnitName(unit .. "target")
     if isSecret(targetName) or targetName then
         bar.text:SetFormattedText("%s > %s", text, targetName)
@@ -1264,12 +1380,17 @@ function Elements.StartCast(frame)
     if isSecret(texture) or texture ~= nil then bar.icon:SetTexture(texture) else bar.icon:SetTexture(QUESTION_ICON) end
     bar.notInterruptible = notInterruptible
     bar.spellID = spellID
+    bar.channeling = channeling
     Elements.UpdateCastColor(frame)
 
     local durationApi = channeling and _G.UnitChannelDuration or _G.UnitCastingDuration
+    bar.durationObject = nil
+    bar.timerElapsed = 1   -- minuteur remis à jour au prochain OnUpdate
     if bar.SetTimerDuration and durationApi then
         -- Le moteur anime la barre : aucune lecture d'horloge, la fin peut rester secrète.
-        bar:SetTimerDuration(durationApi(unit), Interpolation(), Direction(channeling))
+        local duration = durationApi(unit)
+        bar.durationObject = duration
+        bar:SetTimerDuration(duration, Interpolation(), Direction(channeling))
     else
         local s, e = Known(startTime), Known(endTime)
         if s and e and e > s then
@@ -1302,10 +1423,17 @@ function Elements.UpdateCastColor(frame)
             r, g, b = NS.ColorFromBoolean(important, c.r, c.g, c.b, r, g, b)
         end
     end
+    -- Canalisation : sa propre couleur (réglage global, désactivé par défaut).
+    if global and global.castChannel and bar.channeling and global.castChannelColor then
+        local c = global.castChannelColor
+        r, g, b = c.r, c.g, c.b
+    end
     local locked = bar.notInterruptible
     if not isSecret(locked) and locked == nil then locked = false end
-    local u = UNINTERRUPTIBLE
-    bar:SetStatusBarColor(NS.ColorFromBoolean(locked, u[1], u[2], u[3], r, g, b))
+    local u = global and global.castLockedColor
+    local lr, lg, lb = UNINTERRUPTIBLE[1], UNINTERRUPTIBLE[2], UNINTERRUPTIBLE[3]
+    if u then lr, lg, lb = u.r, u.g, u.b end
+    bar:SetStatusBarColor(NS.ColorFromBoolean(locked, lr, lg, lb, r, g, b))
 end
 
 local INTERRUPT_HOLD = 0.5
@@ -1326,6 +1454,28 @@ function Elements.StopCast(frame, interrupted)
     end
 end
 
+local TIMER_INTERVAL = 0.1
+
+--- Temps restant écrit dans `bar.timeText` (toutes les 0,1 s). La durée du moteur peut être secrète :
+-- elle n'est jamais comparée, seulement donnée au formateur du texte.
+function Elements.UpdateCastTimer(bar, elapsed)
+    if not bar.showTimer then return end
+    bar.timerElapsed = (bar.timerElapsed or 0) + elapsed
+    if bar.timerElapsed < TIMER_INTERVAL then return end
+    bar.timerElapsed = 0
+    local manual, duration = bar.manual, bar.durationObject
+    if manual then
+        bar.timeText:SetFormattedText("%.1f", math.max(0, manual.finish - GetTime()))
+    elseif duration then
+        local ok = pcall(function() bar.timeText:SetFormattedText("%.1f", duration:GetRemainingDuration()) end)
+        if not ok then bar.timeText:SetText("") end
+    else
+        bar.timeText:SetText("")
+        return
+    end
+    bar.timeText:Show()
+end
+
 local TINT_INTERVAL = 0.1   -- l'interruption du joueur peut revenir pendant l'incantation
 
 function Elements.CastOnUpdate(bar, elapsed)
@@ -1344,6 +1494,7 @@ function Elements.CastOnUpdate(bar, elapsed)
         end
     end
     local manual = bar.manual
+    Elements.UpdateCastTimer(bar, elapsed)
     if not manual then return end
     local now = GetTime()
     if now >= manual.finish then bar:Hide() return end
@@ -1367,6 +1518,15 @@ Elements.CAST_EVENTS = {
 
 --- Route un événement d'incantation. Retourne true s'il en était un.
 function Elements.HandleCast(frame, event)
+    -- Verrouillage : lu par l'événement, valeur éventuellement secrète, jamais comparée.
+    if event == "UNIT_SPELLCAST_NOT_INTERRUPTIBLE" or event == "UNIT_SPELLCAST_INTERRUPTIBLE" then
+        local bar = frame.castbar
+        if bar:IsShown() then
+            bar.notInterruptible = event == "UNIT_SPELLCAST_NOT_INTERRUPTIBLE"
+            Elements.UpdateCastColor(frame)
+            return true
+        end
+    end
     if CAST_START[event] then Elements.StartCast(frame) return true end
     if CAST_STOP[event] then
         -- Le STOP qui suit une interruption ne coupe pas la tenue rouge.
@@ -1441,7 +1601,7 @@ function Elements.LayoutAuras(frame)
         container:SetFrameLevel(frame.overlay:GetFrameLevel() + 1)
     elseif cfg.aurasAbove then
         -- Plaque : nom et niveau au-dessus de la barre, les auras passent au-dessus d'eux.
-        container:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, gap + (cfg.plate and S(14) or 0))
+        container:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, gap + (cfg.plate and S(14) or 0) + ComboAboveSpace(cfg))
     else
         container:SetPoint("TOPLEFT", frame.aurasAnchor or frame, "BOTTOMLEFT", 0, -gap)
     end
@@ -1455,6 +1615,7 @@ function Elements.LayoutAuras(frame)
     for _, button in ipairs(container.buttons) do button:SetSize(size, size) end
     -- Sans auras (plaque alliée), rien à configurer : la signature reste celle des plaques hostiles.
     if container.engine and cfg.auras then Elements.ConfigureAuraEngine(frame, size, spacing, perRow) end
+    Elements.LayoutBuffAuras(frame, width, size, spacing, perRow)
 end
 
 local ENGINE_GROUPS = { "listed", "crowdControl", "debuffs", "buffs" }
@@ -1471,6 +1632,38 @@ local DEBUFF_GROUP_SPECS = {
 }
 local VALID_POINT = { TOPLEFT = true, TOP = true, TOPRIGHT = true, LEFT = true, CENTER = true, RIGHT = true,
                       BOTTOMLEFT = true, BOTTOM = true, BOTTOMRIGHT = true }
+
+--- Réglages de texte et de lueur des auras (globaux d'UnitFrames, ou du profil des cadres de groupe).
+-- nil sur les plaques : boutons du moteur tels quels.
+local function AuraStyle(frame, buffs)
+    local global = frame.global
+    if not (global and global.auraDuration) then return nil end
+    -- Annuler au clic droit : buffs du cadre du joueur seulement.
+    local cancel
+    if buffs and frame.unit == "player" then cancel = global.auraCancel == true end
+    return { cancel = cancel, count = global.auraCountShow ~= false, countSize = global.auraCountSize, countPoint = global.auraCountPoint,
+             duration = global.auraDuration, durationSize = global.auraDurationSize,
+             durationPoint = global.auraDurationPoint,
+             countOffsetX = global.auraCountOffsetX, countOffsetY = global.auraCountOffsetY,
+             durationOffsetX = global.auraDurationOffsetX, durationOffsetY = global.auraDurationOffsetY, stealable = global.auraStealGlow == true,
+             border = global.auraBorder ~= false, borderSize = global.auraBorderSize }
+end
+
+local function StyleSignature(style)
+    if not style then return "" end
+    return table.concat({ tostring(style.cancel), tostring(style.count), tostring(style.countSize), tostring(style.countPoint),
+        tostring(style.duration), tostring(style.durationSize), tostring(style.durationPoint),
+        tostring(style.countOffsetX), tostring(style.countOffsetY), tostring(style.durationOffsetX),
+        tostring(style.durationOffsetY), tostring(style.stealable), tostring(style.border), tostring(style.borderSize) }, ",")
+end
+
+--- Réapplique `style` aux boutons déjà créés des groupes `keys` du conteneur du moteur.
+local function RestyleAuraButtons(engine, keys, style)
+    if not style then return end
+    for _, key in ipairs(keys) do
+        for _, button in ipairs(NS.AuraGroupButtons(engine, key)) do NS.StyleAuraButton(button, style) end
+    end
+end
 
 local function GroupSignature(groups)
     if not groups then return "" end
@@ -1497,6 +1690,25 @@ local function Union(a, b)
     return set
 end
 
+-- Débuffs de bruit : Rassasié et équivalents (RaidCooldowns.SATED), Longanimité (25771, vérifié dans
+-- Blizzard_FrameXMLUtil/AuraUtil.lua), Âme affaiblie (6788, non vérifiable dans le source Forever).
+local NOISE_EXTRA = { 25771, 6788 }
+local FORBEARANCE = 25771   -- prioritaire pour un paladin (AuraUtil.lua:5) : gardé pour lui
+local noiseSet
+--- Ensemble des identifiants de bruit (le moteur écarte par identifiant, sans lire de valeur secrète).
+function Elements.NoiseDebuffSet()
+    if not noiseSet then
+        noiseSet = {}
+        local raidCooldowns = NS.Modules:Get("raidcooldowns")
+        for _, id in ipairs(raidCooldowns and raidCooldowns.SATED or {}) do noiseSet[id] = true end
+        local _, classFile = UnitClass("player")
+        for _, id in ipairs(NOISE_EXTRA) do
+            if not (id == FORBEARANCE and classFile == "PALADIN") then noiseSet[id] = true end
+        end
+    end
+    return noiseSet
+end
+
 --- Groupes du conteneur du moteur d'après le réglage du cadre : liste blanche (toujours montrée),
 -- contrôles (liseré de lueur), débuffs, puis buffs sur une ligne neuve. Emplacement de contrôle
 -- (plaques) : les contrôles y vont, pas dans la grille. Liste noire : jamais montrée. Le moteur
@@ -1509,8 +1721,12 @@ function Elements.ConfigureAuraEngine(frame, size, spacing, perRow)
     local own = cfg.plate and cfg.auraLists or lists
     local whitelistText, blacklistText = own.whitelist or "", own.blacklist or ""
     -- Plaques : reposées à chaque apparition ; réglage inchangé, rien à redemander au moteur.
+    local style, buffStyle = AuraStyle(frame), AuraStyle(frame, true)
+    container.auraStyle, container.buffStyle = style, buffStyle
+    local split = cfg.auraSplit and not cfg.aurasInside
     local signature = table.concat({ size, spacing, perRow, tostring(cfg.aurasInside), tostring(cfg.aurasAbove),
-        tostring(cfg.auraMax), tostring(cfg.auraFilter), tostring(cfg.debuffsOnly), tostring(cfg.ccSlot and frame.ccSlot ~= nil),
+        tostring(split), StyleSignature(style), StyleSignature(buffStyle),
+        tostring(cfg.auraMax), tostring(cfg.auraFilter), tostring(cfg.debuffsOnly), tostring(cfg.hideNoiseDebuffs), tostring(cfg.ccSlot and frame.ccSlot ~= nil),
         whitelistText, blacklistText, tostring(cfg.whitelistAnyCaster), tostring(lists.prioritize), tostring(lists.ccGlow),
         GroupSignature(cfg.debuffGroups) }, "\31")
     if container.engineSignature == signature then return end
@@ -1535,15 +1751,25 @@ function Elements.ConfigureAuraEngine(frame, size, spacing, perRow)
         end
     end
     container.engineSignature = resized and signature or nil
-    local init = container.engineInit or function(button) NS.InitAuraButton(button, { size = container.engineSize, dispel = true }) end
+    RestyleAuraButtons(engine, { "listed", "crowdControl", "debuffs" }, style)
+    RestyleAuraButtons(engine, { "buffs" }, buffStyle)
+    local initBuffs = container.engineInitBuffs or function(button)
+        NS.InitAuraButton(button, { size = container.engineSize, dispel = true, style = container.buffStyle })
+    end
+    container.engineInitBuffs = initBuffs
+    local init = container.engineInit or function(button)
+        NS.InitAuraButton(button, { size = container.engineSize, dispel = true, style = container.auraStyle })
+    end
     local initCrowdControl = container.engineInitCrowdControl or function(button)
-        NS.InitAuraButton(button, { size = container.engineSize, dispel = true, highlight = CC_HIGHLIGHT })
+        NS.InitAuraButton(button, { size = container.engineSize, dispel = true, highlight = CC_HIGHLIGHT,
+            style = container.auraStyle })
     end
     container.engineInit, container.engineInitCrowdControl = init, initCrowdControl
 
     local max = math.min(MAX_AURAS, cfg.auraMax or MAX_AURAS)
     local mode = cfg.auraFilter or "all"
     local blacklist = SpellSet(blacklistText)
+    if cfg.hideNoiseDebuffs then blacklist = Union(blacklist, Elements.NoiseDebuffSet()) end
     local whitelist = mode ~= "all" and SpellSet(whitelistText) or nil
     local slot = cfg.ccSlot and frame.ccSlot or nil
     local crowdControlGroup = not slot and lists.ccGlow ~= "none"
@@ -1561,8 +1787,8 @@ function Elements.ConfigureAuraEngine(frame, size, spacing, perRow)
     NS.SetAuraGroup(engine, "debuffs", { filter = NS.AuraEngineFilter("HARMFUL", mode) .. notCrowdControl, max = groups and 0 or max,
         index = 3, spacing = spacing, size = size, prioritize = lists.prioritize or mode == "important",
         candidates = debuffCandidates, init = init })
-    NS.SetAuraGroup(engine, "buffs", { filter = "HELPFUL", max = cfg.debuffsOnly and 0 or max, index = 4,
-        newLine = true, spacing = spacing, size = size, candidates = { excludeSpellIDs = blacklist }, init = init })
+    NS.SetAuraGroup(engine, "buffs", { filter = "HELPFUL", max = (cfg.debuffsOnly or split) and 0 or max, index = 4,
+        newLine = true, spacing = spacing, size = size, candidates = { excludeSpellIDs = blacklist }, init = initBuffs })
     if groups then Elements.ConfigureDebuffGroups(frame, groups, mode, debuffCandidates.excludeSpellIDs, spacing) end
     if slot or engine.declared.ccSlot then
         NS.SetAuraSlot(engine, "ccSlot", NS.AuraEngineFilter("HARMFUL|CROWD_CONTROL", mode), slot ~= nil, function(button)
@@ -1571,6 +1797,77 @@ function Elements.ConfigureAuraEngine(frame, size, spacing, perRow)
         end)
     end
     pcall(engine.UpdateAllAuras, engine)
+end
+
+--- Second conteneur du moteur quand les buffs ont leur emplacement (`cfg.auraSplit`) : du côté
+-- opposé aux débuffs, au-dessus du cadre ou sous lui. Le premier conteneur ne montre alors que les
+-- débuffs. Sans le moteur (aperçu, ancien client), rien : les buffs restent avec les débuffs.
+function Elements.LayoutBuffAuras(frame, width, size, spacing, perRow)
+    local cfg, container = frame.cfg, frame.auras
+    local host = frame.buffAuras
+    local wanted = container and container.engine and cfg.auras and cfg.auraSplit and not cfg.aurasInside
+        and not cfg.debuffsOnly
+    if not wanted then
+        if host then host.engine:Hide() end
+        return
+    end
+    if not host then
+        host = CreateFrame("Frame", nil, frame)
+        host.engine = NS.CreateAuraContainer(host)
+        if not host.engine then return end
+        frame.buffAuras = host
+    end
+    local engine, gap = host.engine, S(4)
+    local above = not cfg.aurasAbove   -- côté opposé aux débuffs
+    local max = math.min(MAX_AURAS, cfg.auraMax or MAX_AURAS)
+    host:ClearAllPoints()
+    local anchor, vertical = "TOPLEFT", "DOWN"
+    if above then
+        anchor, vertical = "BOTTOMLEFT", "UP"
+        host:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, gap)
+    else
+        host:SetPoint("TOPLEFT", frame.aurasAnchor or frame, "BOTTOMLEFT", 0, -gap)
+    end
+    host:SetSize(width, (size + spacing) * math.ceil(max / perRow))
+    host:SetFrameLevel(container:GetFrameLevel())
+    local style = AuraStyle(frame, true)
+    local lists = NS.db.auraLists
+    local signature = table.concat({ size, spacing, perRow, max, tostring(above), StyleSignature(style),
+        lists.blacklist or "" }, "\31")
+    host.auraStyle, host.engineSize = style, size
+    engine:Show()
+    if host.engineSignature ~= signature then
+        engine:ClearAllPoints()
+        engine:SetPoint(anchor, host, anchor, 0, 0)
+        NS.SetAuraContainerFlow(engine, anchor, "RIGHT", vertical, perRow * (size + spacing) - spacing + 0.5)
+        local resized = true
+        for _, button in ipairs(NS.AuraGroupButtons(engine, "buffs")) do
+            resized = pcall(button.SetSize, button, size, size) and resized
+        end
+        host.engineSignature = resized and signature or nil
+        RestyleAuraButtons(engine, { "buffs" }, style)
+        host.engineInit = host.engineInit or function(button)
+            NS.InitAuraButton(button, { size = host.engineSize, dispel = true, style = host.auraStyle })
+        end
+        NS.SetAuraGroup(engine, "buffs", { filter = "HELPFUL", max = max, index = 1, spacing = spacing, size = size,
+            candidates = { excludeSpellIDs = SpellSet(lists.blacklist or "") }, init = host.engineInit })
+        pcall(engine.UpdateAllAuras, engine)
+    end
+end
+
+--- Clics d'annulation des buffs du joueur, coupés en combat (appelé à chaque changement de combat).
+-- `inCombat` vient de l'événement : InCombatLockdown() est encore faux pendant PLAYER_REGEN_DISABLED.
+function Elements.RefreshAuraCancel(frame, inCombat)
+    local style = AuraStyle(frame, true)
+    if not (style and style.cancel == true) then return end
+    if inCombat == nil then inCombat = NS.InCombat() end
+    for _, container in ipairs({ frame.auras or false, frame.buffAuras or false }) do
+        if container and container.engine then
+            for _, button in ipairs(NS.AuraGroupButtons(container.engine, "buffs")) do
+                pcall(button.SetMouseClickEnabled, button, not inCombat)
+            end
+        end
+    end
 end
 
 --- Groupes de débuffs cochés (cadres de groupe) : un groupe du moteur par case, chacun niant les
@@ -1590,7 +1887,8 @@ function Elements.ConfigureDebuffGroups(frame, groups, mode, exclude, spacing)
         for field, value in pairs(negated) do candidates[field] = value end
         for field, value in pairs(spec.candidates or {}) do candidates[field] = value end
         local function init(button)
-            NS.InitAuraButton(button, { size = sizes[key], dispel = true, highlight = key == "control" and highlight or nil })
+            NS.InitAuraButton(button, { size = sizes[key], dispel = true, highlight = key == "control" and highlight or nil,
+                style = container.auraStyle })
         end
         local point = VALID_POINT[group.point] and group.point or nil
         local enabled = group.enabled == true
@@ -1613,6 +1911,9 @@ function Elements.ConfigureDebuffGroups(frame, groups, mode, exclude, spacing)
                 pcall(button.SetAllPoints, button, anchor)
             end, candidates)
         end
+        -- Boutons déjà créés : texte des auras du réglage (la signature de ConfigureAuraEngine le porte).
+        RestyleAuraButtons(engine, { key }, container.auraStyle)
+        if type(engine.declared[key .. "Slot"]) == "table" then NS.StyleAuraButton(engine.declared[key .. "Slot"], container.auraStyle) end
         if enabled then
             negate = negate .. (spec.negate or "")
             for field, value in pairs(spec.negateCandidates or {}) do negated[field] = value end
@@ -1668,7 +1969,7 @@ local function CollectAuras(list, unit, kind, filter, crowdControl, prioritize)
     return count
 end
 
-local function ShowAura(button, entry, harmful, ccGlow)
+local function ShowAura(button, entry, harmful, ccGlow, bordered)
     button.icon:SetTexture(entry.icon)
     local d, e = Known(entry.duration), Known(entry.expiration)
     if d and e and d > 0 then button.cooldown:SetCooldown(e - d, d) else button.cooldown:Clear() end
@@ -1682,6 +1983,7 @@ local function ShowAura(button, entry, harmful, ccGlow)
         local c = NS.db.theme.border
         for _, edge in pairs(button.border) do NS.SetSolidColor(edge, c.r, c.g, c.b, c.a or 1) end
     end
+    for _, edge in pairs(button.border) do edge:SetShown(bordered ~= false) end   -- réglage « bordure des icônes d'aura »
     NS.Glow.Set(button, entry.cc and ccGlow ~= "none", ccGlow)
     button:Show()
 end
@@ -1693,9 +1995,16 @@ function Elements.UpdateAuras(frame, refresh)
     if not container then return end
     local slot = frame.cfg.ccSlot and frame.ccSlot
     if frame.ccSlot then frame.ccSlot.buttons[1]:Hide() end
-    if not frame.cfg.auras then container:Hide() return end
+    if not frame.cfg.auras then
+        container:Hide()
+        if frame.buffAuras then frame.buffAuras:Hide() end
+        return
+    end
     container:Show()
+    if frame.buffAuras then frame.buffAuras:Show() end
     if container.engine then
+        local buffEngine = frame.buffAuras and frame.buffAuras.engine
+        if buffEngine and buffEngine:IsShown() then NS.SetAuraContainerUnit(buffEngine, frame.unit, refresh) end
         if container.previewing then   -- sortie de l'aperçu : ses boutons manuels, une seule fois
             container.previewing = nil
             for _, button in ipairs(container.buttons) do button:Hide() end
@@ -1722,13 +2031,13 @@ function Elements.UpdateAuras(frame, refresh)
         for i = 1, count do
             local entry = container.list[i]
             if slot and harmful and entry.cc then
-                ShowAura(slot.buttons[1], entry, true, lists.ccGlow)
+                ShowAura(slot.buttons[1], entry, true, lists.ccGlow, (frame.global or {}).auraBorder)
                 slot = nil
             elseif shown < max then
                 shown, cell = shown + 1, cell + 1
                 local button = ManualButton(container, shown)
                 PlaceManualButton(container, button, (cell - 1) % perRow, math.floor((cell - 1) / perRow))
-                ShowAura(button, entry, harmful, lists.ccGlow)
+                ShowAura(button, entry, harmful, lists.ccGlow, (frame.global or {}).auraBorder)
             end
         end
     end
@@ -1754,7 +2063,7 @@ function Elements.PreviewAuras(frame, entries)
         if not entry then break end
         local button = ManualButton(container, i)
         PlaceManualButton(container, button, (i - 1) % perRow, math.floor((i - 1) / perRow))
-        ShowAura(button, entry, true, "none")
+        ShowAura(button, entry, true, "none", (frame.global or {}).auraBorder)
         shown = i
     end
     for i = shown + 1, #container.buttons do container.buttons[i]:Hide() end
@@ -1779,6 +2088,31 @@ function Elements.UpdateAll(frame)
     Elements.UpdatePortrait(frame)
     Elements.UpdateThreat(frame)
     Elements.UpdateHappiness(frame)
+    Elements.UpdateHighlight(frame)
+end
+
+--- Surbrillance : cible actuelle (cfg.targetHighlight) ou curseur dessus (cfg.hoverHighlight, frame.hovered).
+function Elements.UpdateHighlight(frame)
+    local cfg = frame.cfg
+    if not (cfg.targetHighlight or cfg.hoverHighlight or frame.highlight) then return end
+    local holder = frame.highlight
+    if not holder then   -- créée à la première utilisation : plaques et cadres de groupe n'en paient pas le coût
+        holder = CreateFrame("Frame", nil, frame)
+        holder:SetAllPoints(frame)
+        holder:SetFrameLevel(frame.overlay:GetFrameLevel() + 2)
+        holder.edges = Media:CreateBorder(holder, { r = 1, g = 1, b = 1 })
+        holder:Hide()
+        frame.highlight = holder
+    end
+    local on = cfg.hoverHighlight and frame.hovered and true or false
+    if not on and cfg.targetHighlight and frame.unit ~= "target" and _G.UnitIsUnit then
+        on = Known(UnitIsUnit(frame.unit, "target")) and true or false
+    end
+    local c = (frame.global or {}).highlightColor
+    if on and c then
+        for _, edge in pairs(holder.edges) do NS.SetSolidColor(edge, c.r, c.g, c.b, c.a or 1) end
+    end
+    holder:SetShown(on)
 end
 
 --- Réaction ou marquage JcJ changé : couleur de vie et écusson.

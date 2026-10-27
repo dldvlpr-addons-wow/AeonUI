@@ -108,7 +108,7 @@ Avant chaque essai : `/console scriptErrors 1`, puis `/reload`. Faire chaque act
   - réordonnancement par clic droit ;
   - bijoux ;
   - `CROWD_CONTROL` ;
-  - `damageMeterEnabled`.
+  - `damageMeterEnabled` : CVar absente du code (vérifié le 2026-10-27), rien à tester.
 - **Lot 6** :
   1. Changer de palier de raid hors combat. En combat, le changement doit attendre la fin du combat.
   2. Vérifier que le joueur est dernier dans un groupe de 5.

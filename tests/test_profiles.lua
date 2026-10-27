@@ -197,6 +197,30 @@ test("sauvegarde d'un ancien format : migrée avant d'être restaurée", functio
     NS.global.profileBackup = nil
 end)
 
+test("import : chaîne marquée d'une version antérieure migrée, export marqué de la version", function()
+    reset()
+    local name, original = Database:ActiveProfileName(), NS.db
+    eq(Database.Deserialize(Database.ExportProfile(NS.db)).version, Database.VERSION, "export marqué")
+    eq(Database:AccountExport().version, Database.VERSION, "export du compte marqué")
+    local old = { version = 9, modules = { groupframes = { indicators = { TOPLEFT = "Rénovation" } } } }
+    local profile = Database:ImportProfile(Database.Serialize(old))
+    eq(profile.modules.groupframes.indicators[1].spells, "Rénovation", "v10 appliquée")
+    eq(profile.version, nil, "version retirée du profil")
+    local before = NS.global.profiles[name]
+    eq(Database:ImportProfile("AEON1:version=n-1e999;theme=t"), nil, "version infinie : refusée, pas de boucle sans fin")
+    eq(Database:ImportProfile("AEON1:version=n2.5;theme=t"), nil, "version non entière : refusée")
+    eq(NS.global.profiles[name], before, "profil intact")
+    NS.global.profiles[name].theme.fontSize = 17
+    Database:ImportProfile(Database.Serialize({ version = 2, partial = true, modules = {}, anchors = {} }))
+    eq(NS.global.profiles[name].theme.fontSize, 17, "extrait sans thème : la v3 ne crée pas de thème")
+    local errors = #Database.migrationErrors
+    eq(Database:ImportProfile(Database.Serialize({ account = true, version = 9, profiles = { Bad = 5 } }), true), nil,
+       "migration en échec : import refusé")
+    eq(#Database.migrationErrors, errors, "échec de la chaîne absent de /musca diag")
+    NS.global.profiles[name] = original
+    NS.global.profileBackup = nil
+end)
+
 test("import sélectif par les options : positions des modules cochés reprises malgré Reload", function()
     reset()
     local name, original = Database:ActiveProfileName(), NS.db
@@ -327,9 +351,9 @@ test("sauvegarde : un défaut changé après coup ne change pas le profil restau
     local name, original = Database:ActiveProfileName(), NS.db
     local fontSize = NS.db.theme.fontSize
     Database:SaveBackup("reset")
-    local plain = Database.PlainText(Database:Backup().defaults, Database.PastedLimit(true))
+    local plain = Database.PlainText(Database:Backup().defaults, Database.BACKUP_DEFAULTS_LIMIT)
     -- Marge sous les bornes de Deserialize : au-delà, la restauration retomberait sur les défauts actuels.
-    truthy(#Database:Backup().defaults < Database.PastedLimit(true) / 2 and plain and #plain < 262144 / 2, "défauts joints relisibles")
+    truthy(#Database:Backup().defaults < Database.BACKUP_DEFAULTS_LIMIT / 2 and plain and #plain < 262144 / 2, "défauts joints relisibles")
     Database.PROFILE_DEFAULTS.theme.fontSize = fontSize + 5
     local ok = pcall(NS.RestoreBackup, NS)
     Database.PROFILE_DEFAULTS.theme.fontSize = fontSize

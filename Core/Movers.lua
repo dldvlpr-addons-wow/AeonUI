@@ -615,7 +615,7 @@ end
 --------------------------------------------------------------------------------
 
 local function PaintOverlay(entry, selected)
-    local r, g, b = Media:Accent()
+    local r, g, b = Media:MoverColor()
     NS.SetSolidColor(entry.overlay.bg, r, g, b, selected and 0.55 or 0.3)
     for _, edge in pairs(entry.overlay.edges) do NS.SetSolidColor(edge, r, g, b, 1) end
 end
@@ -886,7 +886,7 @@ end
 --- Lignes guides aux lignes accrochées (x verticale, y horizontale), cachées sans accroche.
 local function ShowGuides(xLine, yLine)
     local frame = Guides()
-    local r, g, b = Media:Accent()
+    local r, g, b = Media:MoverColor()
     local px = NS.Pixel:Scale(1)
     local vertical, horizontal = frame.vertical, frame.horizontal
     vertical:ClearAllPoints()
@@ -1059,7 +1059,7 @@ local function ShowGrid(size)
     size = math.max(size, 8)
     local width, height = UIParent:GetWidth(), UIParent:GetHeight()
     local px = NS.Pixel:Scale(1)
-    local r, g, b = Media:Accent()
+    local r, g, b = Media:MoverColor()
     local used = 0
     local function line(vertical, offset, strong)
         used = used + 1
@@ -1104,9 +1104,20 @@ end
 
 local toolbar
 
---- Le calque suit le filtre de la barre d'outils (nil : tous).
+--- Le calque suit le filtre de module et le filtre par nom de la barre d'outils (nil : tous).
 function Movers:IsListed(entry)
-    return self.filter == nil or entry.module == self.filter
+    if self.filter ~= nil and entry.module ~= self.filter then return false end
+    local text = self.nameFilter
+    return text == nil or tostring(entry.label):lower():find(text, 1, true) ~= nil
+end
+
+--- Filtre par nom (sous-chaîne, sans casse ; "" : tous) ; les calques suivent.
+function Movers:SetNameFilter(text)
+    text = text and text:match("^%s*(.-)%s*$"):lower() or ""
+    self.nameFilter = text ~= "" and text or nil
+    for _, entry in pairs(self.registry) do
+        if entry.overlay then entry.overlay:SetShown(self.unlocked and self:IsListed(entry)) end
+    end
 end
 
 --- Modules qui possèdent au moins un mover, triés par titre, précédés de « Tous ».
@@ -1177,7 +1188,19 @@ local function BuildToolbar()
     cancel:SetScript("OnClick", function()
         NS.Options.Confirm("MUSCAUI_MOVERS_CANCEL", L.MSG_MOVERS_CANCEL_CONFIRM, function() Movers:CancelSession() end)
     end)
+    -- Filtre par nom : sous la barre, pour ne pas allonger la rangée.
+    local nameBox = CreateFrame("EditBox", nil, toolbar, "InputBoxTemplate")
+    nameBox:SetSize(180, 20)
+    nameBox:SetAutoFocus(false)
+    nameBox:SetPoint("TOPLEFT", toolbar, "BOTTOMLEFT", 100, -4)
+    local nameLabel = Media:CreateText(toolbar, "OVERLAY")
+    nameLabel:SetPoint("RIGHT", nameBox, "LEFT", -6, 0)
+    nameLabel:SetText(L.OPT_G_CORE_MOVER_NAME_FILTER)
+    nameBox:SetScript("OnTextChanged", function(self) Movers:SetNameFilter(self:GetText()) end)
+    nameBox:SetScript("OnEscapePressed", function(self) self:SetText("") self:ClearFocus() end)
+    nameBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     toolbar.grid, toolbar.filter, toolbar.snap, toolbar.save, toolbar.cancel = grid, filter, snap, save, cancel
+    toolbar.nameBox = nameBox
     toolbar:Hide()
 end
 
@@ -1185,7 +1208,10 @@ function Movers:GetToolbar() return toolbar end
 
 function Movers:SetUnlocked(unlocked)
     self.unlocked = unlocked and true or false
-    if not self.unlocked and not self.suspended then self.filter = nil end   -- gardé pour la reprise après combat
+    if not self.unlocked and not self.suspended then   -- gardés pour la reprise après combat
+        self.filter, self.nameFilter = nil, nil
+        if toolbar and toolbar.nameBox then toolbar.nameBox:SetText("") end
+    end
     -- Session : photo à l'ouverture (pas à la reprise après combat), oubliée au verrouillage.
     if self.unlocked and not self.session then
         self.session = { db = NS.db, anchors = NS.Database.DeepCopy(NS.db.anchors) }
@@ -1241,7 +1267,7 @@ combat:SetScript("OnEvent", function(_, event)
             Movers:SetUnlocked(true)
             NS:Fire("PREVIEW", true)
         else
-            Movers.session, Movers.filter = nil, nil
+            Movers.session, Movers.filter, Movers.nameFilter = nil, nil, nil
         end
     end
 end)

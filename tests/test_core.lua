@@ -389,13 +389,13 @@ test("miroir CVar : jamais écrit s'il ne pourrait pas être relu (trop grand un
     eq(Mock.cvars.MuscaUIMirror1, before, "miroir précédent gardé")
 end)
 
-test("import : une chaîne compressée de plus de 12 000 caractères reste refusée, le miroir l'accepte", function()
+test("import : une chaîne compressée de plus de 32 000 caractères reste refusée, une borne plus large l'accepte", function()
     local noise = {}
-    for i = 1, 6000 do noise[i] = tostring((i * 7919) % 10007) end   -- peu compressible
+    for i = 1, 14000 do noise[i] = tostring((i * 7919) % 10007) end   -- peu compressible
     local text = NS.Database.Export({ theme = { font = table.concat(noise, ",") } })
-    truthy(#text > 12000 + #NS.Database.COMPRESSED_PREFIX, "vraie chaîne AEON2 au-delà de la borne")
+    truthy(#text > 32000 + #NS.Database.COMPRESSED_PREFIX, "vraie chaîne AEON2 au-delà de la borne")
     eq(NS.Database.Deserialize(text), nil, "borne des imports inchangée")
-    truthy(NS.Database.Deserialize(text, 32000), "borne du miroir")
+    truthy(NS.Database.Deserialize(text, 64000), "borne plus large")
 end)
 
 test("médias : fond et bordure 1 px suivent le thème et l'échelle", function()

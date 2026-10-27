@@ -11,6 +11,10 @@
 --   * quêtes : acceptation et rendu automatiques (Maj pour suspendre), jamais de choix de
 --     récompense à la place du joueur ;
 --   * repère sur la récompense au choix la plus chère à la revente (le joueur choisit toujours) ;
+--   * option unique d'un dialogue de PNJ choisie seule (Maj : non, jamais en instance) ;
+--   * bouton « Tout apprendre » chez l'entraîneur de classe ;
+--   * conteneurs des sacs ouverts seuls, hors combat, un par passage ;
+--   * journal de combat lancé en raid / donjon, arrêté à la sortie (seulement s'il l'a lancé) ;
 --   * cinématiques passées, réinitialisation d'instance annoncée au groupe.
 -- Aucune action protégée, sauf la pose d'un sort sur une barre : différée hors combat. Les hooks posés
 -- sur Blizzard ne se retirent pas, d'où le test `active` au début de chacun.
@@ -39,8 +43,16 @@ local Automation = NS.Modules:Register("automation", {
         autoQuests = false,
         questRewardMark = true,
         skipCinematics = false,
+        skipCinematicsDelay = 0,  -- secondes avant de passer (0 = tout de suite)
+        soldCoinIcons = false,    -- gain de la vente écrit en icônes de pièces
         announceReset = false,
         uprank = true,
+        autoGossip = false,
+        trainAll = false,
+        openContainers = false,
+        logRaid = false,
+        logDungeon = false,
+        logStarted = false,       -- journal lancé par nous (survit au /reload) : à arrêter à la sortie
     },
 })
 
@@ -129,7 +141,8 @@ end
 local function StopSelling(announce)
     if sellTimer then sellTimer:Cancel() sellTimer = nil end
     if announce and sellTotal > 0 then
-        NS.Print(string.format(L.AUTO_SOLD, NS.FormatMoney(sellTotal)))
+        NS.Print(string.format(L.AUTO_SOLD,
+            (Automation.db.soldCoinIcons and NS.FormatMoneyIcons or NS.FormatMoney)(sellTotal)))
     end
     sellQueue, sellTotal, sellPending = {}, 0, {}
 end
@@ -413,8 +426,7 @@ local function Repeatable(repeatable, frequency)
     return repeatable == true or (type(frequency) == "number" and frequency ~= 0)
 end
 
-function Automation:OnGossip()
-    if QuestsPaused() or not C_GossipInfo then return nil end
+local function GossipQuests()
     for _, quest in ipairs(C_GossipInfo.GetActiveQuests and C_GossipInfo.GetActiveQuests() or {}) do
         if quest.isComplete and not Repeatable(quest.repeatable, quest.frequency)
             and FirstTry("turnin:" .. quest.questID) then
@@ -429,6 +441,33 @@ function Automation:OnGossip()
         end
     end
     return nil
+end
+
+-- Aucune quête proposée ou à rendre, une seule option, dialogue non forcé, option disponible
+-- seulement, jamais en instance. Blizzard choisit déjà seul les options « selectOptionWhenOnlyOption » :
+-- on s'abstient pour elles (pas de double sélection).
+-- Anti double (FirstTry) : un PNJ qui réaffiche la même option ne boucle pas.
+local function GossipSingleOption()
+    if not Automation.db.autoGossip or (IsInInstance and IsInInstance()) then return nil end
+    local gossip = C_GossipInfo
+    if not gossip.GetOptions or not gossip.SelectOption then return nil end
+    local options = gossip.GetOptions() or {}
+    if #options ~= 1 then return nil end
+    if #(gossip.GetActiveQuests and gossip.GetActiveQuests() or {}) > 0
+        or #(gossip.GetAvailableQuests and gossip.GetAvailableQuests() or {}) > 0 then return nil end
+    if gossip.ForceGossip and gossip.ForceGossip() then return nil end
+    local option = options[1]
+    if option.selectOptionWhenOnlyOption then return nil end
+    if type(option.gossipOptionID) ~= "number" or (option.status and option.status ~= 0) then return nil end
+    if not FirstTry("gossip:" .. option.gossipOptionID) then return nil end
+    gossip.SelectOption(option.gossipOptionID)
+    return "option"
+end
+
+--- Quêtes du dialogue (si autoQuests), sinon l'option unique (si autoGossip). Maj : rien.
+function Automation:OnGossip()
+    if IsShiftKeyDown() or not C_GossipInfo then return nil end
+    return (self.db.autoQuests and GossipQuests()) or GossipSingleOption()
 end
 
 --- PNJ « à l'ancienne » (QuestFrame avec liste) : même logique, par index.
@@ -467,9 +506,160 @@ local QUEST_HANDLERS = {
         local choices = GetNumQuestChoices()
         if choices <= 1 and FirstTry(CurrentQuestKey("reward:")) then GetQuestReward(choices) end
     end,
-    GOSSIP_SHOW = function() Automation:OnGossip() end,
+    GOSSIP_SHOW = function() end,   -- inscrit ici, traité par OnGossip hors du garde des quêtes
     QUEST_GREETING = function() Automation:OnQuestGreeting() end,
 }
+
+--------------------------------------------------------------------------------
+-- Entraîneur : tout apprendre
+--------------------------------------------------------------------------------
+-- Bouton à gauche de « Apprendre ». Un achat par TRAINER_UPDATE : les indices de la liste bougent
+-- après chaque achat (filtre « appris » masqué), on relit donc la liste à chaque fois. Budget fixé
+-- au clic. Ni métiers (confirmation, emplacements) ni entraîneur de familier (points d'entraînement).
+
+local trainButton
+local trainBudget, trainLeft = 0, 0   -- or restant, achats permis (garde-fou)
+local MAX_TRAIN_STEPS = 100
+
+--- Premier service « disponible » payable avec `budget` : index, coût. nil si aucun.
+function Automation.NextTrainable(budget)
+    if not (_G.GetNumTrainerServices and _G.GetTrainerServiceInfo and _G.GetTrainerServiceCost) then return nil end
+    for index = 1, GetNumTrainerServices() or 0 do
+        local _, serviceType = GetTrainerServiceInfo(index)
+        if serviceType == "available" then
+            local cost, isProfession = GetTrainerServiceCost(index)
+            if not isProfession and (cost or 0) <= budget then return index, cost or 0 end
+        end
+    end
+    return nil
+end
+
+local function TrainerUsable()
+    if _G.IsTradeskillTrainer and IsTradeskillTrainer() then return false end
+    local trainer = _G.C_Trainer
+    local pet = _G.Enum and Enum.TrainerType and Enum.TrainerType.Pet
+    return not (trainer and trainer.GetTrainerType and pet and trainer.GetTrainerType() == pet)
+end
+
+local function TrainNext()
+    local index, cost = Automation.NextTrainable(trainBudget)
+    if not index or trainLeft <= 0 then trainLeft = 0 return end
+    trainLeft, trainBudget = trainLeft - 1, trainBudget - cost
+    BuyTrainerService(index)
+end
+
+local function RefreshTrainButton()
+    if not trainButton then return end
+    local show = (active and Automation.db.trainAll and TrainerUsable()) and true or false
+    trainButton:SetShown(show)
+    if show then
+        if Automation.NextTrainable(GetMoney()) then trainButton:Enable() else trainButton:Disable() end
+    end
+end
+
+-- ClassTrainerFrame vit dans un addon chargé à la demande : bouton créé dès que le cadre existe.
+local function EnsureTrainButton()
+    if trainButton or not _G.ClassTrainerFrame or not _G.BuyTrainerService then return end
+    -- Enfant du bouton « Apprendre » : caché avec lui en mode manette (InitializeGamepad).
+    local anchor = _G.ClassTrainerTrainButton or ClassTrainerFrame
+    trainButton = CreateFrame("Button", "MuscaUITrainAll", anchor, "UIPanelButtonTemplate")
+    trainButton:SetSize(120, 22)
+    trainButton:SetText(L.AUTO_TRAIN_ALL)
+    trainButton:SetPoint("RIGHT", anchor, "LEFT", -4, 0)
+    trainButton:SetScript("OnClick", function()
+        trainBudget, trainLeft = GetMoney(), MAX_TRAIN_STEPS
+        TrainNext()
+    end)
+    trainButton:Hide()
+end
+
+local function OnTrainerEvent(event)
+    if event == "TRAINER_CLOSED" then
+        trainLeft = 0
+        return
+    end
+    if not active then return end
+    EnsureTrainButton()
+    if event == "TRAINER_UPDATE" and trainLeft > 0 then TrainNext() end
+    RefreshTrainButton()
+end
+
+--------------------------------------------------------------------------------
+-- Conteneurs
+--------------------------------------------------------------------------------
+-- Objets « à ouvrir » des sacs (hasLoot). Une ouverture par BAG_UPDATE_DELAYED, hors combat, pas
+-- pendant un butin ni devant un marchand (utiliser l'objet le vendrait), une banque, un échange,
+-- le courrier ou l'hôtel des ventes. Même case, même objet, même pile : retentée après 30 s seulement
+-- (coffre verrouillé, journal de butin plein), sans quoi chaque message d'erreur relancerait l'essai.
+
+local OPEN_DELAY = 0.3
+local BUSY_FRAMES = { "MerchantFrame", "BankFrame", "TradeFrame", "MailFrame", "AuctionHouseFrame",
+                      "AuctionFrame", "GuildBankFrame", "ItemSocketingFrame" }
+local openPending = false
+
+local function ContainersBusy()
+    if NS.InCombat() or (_G.UnitAffectingCombat and UnitAffectingCombat("player")) then return true end
+    if (_G.GetNumLootItems and GetNumLootItems() or 0) > 0 then return true end
+    for _, name in ipairs(BUSY_FRAMES) do
+        local frame = _G[name]
+        if frame and frame.IsShown and frame:IsShown() then return true end
+    end
+    return false
+end
+
+local function OpenOneContainer()
+    openPending = false
+    if not (active and Automation.db.openContainers) or ContainersBusy() then return end
+    if (_G.SpellIsTargeting and SpellIsTargeting()) or not NS.CursorEmpty() then return end
+    local free = 0
+    for bag = 0, NS.NUM_BAGS do free = free + NS.GetBagFreeSlots(bag) end
+    if free == 0 then return end   -- le contenu n'aurait nulle part où aller
+    for bag = 0, NS.NUM_BAGS do
+        for slot = 1, NS.GetBagSlots(bag) do
+            local item = NS.GetBagItem(bag, slot)
+            if item and item.hasLoot and not item.isLocked
+                and FirstTry(string.format("open:%d:%d:%s:%d", bag, slot, tostring(item.itemID), item.stackCount or 1)) then
+                NS.UseBagItem(bag, slot)
+                return
+            end
+        end
+    end
+end
+
+local function ScheduleOpenContainer()
+    if openPending or not (active and Automation.db.openContainers) then return end
+    openPending = true
+    C_Timer.After(OPEN_DELAY, OpenOneContainer)
+end
+
+--------------------------------------------------------------------------------
+-- Journal de combat en instance
+--------------------------------------------------------------------------------
+-- Lance /combatlog à l'entrée d'un raid (logRaid) ou d'un donjon (logDungeon) et l'arrête à la
+-- sortie, seulement s'il l'a lancé : un journal démarré à la main n'est jamais coupé.
+
+local function CombatLogging()
+    if _G.C_ChatInfo and C_ChatInfo.IsLoggingCombat then return C_ChatInfo.IsLoggingCombat() == true end
+    return _G.LoggingCombat and LoggingCombat() == true
+end
+
+function Automation:SyncCombatLog()
+    if not _G.LoggingCombat then return end
+    local db = self.db
+    if db.logStarted and not CombatLogging() then db.logStarted = false end   -- coupé à la main depuis
+    local _, instanceType = IsInInstance()
+    local wanted = active and ((instanceType == "raid" and self.db.logRaid)
+        or (instanceType == "party" and self.db.logDungeon))
+    if wanted and not db.logStarted and not CombatLogging() then
+        LoggingCombat(true)
+        db.logStarted = true
+        NS.Print(L.AUTO_LOG_STARTED)
+    elseif not wanted and db.logStarted then
+        db.logStarted = false
+        LoggingCombat(false)
+        NS.Print(L.AUTO_LOG_STOPPED)
+    end
+end
 
 --------------------------------------------------------------------------------
 -- Récompense la plus chère
@@ -534,7 +724,8 @@ end
 
 local function SkipCinematic()
     if not Automation.db.skipCinematics then return end
-    C_Timer.After(0, function()
+    C_Timer.After(Automation.db.skipCinematicsDelay, function()
+        if _G.CinematicFrame and CinematicFrame.IsShown and not CinematicFrame:IsShown() then return end
         if _G.CinematicFrame_CancelCinematic then CinematicFrame_CancelCinematic()
         elseif _G.StopCinematic then StopCinematic() end
     end)
@@ -542,7 +733,8 @@ end
 
 local function SkipMovie()
     if not Automation.db.skipCinematics then return end
-    C_Timer.After(0, function()
+    C_Timer.After(Automation.db.skipCinematicsDelay, function()
+        if _G.MovieFrame and MovieFrame.IsShown and not MovieFrame:IsShown() then return end
         if _G.MovieFrame and MovieFrame.StopMovie then MovieFrame:StopMovie()
         elseif _G.GameMovieFinished then GameMovieFinished() end
     end)
@@ -578,6 +770,17 @@ events:SetScript("OnEvent", function(_, event, ...)
         StopSelling(true)
     elseif event == "BAG_UPDATE_DELAYED" or event == "ITEM_LOCK_CHANGED" then
         if next(sellPending) then SettleSales() end
+        if event == "BAG_UPDATE_DELAYED" then ScheduleOpenContainer() end
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        ScheduleOpenContainer()   -- ouvertures ignorées pendant le combat
+    elseif event == "TRAINER_SHOW" or event == "TRAINER_UPDATE" or event == "TRAINER_CLOSED" then
+        OnTrainerEvent(event)
+    elseif event == "ADDON_LOADED" then
+        if (...) == "Blizzard_TrainerUI" then OnTrainerEvent("TRAINER_SHOW") end
+    elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
+        Automation:SyncCombatLog()
+    elseif event == "GOSSIP_SHOW" then
+        Automation:OnGossip()
     elseif event == "LEARNED_SPELL_IN_SKILL_LINE" then
         Automation:OnSpellLearned((...))
     elseif event == "SPELLS_CHANGED" or event == "CURSOR_CHANGED" then
@@ -614,7 +817,9 @@ function Automation:OnEnable()
                              "PLAYER_UNGHOST", "PARTY_INVITE_REQUEST", "LOOT_READY", "CINEMATIC_START",
                              "PLAY_MOVIE", "CHAT_MSG_SYSTEM", "GET_ITEM_INFO_RECEIVED", "QUEST_ITEM_UPDATE",
                              "BAG_UPDATE_DELAYED", "ITEM_LOCK_CHANGED", "LEARNED_SPELL_IN_SKILL_LINE",
-                             "SPELLS_CHANGED" }) do
+                             "SPELLS_CHANGED", "PLAYER_REGEN_ENABLED", "TRAINER_SHOW", "TRAINER_UPDATE",
+                             "TRAINER_CLOSED", "ADDON_LOADED", "PLAYER_ENTERING_WORLD",
+                             "ZONE_CHANGED_NEW_AREA" }) do
         NS.RegisterEventSafe(events, event)
     end
     for event in pairs(QUEST_HANDLERS) do
@@ -637,6 +842,8 @@ function Automation:OnEnable()
         QuestFrameRewardPanel:HookScript("OnShow", MarkBestReward)
         rewardHooked = true
     end
+    EnsureTrainButton()
+    self:SyncCombatLog()
     -- Activé alors que le joueur est déjà mort : armer tout de suite.
     if _G.UnitIsDead and UnitIsDead("player") then self:ArmReleaseGuard() end
 end
@@ -648,10 +855,15 @@ function Automation:OnDisable()
     wipe(uprankPending)
     uprankWaiting = false
     Disarm()
+    trainLeft, openPending = 0, false
+    self:SyncCombatLog()
+    RefreshTrainButton()
 end
 
 function Automation:OnRefresh()
     if not self.db.releaseGuard then Disarm() end
+    self:SyncCombatLog()
+    RefreshTrainButton()
 end
 
 --------------------------------------------------------------------------------
@@ -663,10 +875,14 @@ function Automation:BuildOptions(o)
     o:Check("repair", L.OPT_AUTO_REPAIR)
     o:Check("repairGuild", L.OPT_AUTO_REPAIR_GUILD, 36)
     o:Check("sellJunk", L.OPT_AUTO_SELL)
+    o:Check("soldCoinIcons", L.OPT_G_QOL_SOLD_COIN_ICONS, 36)
+    o:Check("trainAll", L.OPT_AUTO_TRAIN_ALL)
     o:Title(L.OPT_AUTO_LOOT_QUESTS)
     o:Check("quickLoot", L.OPT_AUTO_QUICK_LOOT)
     o:Check("autoQuests", L.OPT_AUTO_QUESTS)
     o:Check("questRewardMark", L.OPT_AUTO_QUEST_REWARD_MARK)
+    o:Check("autoGossip", L.OPT_AUTO_GOSSIP)
+    o:Check("openContainers", L.OPT_AUTO_CONTAINERS)
     o:Title(L.OPT_AUTO_DEATH)
     o:Check("releaseGuard", L.OPT_AUTO_RELEASE)
     o:Check("releaseInstanceOnly", L.OPT_AUTO_RELEASE_INSTANCE, 36)
@@ -677,7 +893,10 @@ function Automation:BuildOptions(o)
     o:Check("acceptInvites", L.OPT_AUTO_INVITES)
     o:Check("fastDelete", L.OPT_AUTO_DELETE)
     o:Check("skipCinematics", L.OPT_AUTO_CINEMATICS)
+    o:Slider("skipCinematicsDelay", L.OPT_G_QOL_CINEMATICS_DELAY, 0, 10, 1, 36, "%d s")
     o:Check("announceReset", L.OPT_AUTO_RESET)
+    o:Check("logRaid", L.OPT_AUTO_LOG_RAID)
+    o:Check("logDungeon", L.OPT_AUTO_LOG_DUNGEON)
     o:Check("uprank", L.OPT_AUTO_UPRANK)
     o:Hint(L.OPT_AUTO_UPRANK_HINT)
 end

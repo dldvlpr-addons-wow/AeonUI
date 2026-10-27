@@ -63,7 +63,7 @@ function ProfileShare:Send()
         NS.Print(sending and L.MSG_PROFILE_SENDING or L.MSG_PROFILE_NO_GROUP)
         return false
     end
-    local parts = ProfileShare.Split(NS.Database.Export(NS.db))
+    local parts = ProfileShare.Split(NS.Database.ExportProfile(NS.db))
     local index, retries = 1, 0
     sending = C_Timer.NewTicker(SEND_INTERVAL, function()
         local ok, result = pcall(SendMessage, PREFIX, parts[index], channel)

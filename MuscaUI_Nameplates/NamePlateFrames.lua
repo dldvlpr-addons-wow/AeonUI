@@ -74,6 +74,9 @@ local NamePlateFrames = NS.Modules:Register("nameplateframes", {
         rangeAlpha = 0.5,
         questIcon = true,            -- icône sur les unités liées à une quête en cours
         castTarget = true,           -- barre d'incantation : cible du sort après son nom
+        castTimer = false,           -- barre d'incantation : temps restant à droite (lu par UnitFrameElements)
+        targetScale = 1,             -- échelle de la plaque de la cible (1 à 1,5), multipliée à celle d'une règle
+        nonTargetAlpha = 0.7,        -- opacité des autres plaques quand une cible existe (avec la surbrillance)
         interruptReady = true,       -- barre d'incantation colorée quand ton interruption est prête
         interruptReadyColor = { r = 0.2, g = 0.85, b = 0.35 },
         importantCast = true,        -- barre d'incantation colorée quand le sort est marqué important
@@ -83,6 +86,22 @@ local NamePlateFrames = NS.Modules:Register("nameplateframes", {
         pets = true,                 -- plaques sur les familiers et gardiens
         maxDistance = 60,            -- portée d'affichage des plaques, en mètres
         hideWorldNames = false,      -- noms flottants Blizzard masqués (visibles au-delà de la portée)
+        nameOffset = 0,              -- distance du nom (et du niveau) à la barre, en pixels
+        nameFormat = "full",         -- "full" | "first" | "last" : mot du nom affiché
+        nameColorCustom = false, nameColorValue = { r = 1, g = 1, b = 1 },
+        levelColorCustom = false, levelColorValue = { r = 1, g = 0.82, b = 0 },
+        hideNameWhileCasting = false, -- ennemi : nom masqué pendant son incantation
+        castScale = 1,               -- échelle de la plaque d'un ennemi qui incante (1 à 1,5)
+        castIconScale = 1, castIconRight = false, castSpark = false,
+        targetOverlay = false, targetOverlayColor = { r = 1, g = 1, b = 1 },
+        focusOverlay = false, focusOverlayColor = { r = 0.4, g = 0.7, b = 1 },
+        hoverOverlay = false, hoverOverlayColor = { r = 1, g = 1, b = 1 },
+        targetGlow = false, targetGlowStyle = "pixel",
+        healthMarker = 0,            -- trait de seuil sur la barre de vie, en % (0 = aucun)
+        raidIconSize = 0,            -- 0 : taille d'origine
+        raidIconSide = "top",        -- "top" | "left" | "right"
+        borderNone = false,          -- plaque sans bordure
+        neutralColor = false, neutralColorValue = { r = 0.95, g = 0.85, b = 0.3 },
     },
 })
 
@@ -308,16 +327,32 @@ function NamePlateFrames:ApplyStyle(frame)
     local rule = self:MatchStyle(frame.unit)
     frame.styleRule = rule
     -- Bornes : une valeur importée d'une chaîne tierce ne doit pas lever d'erreur (SetScale(0)).
-    local scale = math.max(0.5, math.min(2, rule and tonumber(rule.scale) or 1))
+    local scale = rule and tonumber(rule.scale) or 1
+    if IsTarget(frame.unit) then scale = scale * math.max(1, math.min(1.5, tonumber(self.db.targetScale) or 1)) end
+    if not frame.friendly and (tonumber(self.db.castScale) or 1) > 1 and IsCasting(frame.unit) then
+        scale = scale * math.min(1.5, tonumber(self.db.castScale))
+    end
+    scale = math.max(0.5, math.min(2, scale))
     if frame.styleScale ~= scale then
         frame.styleScale = scale
         frame:SetScale(scale)
     end
-    if not rule then NS.Glow.Hide(frame) return end
+    -- Lueur de la cible : sous celle d'une règle, qui prime.
+    local targetGlow = self.db.targetGlow and IsTarget(frame.unit) and not frame.cfg.healthHidden
+    local accent
+    if targetGlow then
+        accent = { a = 0.6 }
+        accent.r, accent.g, accent.b = NS.Media:Accent()
+    end
+    if not rule then NS.Glow.Set(frame, targetGlow, self.db.targetGlowStyle, accent) return end
     local c = rule.colorValue
     if rule.color then frame.health:SetStatusBarColor(c.r, c.g, c.b) end
     -- Allié en nom seul : pas de lueur autour du nom.
-    NS.Glow.Set(frame, rule.glow and not frame.cfg.healthHidden, rule.glowStyle, { r = c.r, g = c.g, b = c.b, a = 0.6 })
+    if rule.glow and not frame.cfg.healthHidden then
+        NS.Glow.Show(frame, rule.glowStyle, { r = c.r, g = c.g, b = c.b, a = 0.6 })
+    else
+        NS.Glow.Set(frame, targetGlow, self.db.targetGlowStyle, accent)
+    end
     local alpha = math.max(0, math.min(1, tonumber(rule.alpha) or 1))
     if rule.hide then alpha = 0 end
     if alpha < 1 then
@@ -341,6 +376,7 @@ local function Config(unit)
         ccSlot = db.ccSlot and db.showAuras and not friendly,
         name = db.showName, level = db.showLevel,
         healthHidden = friendly and not db.friendlyHealth,
+        nameColor = db.nameColorCustom and db.nameColorValue or nil,
     }
 end
 
@@ -360,6 +396,17 @@ local function NewFrame()
     Elements.Build(frame)
     Elements.BuildCrowdControlSlot(frame)
     frame.plateComboPips = {}
+    -- Recouvrements (cible/focus, survol) et trait de seuil, au-dessus de la couleur de la barre.
+    frame.tint = frame.health:CreateTexture(nil, "OVERLAY", nil, 2)
+    frame.tint:SetAllPoints(frame.health)
+    frame.tint:Hide()
+    frame.hoverTint = frame.health:CreateTexture(nil, "OVERLAY", nil, 3)
+    frame.hoverTint:SetAllPoints(frame.health)
+    frame.hoverTint:Hide()
+    frame.marker = frame.health:CreateTexture(nil, "OVERLAY", nil, 4)
+    frame.marker:Hide()
+    frame.castbar.spark = frame.castbar:CreateTexture(nil, "OVERLAY", nil, 7)
+    frame.castbar.spark:Hide()
     return frame
 end
 
@@ -399,16 +446,20 @@ local function PlateLayout(frame)
         NS.Media:SetTextSizeDelta(frame.name, delta)
         NS.Media:SetTextSizeDelta(frame.level, delta - 1)
         NS.Media:SetTextSizeDelta(frame.health.text, delta - 1)
-        NS.Media:SetTextSizeDelta(frame.castbar.text, delta - 1)
     end
+    -- Elements.Layout remet ces deux textes à leur taille d'origine à chaque appel : reposés à chaque fois.
+    local castDelta = delta - 1 + (tonumber(frame.global.castTextSize) or 0)
+    NS.Media:SetTextSizeDelta(frame.castbar.text, castDelta)
+    NS.Media:SetTextSizeDelta(frame.castbar.timeText, castDelta)
     -- Nom et niveau sont créés enfants de la barre de vie : cacher la barre (alliés) les cacherait.
     frame.name:SetParent(frame)
     frame.level:SetParent(frame)
     frame.name:ClearAllPoints()
-    frame.name:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, px + 1)
+    local nameOffset = tonumber(frame.global.nameOffset) or 0
+    frame.name:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, px + 1 + nameOffset)
     frame.name:SetWidth(frame:GetWidth() * 0.75)
     frame.level:ClearAllPoints()
-    frame.level:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, px + 1)
+    frame.level:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, px + 1 + nameOffset)
     frame.health.text:ClearAllPoints()
     frame.health.text:SetPoint("CENTER", frame.health, "CENTER", 0, 0)
     local quest = NS.Pixel:Scale(14)
@@ -420,12 +471,64 @@ local function PlateLayout(frame)
     frame.ccSlot:ClearAllPoints()
     frame.ccSlot:SetPoint("LEFT", frame, "RIGHT", NS.Pixel:Scale(3), 0)
     frame.ccSlot:SetShown(frame.cfg.ccSlot and true or false)
+    local global = frame.global
+    -- Marqueur de raid : taille et côté (Elements.Layout le pose au centre haut, 18 px).
+    local raidSize = tonumber(global.raidIconSize) or 0
+    if raidSize > 0 then frame.raidIcon:SetSize(NS.Pixel:Scale(raidSize), NS.Pixel:Scale(raidSize)) end
+    if global.raidIconSide == "left" then
+        frame.raidIcon:ClearAllPoints()
+        frame.raidIcon:SetPoint("RIGHT", frame, "LEFT", -NS.Pixel:Scale(18), 0)
+    elseif global.raidIconSide == "right" then
+        frame.raidIcon:ClearAllPoints()
+        frame.raidIcon:SetPoint("LEFT", frame, "RIGHT", ccSize + NS.Pixel:Scale(6), 0)
+    end
+    -- Icône d'incantation : échelle et côté ; étincelle au bout du remplissage.
+    local castbar = frame.castbar
+    local iconSize = NS.Pixel:Scale(frame.cfg.castbarHeight or 18) * math.max(0.5, math.min(2, tonumber(global.castIconScale) or 1))
+    castbar.iconFrame:SetSize(iconSize, iconSize)
+    if global.castIconRight then
+        castbar.iconFrame:ClearAllPoints()
+        castbar.iconFrame:SetPoint("LEFT", castbar, "RIGHT", NS.Pixel:Scale(4), 0)
+        -- La réserve de gauche de la barre revient à droite, où se trouve l'icône.
+        if not castbar.detached then
+            local point, relative, relativePoint, x, y = castbar:GetPoint(1)
+            if point == "TOPLEFT" then
+                castbar:ClearAllPoints()
+                castbar:SetPoint(point, relative, relativePoint, 0, y)
+                castbar:SetPoint("TOPRIGHT", relative, "BOTTOMRIGHT", -(iconSize + NS.Pixel:Scale(4)), y)
+            end
+        end
+    end
+    local fill = castbar.GetStatusBarTexture and castbar:GetStatusBarTexture()
+    if global.castSpark and fill then
+        NS.SetSolidColor(castbar.spark, 1, 1, 1, 0.8)
+        castbar.spark:ClearAllPoints()
+        castbar.spark:SetPoint("TOPRIGHT", fill, "TOPRIGHT", 0, 0)
+        castbar.spark:SetPoint("BOTTOMRIGHT", fill, "BOTTOMRIGHT", 0, 0)
+        castbar.spark:SetWidth(px * 2)
+        castbar.spark:Show()
+    else
+        castbar.spark:Hide()
+    end
+    -- Trait de seuil de vie : position seulement, sans lire la vie (secrète).
+    local threshold = math.max(0, math.min(100, tonumber(global.healthMarker) or 0))
+    if threshold > 0 then
+        local x = (frame.cfg.width or frame:GetWidth() or 0) * threshold / 100
+        NS.SetSolidColor(frame.marker, 1, 1, 1, 0.9)
+        frame.marker:ClearAllPoints()
+        frame.marker:SetPoint("TOPLEFT", frame.health, "TOPLEFT", x, 0)
+        frame.marker:SetPoint("BOTTOMLEFT", frame.health, "BOTTOMLEFT", x, 0)
+        frame.marker:SetWidth(px)
+        frame.marker:Show()
+    else
+        frame.marker:Hide()
+    end
     if frame.cfg.healthHidden then
         frame.health:Hide()
         for _, edge in pairs(frame.border) do edge:Hide() end
     else
         frame.health:Show()
-        for _, edge in pairs(frame.border) do edge:Show() end
+        for _, edge in pairs(frame.border) do edge:SetShown(not global.borderNone) end
     end
 end
 
@@ -437,7 +540,14 @@ function NamePlateFrames:ApplyHealthColor(frame, baseFresh)
     local db, unit = self.db, frame.unit
     local r, g, b
     if not IsFriendly(unit) then
-        if db.classificationColors then r, g, b = NamePlateFrames.ClassificationColor(unit) end
+        if db.neutralColor and _G.UnitReaction and Known(UnitReaction(unit, "player")) == 4 then
+            local c = db.neutralColorValue
+            r, g, b = c.r, c.g, c.b
+        end
+        if db.classificationColors then
+            local cr, cg, cb = NamePlateFrames.ClassificationColor(unit)
+            if cr then r, g, b = cr, cg, cb end
+        end
         if db.threatColor then
             local tr, tg, tb = NamePlateFrames.ThreatColor(unit)
             if tr then r, g, b = tr, tg, tb end
@@ -476,6 +586,64 @@ function NamePlateFrames:ApplyRange(frame)
     NS.SetAttackRangeAlpha(frame, frame.unit, base, base * self.db.rangeAlpha)
 end
 
+local function IsMouseover(unit)
+    if not _G.UnitIsUnit then return false end
+    local same = UnitIsUnit(unit, "mouseover")
+    return not NS.IsSecret(same) and same and true or false
+end
+
+local hoverTicker
+
+--- Recouvrement de survol : l'unité sous la souris (UPDATE_MOUSEOVER_UNIT). L'événement ne part
+-- pas à la fin du survol : un ticker unique relance le calcul tant que la souris est sur une unité.
+function NamePlateFrames:ApplyHover(frame)
+    local c = self.db.hoverOverlayColor
+    local on = self.db.hoverOverlay and frame.unit and not frame.cfg.healthHidden and IsMouseover(frame.unit)
+    if on then
+        NS.SetSolidColor(frame.hoverTint, c.r, c.g, c.b, 0.2)
+        if not hoverTicker then
+            hoverTicker = C_Timer.NewTicker(0.1, function()
+                for _, plate in pairs(byUnit) do NamePlateFrames:ApplyHover(plate) end
+                if not (_G.UnitExists and UnitExists("mouseover")) then
+                    hoverTicker:Cancel()
+                    hoverTicker = nil
+                end
+            end)
+        end
+    end
+    frame.hoverTint:SetShown(on and true or false)
+end
+
+--- Format du nom, nom masqué en incantation, couleur du niveau, recouvrements cible/focus.
+-- Posés après UpdateName et UpdateLevel, qui remettent texte et couleurs d'origine.
+function NamePlateFrames:ApplyExtras(frame)
+    local db, unit = self.db, frame.unit
+    if not unit then return end
+    if db.nameFormat ~= "full" then
+        local name = Known(UnitName(unit))   -- nom secret : laissé entier
+        if type(name) == "string" then
+            frame.name:SetText(db.nameFormat == "first" and name:match("^(%S+)") or name:match("(%S+)$") or name)
+        end
+    end
+    if db.hideNameWhileCasting or frame.nameCastHidden then
+        local hide = db.hideNameWhileCasting and not frame.friendly and IsCasting(unit)
+        frame.nameCastHidden = hide or nil
+        frame.name:SetShown(db.showName and not hide)
+    end
+    if db.levelColorCustom then
+        local c = db.levelColorValue
+        frame.level:SetTextColor(c.r, c.g, c.b)
+    end
+    local tint
+    if not frame.cfg.healthHidden then
+        if db.targetOverlay and IsTarget(unit) then tint = db.targetOverlayColor
+        elseif db.focusOverlay and NS.IsFocus(unit) == true then tint = db.focusOverlayColor end
+    end
+    if tint then NS.SetSolidColor(frame.tint, tint.r, tint.g, tint.b, 0.3) end
+    frame.tint:SetShown(tint ~= nil)
+    self:ApplyHover(frame)
+end
+
 function NamePlateFrames:UpdateHighlight(frame)
     frame.isTarget = NS.IsTarget(frame.unit) ~= false   -- secret : peut-être la cible, refaite au changement
     local highlighted = self.db.targetHighlight and IsTarget(frame.unit) and true or false
@@ -490,10 +658,12 @@ function NamePlateFrames:UpdateHighlight(frame)
         end
     end
     -- Opacité gardée en Lua : relire GetAlpha après SetAlphaFromBoolean (portée) rendrait un secret.
-    local alpha = (not highlighted and self.db.targetHighlight and UnitExists("target")) and 0.7 or 1
+    local focused = NS.IsFocus(frame.unit) == true   -- le focus reste opaque comme la cible ; secret : traité en non-focus
+    local alpha = (not highlighted and not focused and self.db.targetHighlight and UnitExists("target")) and math.max(0, math.min(1, tonumber(self.db.nonTargetAlpha) or 0.7)) or 1
     frame:SetAlpha(alpha)
     frame.baseAlpha = self:ApplyStyle(frame) or alpha
     self:ApplyRange(frame)
+    self:ApplyExtras(frame)
 end
 
 --- `refreshAuras` : montage ou changement de réglage ; sans lui, le conteneur ne relit que si l'unité change.
@@ -635,6 +805,10 @@ events:SetScript("OnEvent", function(_, event, unit)
         if NamePlateFrames.db.questIcon then
             for _, frame in pairs(byUnit) do NamePlateFrames:UpdateQuestIcon(frame) end
         end
+    elseif event == "UPDATE_MOUSEOVER_UNIT" then
+        for _, frame in pairs(byUnit) do NamePlateFrames:ApplyHover(frame) end
+    elseif event == "PLAYER_FOCUS_CHANGED" then
+        for _, frame in pairs(byUnit) do NamePlateFrames:ApplyExtras(frame) end
     elseif event == "RAID_TARGET_UPDATE" then
         for _, frame in pairs(byUnit) do Elements.UpdateRaidIcon(frame) end
     elseif event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
@@ -701,7 +875,7 @@ function NamePlateFrames:OnEnable()
     active = true
     for _, event in ipairs({ "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED", "PLAYER_TARGET_CHANGED",
                              "RAID_TARGET_UPDATE", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
-                             "QUEST_LOG_UPDATE" }) do
+                             "QUEST_LOG_UPDATE", "UPDATE_MOUSEOVER_UNIT", "PLAYER_FOCUS_CHANGED" }) do
         NS.RegisterEventSafe(events, event)
     end
     for _, event in ipairs(UNIT_EVENTS) do NS.RegisterEventSafe(events, event) end
@@ -744,6 +918,21 @@ function NamePlateFrames:BuildOptions(o)
     o:Check("showLevel", L.OPT_UF_UNIT_LEVEL)
     o:Advanced()
     o:Slider("fontDelta", L.OPT_NPF_FONT_DELTA, -4, 4, 1, nil, "%+d")
+    o:Slider("nameOffset", L.OPT_NP_G_NAME_OFFSET, -6, 20, 1, 36, "%+d")
+    o:Dropdown("nameFormat", L.OPT_NP_G_NAME_FORMAT, {
+        { name = L.OPT_NP_G_NAME_FULL, value = "full" }, { name = L.OPT_NP_G_NAME_FIRST, value = "first" },
+        { name = L.OPT_NP_G_NAME_LAST, value = "last" },
+    }, 36)
+    o:Check("nameColorCustom", L.OPT_NP_G_NAME_COLOR, 36)
+    o:Color("nameColorValue", L.OPT_NP_G_NAME_COLOR_VALUE, 52)
+    o:Check("levelColorCustom", L.OPT_NP_G_LEVEL_COLOR, 36)
+    o:Color("levelColorValue", L.OPT_NP_G_LEVEL_COLOR_VALUE, 52)
+    o:Check("hideNameWhileCasting", L.OPT_NP_G_HIDE_NAME_CAST, 36)
+    o:Slider("raidIconSize", L.OPT_NP_G_RAID_SIZE, 0, 40, 2, 36)
+    o:Dropdown("raidIconSide", L.OPT_NP_G_RAID_SIDE, {
+        { name = L.OPT_NP_G_SIDE_TOP, value = "top" }, { name = L.OPT_NP_G_SIDE_LEFT, value = "left" },
+        { name = L.OPT_NP_G_SIDE_RIGHT, value = "right" },
+    }, 36)
     o:EndAdvanced()
     o:Dropdown("healthText", L.OPT_UF_HEALTH_TEXT, Elements.TextModeChoices)
     o:Advanced()
@@ -754,8 +943,13 @@ function NamePlateFrames:BuildOptions(o)
     o:Slider("castbarHeight", L.OPT_UF_CASTBAR_HEIGHT, 6, 24, 1, 36)
     o:EndAdvanced()
     o:Check("castTarget", L.OPT_CAST_TARGET, 36)
+    o:Check("castTimer", L.OPT_CAST_TIMER, 36)
     o:Check("interruptReady", L.OPT_CAST_INTERRUPT_READY, 36)
     o:Advanced()
+    o:Slider("castScale", L.OPT_NP_G_CAST_SCALE, 1, 1.5, 0.05, 36, "%.2f")
+    o:Slider("castIconScale", L.OPT_NP_G_CAST_ICON_SCALE, 0.5, 2, 0.1, 36, "%.1f")
+    o:Check("castIconRight", L.OPT_NP_G_CAST_ICON_RIGHT, 36)
+    o:Check("castSpark", L.OPT_NP_G_CAST_SPARK, 36)
     o:Color("interruptReadyColor", L.OPT_CAST_INTERRUPT_READY_COLOR, 52)
     o:EndAdvanced()
     o:Check("importantCast", L.OPT_CAST_IMPORTANT, 36)
@@ -778,6 +972,20 @@ function NamePlateFrames:BuildOptions(o)
     o:Slider("maxDistance", L.OPT_NPF_MAX_DISTANCE, 20, 60, 5)
     o:Check("hideWorldNames", L.OPT_NPF_HIDE_WORLD_NAMES)
     o:Check("targetHighlight", L.OPT_NPF_TARGET_HIGHLIGHT)
+    o:Slider("nonTargetAlpha", L.OPT_NPF_NON_TARGET_ALPHA, 0.1, 1, 0.05, 36, "%.2f")
+    o:Slider("targetScale", L.OPT_NPF_TARGET_SCALE, 1, 1.5, 0.05, 36, "%.2f")
+    o:Advanced()
+    o:Check("targetOverlay", L.OPT_NP_G_TARGET_OVERLAY, 36)
+    o:Color("targetOverlayColor", L.OPT_NP_G_TARGET_OVERLAY_COLOR, 52)
+    o:Check("focusOverlay", L.OPT_NP_G_FOCUS_OVERLAY, 36)
+    o:Color("focusOverlayColor", L.OPT_NP_G_FOCUS_OVERLAY_COLOR, 52)
+    o:Check("hoverOverlay", L.OPT_NP_G_HOVER_OVERLAY, 36)
+    o:Color("hoverOverlayColor", L.OPT_NP_G_HOVER_OVERLAY_COLOR, 52)
+    o:Check("targetGlow", L.OPT_NP_G_TARGET_GLOW, 36)
+    o:Dropdown("targetGlowStyle", L.OPT_GLOW_STYLE, NS.Glow.Choices(), 52)
+    o:Slider("healthMarker", L.OPT_NP_G_HEALTH_MARKER, 0, 100, 5, 36)
+    o:Check("borderNone", L.OPT_NP_G_BORDER_NONE, 36)
+    o:EndAdvanced()
     o:Check("threatColor", L.OPT_NPF_THREAT)
     o:Advanced()
     o:Dropdown("threatRole", L.OPT_NPF_THREAT_ROLE, {
@@ -796,6 +1004,10 @@ function NamePlateFrames:BuildOptions(o)
     o:Color("classificationColor.elite", L.STYLE_CLASS_ELITE, 36)
     o:Color("classificationColor.rare", L.STYLE_CLASS_RARE, 36)
     o:Color("classificationColor.caster", L.NPF_CASTER, 36)
+    o:EndAdvanced()
+    o:Check("neutralColor", L.OPT_NP_G_NEUTRAL)
+    o:Advanced()
+    o:Color("neutralColorValue", L.OPT_NP_G_NEUTRAL_COLOR, 36)
     o:EndAdvanced()
     o:Check("darkenOutOfCombat", L.OPT_NPF_DARKEN_OOC)
     o:Check("rangeFade", L.OPT_NPF_RANGE_FADE)

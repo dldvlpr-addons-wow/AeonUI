@@ -17,11 +17,16 @@ local Cursor = NS.Modules:Register("cursor", {
         ringSize = 48,
         ringCombatOnly = true,
         ringColor = { r = 0.25, g = 0.66, b = 0.96 },
+        ringClassColor = false,   -- anneau à la couleur de la classe (prioritaire sur ringColor)
+        ringOpacity = 1,
         crosshair = false,
         crosshairSize = 20,
         crosshairThickness = 2,
         crosshairCombatOnly = true,
         crosshairColor = { r = 1, g = 1, b = 1 },
+        crosshairOpacity = 0.9,
+        crosshairOffsetX = 0,
+        crosshairOffsetY = 0,
     },
 })
 
@@ -60,16 +65,23 @@ function Cursor:Update(event)
 
     local showRing = active and db.ring and (inCombat or not db.ringCombatOnly)
     ring:SetSize(db.ringSize, db.ringSize)
-    ring.texture:SetVertexColor(db.ringColor.r, db.ringColor.g, db.ringColor.b, 1)
+    local ringColor = db.ringColor
+    if db.ringClassColor then
+        local r, g, b = NS.ClassColor(select(2, UnitClass("player")))
+        ringColor = { r = r, g = g, b = b }
+    end
+    ring.texture:SetVertexColor(ringColor.r, ringColor.g, ringColor.b, db.ringOpacity)
     ring:SetShown(showRing and true or false)
 
     local showCross = active and db.crosshair and (inCombat or not db.crosshairCombatOnly)
     local c = db.crosshairColor
     crosshair:SetSize(db.crosshairSize, db.crosshairSize)
+    crosshair:ClearAllPoints()
+    crosshair:SetPoint("CENTER", UIParent, "CENTER", db.crosshairOffsetX, db.crosshairOffsetY)
     crosshair.h:SetSize(db.crosshairSize, db.crosshairThickness)
     crosshair.v:SetSize(db.crosshairThickness, db.crosshairSize)
-    NS.SetSolidColor(crosshair.h, c.r, c.g, c.b, 0.9)
-    NS.SetSolidColor(crosshair.v, c.r, c.g, c.b, 0.9)
+    NS.SetSolidColor(crosshair.h, c.r, c.g, c.b, db.crosshairOpacity)
+    NS.SetSolidColor(crosshair.v, c.r, c.g, c.b, db.crosshairOpacity)
     crosshair:SetShown(showCross and true or false)
 end
 
@@ -100,6 +112,8 @@ function Cursor:BuildOptions(o)
     o:Check("ringCombatOnly", L.OPT_CURSOR_COMBAT_ONLY, 36)
     o:Slider("ringSize", L.OPT_CURSOR_SIZE, 24, 128, 4, 36)
     o:Color("ringColor", L.OPT_CURSOR_COLOR, 36)
+    o:Check("ringClassColor", L.OPT_G_QOL_CURSOR_CLASS_COLOR, 36)
+    o:Slider("ringOpacity", L.OPT_G_QOL_OPACITY, 0.1, 1, 0.05, 36, "%.2f")
     o:Title(L.OPT_CURSOR_CROSSHAIR)
     o:Check("crosshair", L.OPT_CURSOR_CROSSHAIR_SHOW)
     o:Check("crosshairCombatOnly", L.OPT_CURSOR_COMBAT_ONLY, 36)
@@ -108,4 +122,7 @@ function Cursor:BuildOptions(o)
     o:Slider("crosshairThickness", L.OPT_CURSOR_THICKNESS, 1, 6, 1, 36)
     o:EndAdvanced()
     o:Color("crosshairColor", L.OPT_CURSOR_COLOR, 36)
+    o:Slider("crosshairOpacity", L.OPT_G_QOL_OPACITY, 0.1, 1, 0.05, 36, "%.2f")
+    o:Slider("crosshairOffsetX", L.OPT_G_QOL_OFFSET_X, -200, 200, 1, 36)
+    o:Slider("crosshairOffsetY", L.OPT_G_QOL_OFFSET_Y, -200, 200, 1, 36)
 end

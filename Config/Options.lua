@@ -341,8 +341,11 @@ function ModuleOptions:Visibility(key, label, opts)
         { name = L.OPT_VIS_NO, value = "no" },
     }
     for _, condition in ipairs(NS.Visibility.CONDITIONS) do
-        if not (secure and condition == "instance") then
-            self:Dropdown(KeyAt(key, "." .. condition), L["OPT_VIS_" .. condition:upper()], choices, indent)
+        -- Cadre sécurisé : seules les conditions macro (et « manette », filtre hors combat) existent.
+        local available = not secure or NS.Visibility.MACRO[condition] or (condition == "gamepad" and not opts.hideClauses)
+        if available then
+            local label = L["OPT_VIS_" .. condition:upper()] or L["OPT_G_CORE_VIS_" .. condition:upper()]
+            self:Dropdown(KeyAt(key, "." .. condition), label, choices, indent)
         end
     end
     if not opts.noMouseover then self:Check(KeyAt(key, ".mouseover"), L.OPT_VIS_MOUSEOVER, indent) end
@@ -429,6 +432,28 @@ local function BuildGeneral()
         function() NS:Fire("THEME_CHANGED") end)
     layout:Color(L.OPT_BORDER_COLOR, function() return NS.db.theme.border end,
         function() NS:Fire("THEME_CHANGED") end)
+    -- Couleurs d'un profil à l'autre : le profil actif donne les siennes à tous, ou prend celles d'un autre.
+    layout:Button(L.OPT_G_CORE_COLORS_APPLY_ALL, function()
+        Confirm("MUSCAUI_COLORS_APPLY_ALL", L.OPT_G_CORE_COLORS_APPLY_ALL_CONFIRM, function()
+            NS.Database:CopyThemeColorsToAll(NS.Database:ActiveProfileName())
+        end)
+    end)
+    layout:Dropdown(L.OPT_G_CORE_COLORS_PULL, function()
+            local list = {}
+            for _, name in ipairs(NS.Database:ListProfiles()) do
+                if name ~= NS.Database:ActiveProfileName() then list[#list + 1] = { name = name, value = name } end
+            end
+            return list
+        end,
+        function() return nil end,
+        function(name)
+            Confirm("MUSCAUI_COLORS_PULL", string.format(L.OPT_G_CORE_COLORS_PULL_CONFIRM, name), function()
+                NS.Database:CopyThemeColors(name, NS.Database:ActiveProfileName())
+                NS.Database:SyncVariants(NS.db)
+                NS:Fire("THEME_CHANGED")
+                layout:Refresh()
+            end)
+        end)
     NS.Database.bounds["theme.borderSize"] = { 1, 4 }
     layout:Slider(L.OPT_BORDER_SIZE, 1, 4, 1,
         function() return NS.db.theme.borderSize or 1 end,
@@ -446,6 +471,17 @@ local function BuildGeneral()
         function() return NS.db.theme.optionsScale or 1 end,
         function(value) NS.db.theme.optionsScale = value; NS.OptionsWindow:ApplyScale() end, nil, "%.2f")
 
+    -- Lueurs (Core/Glow) : épaisseur des traits « pixel » et vitesse des lueurs animées.
+    layout:Title(L.OPT_G_CORE_GLOW)
+    NS.Database.bounds["theme.glowThickness"] = { 1, 4 }
+    layout:Slider(L.OPT_G_CORE_GLOW_THICKNESS, 1, 4, 1,
+        function() return NS.db.theme.glowThickness or 2 end,
+        function(value) NS.db.theme.glowThickness = value; NS:Fire("THEME_CHANGED") end)
+    NS.Database.bounds["theme.glowSpeed"] = { 0.5, 2 }
+    layout:Slider(L.OPT_G_CORE_GLOW_SPEED, 0.5, 2, 0.1,
+        function() return NS.db.theme.glowSpeed or 1 end,
+        function(value) NS.db.theme.glowSpeed = value; NS:Fire("THEME_CHANGED") end, nil, "%.1f")
+
     layout:Title(L.OPT_MOVERS)
     layout:Dropdown(L.OPT_GRID, {
             { name = L.GRID_NONE, value = 0 }, { name = "16 px", value = 16 }, { name = "32 px", value = 32 },
@@ -453,6 +489,12 @@ local function BuildGeneral()
         function() return NS.db.theme.grid end,
         function(value) NS.db.theme.grid = value; NS:Fire("THEME_CHANGED") end)
     layout:Button(L.OPT_UNLOCK, function() NS:SetUnlocked(not NS.unlocked) end)
+    layout:Hint(L.OPT_G_CORE_UNLOCK_HINT)
+    layout:Check(L.OPT_G_CORE_MOVER_COLOR_CUSTOM,
+        function() return NS.db.theme.moverCustom end,
+        function(value) NS.db.theme.moverCustom = value; NS:Fire("THEME_CHANGED") end)
+    layout:Color(L.OPT_G_CORE_MOVER_COLOR, function() return NS.db.theme.moverColor end,
+        function() NS:Fire("THEME_CHANGED") end, 20)
     layout:Button(L.OPT_RESET_POSITIONS, function()
         StaticPopupDialogs.MUSCAUI_RESET_POSITIONS.text = L.MSG_RESET_POSITIONS_CONFIRM
         StaticPopup_Show("MUSCAUI_RESET_POSITIONS")
@@ -462,7 +504,8 @@ local function BuildGeneral()
 end
 
 -- Modules dont les textes et les barres peuvent prendre une police et une texture propres.
-local MEDIA_MODULES = { "unitframes", "groupframes", "nameplateframes", "resourcebars", "swingtimer", "databars" }
+local MEDIA_MODULES = { "unitframes", "groupframes", "nameplateframes", "resourcebars", "swingtimer", "databars", "chat", "questtracker" }
+local MEDIA_WITHOUT_TEXTURE = { chat = true, questtracker = true }   -- pas de barre à texturer : seule la police se choisit
 
 local function FontChoices(inherit)
     local fonts = inherit and { { name = L.OPT_MEDIA_INHERIT, value = "inherit" } } or {}
@@ -520,9 +563,11 @@ local function BuildMedia()
             layout:Dropdown(module.title .. " : " .. L.OPT_FONT, function() return FontChoices(true) end,
                 function() return own() and own().font or "inherit" end,
                 function(value) set("font", value) end, 20)
-            layout:Dropdown(module.title .. " : " .. L.OPT_STATUSBAR, function() return TextureChoices(true) end,
-                function() return own() and own().statusbar or "inherit" end,
-                function(value) set("statusbar", value) end, 20)
+            if not MEDIA_WITHOUT_TEXTURE[name] then
+                layout:Dropdown(module.title .. " : " .. L.OPT_STATUSBAR, function() return TextureChoices(true) end,
+                    function() return own() and own().statusbar or "inherit" end,
+                    function(value) set("statusbar", value) end, 20)
+            end
         end
     end
     layout:Finish()
@@ -651,7 +696,7 @@ local function BuildProfiles()
             end
             source = NS.Database.PartialProfile(NS.db, sections, anchorKeys)
         end
-        transfer.text = NS.Database.Export(source)
+        transfer.text = NS.Database.ExportProfile(source)
         layout:Refresh()
         box:SelectAll()
     end)
@@ -693,6 +738,11 @@ local function BuildProfiles()
             local list = #names <= 8 and table.concat(names, ", ") or string.format(L.MSG_IMPORT_SECTIONS, #names)
             local message = string.format(L.MSG_IMPORT_CONFIRM, NS.Database:ActiveProfileName(), list)
             if skipped > 0 then message = message .. "\n" .. string.format(L.MSG_IMPORT_SKIPPED, skipped) end
+            -- Échelle d'interface différente de la vôtre : à savoir avant de confirmer.
+            local theirs, mine = type(parsed.theme) == "table" and tonumber(parsed.theme.uiScale), NS.Pixel:UserScale()
+            if theirs and Picked("theme") and math.abs(theirs - mine) > 0.001 then
+                message = message .. "\n" .. string.format(L.OPT_G_CORE_IMPORT_SCALE, theirs, mine)
+            end
             -- Même borne que l'aperçu ; la chaîne est déjà reconnue comme profil simple.
             Confirm("MUSCAUI_IMPORT_PROFILE", message .. "\n" .. L.MSG_IMPORT_BACKUP_NOTE,
                 function() NS:ImportProfile(text, allowAccount, sections) end)

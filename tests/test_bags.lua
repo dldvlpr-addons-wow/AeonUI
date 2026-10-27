@@ -240,7 +240,12 @@ test("banque : onglets personnage et bataillon par ID, « Tous », recherche, tr
         AutoDepositItemsIntoBank = function(bankType) deposited = bankType end,
         DoesBankTypeSupportMoneyTransfer = function(bankType) return bankType == 2 end,
         FetchDepositedMoney = function() return 12345 end,
+        FetchNumPurchasedBankTabs = function(bankType) return bankType == 0 and 2 or 1 end,
+        CanPurchaseBankTab = function(bankType) return bankType == 0 end,
     }
+    local previousDialog = StaticPopupDialogs.CONFIRM_BUY_BANK_TAB
+    local bought
+    StaticPopupDialogs.CONFIRM_BUY_BANK_TAB = { OnAccept = function(_, data) bought = data.bankType end }
     Mock.bags[6], Mock.bags[8], Mock.bags[15] = { [1] = { itemID = 10, quality = 0 } }, { [2] = { itemID = 20, quality = 3 } }, {}
     Mock.items[10], Mock.items[20] = { sellPrice = 5 }, { sellPrice = 5 }
     NS.Modules:SetEnabled("bank", true)
@@ -263,7 +268,13 @@ test("banque : onglets personnage et bataillon par ID, « Tous », recherche, tr
     eq(slots[Mock.bagSize + 2]:GetAlpha(), 1)
     window.search:Type("")
     eq(slots[1]:GetAlpha(), 1)
+    truthy(window.purchase:IsShown(), "achat d'onglet proposé")
+    Mock.acceptPopups = true
+    window.purchase:GetScript("OnClick")(window.purchase)
+    Mock.acceptPopups = nil
+    eq(bought, 0, "confirmation Blizzard, onglet du personnage")
     tabButtons[4]:GetScript("OnClick")(tabButtons[4])
+    eq(window.purchase:IsShown(), false, "bataillon plein : pas d'achat d'un autre type")
     eq(slots[1]:GetParent():GetID(), 15, "onglet de bataillon")
     truthy(window.footer:GetText():find(NS.FormatMoney(12345), 1, true), "or de bataillon au pied")
     window.deposit:GetScript("OnClick")(window.deposit)
@@ -289,6 +300,7 @@ test("banque : onglets personnage et bataillon par ID, « Tous », recherche, tr
     Mock.bags[6], Mock.bags[8], Mock.bags[15], Mock.items[10], Mock.items[20], Mock.sortedBank = nil, nil, nil, nil, nil, nil
     _G.C_Bank, Enum.BankType, Enum.PlayerInteractionType = previousBank, previousType, previousInteraction
     _G.C_PlayerInteractionManager = previousManager
+    StaticPopupDialogs.CONFIRM_BUY_BANK_TAB = previousDialog
 end)
 
 test("sacs : liaison non faite (texte, recherche localisée) et section des sacs spéciaux", function()

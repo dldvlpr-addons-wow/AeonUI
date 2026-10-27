@@ -376,21 +376,26 @@ test("fiche : niveau d'objet, moyenne, repère d'enchantement", function()
     reset()
     Mock.equipped[1] = { link = "item:100:0:0", level = 60, quality = 4 }
     Mock.equipped[5] = { link = "item:200:1891:0", level = 58, quality = 3 }
+    Mock.equipped[15] = { link = "item:100:0:0", level = 60, quality = 4 }
     NS.db.modules.gear.missingEnchant = true
     M("gear"):Update()
     local level, warning
     for _, region in ipairs({ CharacterHeadSlot:GetRegions() }) do
         if region.text == "60" then level = region end
+        if region.text == "!" then eq(region:IsShown(), false, "casque : enchant de réputation, pas de repère") end
+    end
+    for _, region in ipairs({ CharacterBackSlot:GetRegions() }) do
         if region.text == "!" then warning = region end
     end
     truthy(level and level:IsShown(), "niveau 60 affiché")
-    truthy(warning and warning:IsShown(), "casque sans enchantement signalé")
+    truthy(warning and warning:IsShown(), "cape sans enchantement signalée")
     for _, region in ipairs({ CharacterChestSlot:GetRegions() }) do
         if region.text == "!" then eq(region:IsShown(), false, "plastron enchanté : pas de repère") end
     end
     eq(M("gear").EnchantID("item:200:1891:0"), 1891)
     eq(M("gear").EnchantID("item:100:0:0"), 0)
     NS.db.modules.gear.missingEnchant = false
+    Mock.equipped[15] = nil
 end)
 
 --------------------------------------------------------------------------------

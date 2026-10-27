@@ -8,7 +8,13 @@ local Media = NS.Media
 
 local function Bar(enabled, overrides)
     -- orientation : "HORIZONTAL" ou "VERTICAL" (remplie de bas en haut ; width = longueur, height = épaisseur)
-    local cfg = { enabled = enabled, width = 300, height = 10, text = true, orientation = "HORIZONTAL" }
+    local cfg = { enabled = enabled, width = 300, height = 10, text = true, orientation = "HORIZONTAL",
+                  separators = "none",       -- graduations : "none" | "5" | "10" (pour cent de la barre)
+                  textBackground = false,    -- fond sombre derrière le texte
+                  textSizeOffset = -2,       -- écart à la police du thème
+                  border = true,             -- bordure du thème autour de la barre
+                  clickThrough = false,      -- la souris traverse la barre (plus d'infobulle)
+                  customColor = false, color = { r = 0.58, g = 0, b = 0.55 } }   -- remplissage à la couleur choisie
     for k, v in pairs(overrides or {}) do cfg[k] = v end
     return cfg
 end
@@ -82,7 +88,8 @@ local function Create(key)
     frame.key = key
     frame:SetFrameStrata("LOW")
     frame:EnableMouse(true)
-    Media:CreateBackdrop(frame)
+    local _, edges = Media:CreateBackdrop(frame)
+    frame.edges = edges
     -- Repos créé avant la barre principale : dessiné dessous, seule la part au-delà de l'XP dépasse.
     frame.rested = Media:CreateStatusBar(frame)
     frame.rested:SetAllPoints(frame)
@@ -92,6 +99,11 @@ local function Create(key)
     frame.bar:SetAllPoints(frame)
     frame.text = Media:CreateText(frame.bar, "OVERLAY", -2)
     frame.text:SetPoint("CENTER")
+    frame.textBackground = frame.bar:CreateTexture(nil, "ARTWORK")
+    NS.SetSolidColor(frame.textBackground, 0, 0, 0, 0.6)
+    frame.textBackground:SetPoint("TOPLEFT", frame.text, "TOPLEFT", -S(3), S(1))
+    frame.textBackground:SetPoint("BOTTOMRIGHT", frame.text, "BOTTOMRIGHT", S(3), -S(1))
+    frame.separators = {}
     frame:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         DataBars["Tooltip_" .. key](GameTooltip)
@@ -112,6 +124,54 @@ local function Layout(frame, cfg)
     -- Texte tourné d'un quart de tour le long d'une barre verticale.
     if frame.text.SetRotation then frame.text:SetRotation(vertical and math.pi / 2 or 0) end
     if cfg.text then frame.text:Show() else frame.text:Hide() end
+    Media:SetTextSizeDelta(frame.text, cfg.textSizeOffset)
+    frame.textBackground:SetShown(cfg.text and cfg.textBackground)
+    for _, edge in pairs(frame.edges or {}) do edge:SetShown(cfg.border) end
+    frame:EnableMouse(not cfg.clickThrough)
+    DataBars.LayoutSeparators(frame, cfg)
+end
+
+--- Pas des graduations en pour cent de la barre : 5, 10, ou nil sans graduations.
+function DataBars.SeparatorStep(value)
+    return value == "5" and 5 or value == "10" and 10 or nil
+end
+
+--- Graduations (traits fins) tous les 5 ou 10 % de la barre, réutilisées d'un réglage à l'autre.
+function DataBars.LayoutSeparators(frame, cfg)
+    local step = DataBars.SeparatorStep(cfg.separators)
+    local vertical = cfg.orientation == "VERTICAL"
+    local length = S(cfg.width)   -- la longueur de la barre, quelle que soit l'orientation
+    local count = step and (100 / step - 1) or 0
+    for i = 1, math.max(count, #frame.separators) do
+        local line = frame.separators[i]
+        if i <= count then
+            if not line then
+                line = frame.bar:CreateTexture(nil, "OVERLAY")
+                NS.SetSolidColor(line, 0, 0, 0, 0.7)
+                frame.separators[i] = line
+            end
+            local offset = length * i * step / 100
+            line:ClearAllPoints()
+            if vertical then
+                line:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, offset)
+                line:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, offset)
+                line:SetHeight(S(1))
+            else
+                line:SetPoint("TOPLEFT", frame, "TOPLEFT", offset, 0)
+                line:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", offset, 0)
+                line:SetWidth(S(1))
+            end
+            line:Show()
+        elseif line then
+            line:Hide()
+        end
+    end
+end
+
+--- Couleur de remplissage : celle choisie si `customColor`, sinon `default` ({ r, g, b } en liste).
+function DataBars.FillColor(cfg, default)
+    if cfg.customColor then return cfg.color.r, cfg.color.g, cfg.color.b end
+    return default[1], default[2], default[3]
 end
 
 function DataBars.Update_xp(frame)
@@ -120,7 +180,8 @@ function DataBars.Update_xp(frame)
     local cur, max, rested = UnitXP("player"), UnitXPMax("player"), GetXPExhaustion()
     frame.bar:SetMinMaxValues(0, max)
     frame.bar:SetValue(cur)
-    frame.bar:SetStatusBarColor(unpack(XP_COLOR))
+    local custom = DataBars.db.bars.xp
+    frame.bar:SetStatusBarColor(DataBars.FillColor(custom, XP_COLOR))
     if Known(rested) and rested > 0 then
         frame.rested:Show()
         frame.rested:SetMinMaxValues(0, max)
@@ -149,7 +210,7 @@ function DataBars.Update_rep(frame)
     frame.bar:SetMinMaxValues(0, span > 0 and span or 1)
     frame.bar:SetValue(progress)
     local color = REACTION_COLORS[Known(standing) or 0] or { 0.5, 0.5, 0.5 }
-    frame.bar:SetStatusBarColor(unpack(color))
+    frame.bar:SetStatusBarColor(DataBars.FillColor(DataBars.db.bars.rep, color))
     local label = _G["FACTION_STANDING_LABEL" .. tostring(Known(standing) or "")] or ""
     local pct = Percent(progress, span)
     frame.text:SetText(pct and string.format("%s: %s  %s / %s  (%.0f %%)", name, label, AbbreviateNumbers(progress), AbbreviateNumbers(span), pct) or name)
@@ -243,5 +304,17 @@ function DataBars:BuildOptions(o)
         o:Slider("bars." .. key .. ".width", L.OPT_BAR_LENGTH, 100, 800, 10)
         o:Slider("bars." .. key .. ".height", L.OPT_BAR_THICKNESS, 4, 30, 1)
         o:Check("bars." .. key .. ".text", L.OPT_DATABARS_TEXT)
+        o:Advanced()
+        o:Check("bars." .. key .. ".textBackground", L.OPT_G_MAP_BAR_TEXT_BACKGROUND, 36)
+        o:Slider("bars." .. key .. ".textSizeOffset", L.OPT_G_MAP_BAR_TEXT_SIZE, -6, 8, 1, 36)
+        o:Dropdown("bars." .. key .. ".separators", L.OPT_G_MAP_BAR_SEPARATORS, {
+            { name = L.OPT_G_MAP_BAR_SEPARATORS_NONE, value = "none" },
+            { name = "5 %", value = "5" }, { name = "10 %", value = "10" },
+        }, 36)
+        o:Check("bars." .. key .. ".border", L.OPT_G_MAP_BAR_BORDER, 36)
+        o:Check("bars." .. key .. ".clickThrough", L.OPT_G_MAP_BAR_CLICK_THROUGH, 36)
+        o:Check("bars." .. key .. ".customColor", L.OPT_G_MAP_BAR_CUSTOM_COLOR, 36)
+        o:Color("bars." .. key .. ".color", L.OPT_G_MAP_BAR_COLOR, 52)
+        o:EndAdvanced()
     end
 end

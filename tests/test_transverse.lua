@@ -312,7 +312,6 @@ end)
 
 test("barres d'auras : imprégnations d'arme en tête, relues à WEAPON_ENCHANT_CHANGED, secret écarté", function()
     reset()
-    Mock.now = math.ceil(Mock.now)   -- horloge entière : « 10m » ne dépend pas des pas flottants des tests précédents
     local AuraBars = NS.Modules:Get("aurabars")
     Mock.equipped[16] = { link = "|cffffffff|Hitem:1|h[Poison instantané]|h|r" }
     Mock.weaponEnchants[0] = { { hasEnchant = true, enchantType = 0, timeLeft = 600000, charges = 0,

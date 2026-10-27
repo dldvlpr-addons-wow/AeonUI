@@ -25,7 +25,9 @@ local EXTRA_CATEGORIES = { 5, 6, 7, 8 }   -- communs et équipement, à placer d
 local DIM_ALPHA = 0.5
 
 local function ViewerSkin(border)
-    return { border = border, fontSize = 0 }   -- fontSize 0 : police Blizzard des compteurs
+    -- fontSize 0 : police Blizzard des compteurs ; opacity : multiplie l'opacité Edit Mode ;
+    -- strata "default" : celle de Blizzard ; edge : liseré de recharge toujours dessiné.
+    return { border = border, fontSize = 0, opacity = 1, strata = "default", edge = false }
 end
 
 local CooldownManager = NS.Modules:Register("cooldownmanager", {
@@ -48,7 +50,7 @@ local CooldownManager = NS.Modules:Register("cooldownmanager", {
         spells = {},
         skin = {       -- habillage par viewer
             essential = ViewerSkin(true), utility = ViewerSkin(true), bufficon = ViewerSkin(true),
-            buffbar = { border = true, fontSize = 0, barTexture = true, barColor = { r = 0.25, g = 0.66, b = 0.96 },
+            buffbar = { border = true, fontSize = 0, opacity = 1, strata = "default", edge = false, barTexture = true, barColor = { r = 0.25, g = 0.66, b = 0.96 },
                         showName = true, showDuration = true },
         },
     },
@@ -331,7 +333,11 @@ local function RegisterVisibility()
         if viewer and not NS.Visibility.entries[VisibilityKey(def)] then
             NS.Visibility:Register(VisibilityKey(def), viewer, function() return CooldownManager.db.visibility[def.key] end, {
                 apply = function(frame, visible) frame.muscaVisible = visible end,
-                alpha = function() return viewer.muscaVisible == false and 0 or NS.GetCooldownViewerOpacity(viewer) end,
+                alpha = function()
+                    if viewer.muscaVisible == false then return 0 end
+                    local cfg = CooldownManager.db.skin[def.key]
+                    return NS.GetCooldownViewerOpacity(viewer) * (active and cfg and cfg.opacity or 1)
+                end,
                 forceVisible = ForceVisible,
             })
         end
@@ -446,6 +452,16 @@ function CooldownManager.StyleItem(item, def)
     local cfg = CooldownManager.db.skin[def.key] or {}
     local on = active
     StyleKeybind(item, def)
+    local cooldown = item.GetCooldownFrame and item:GetCooldownFrame()
+    if cooldown and cooldown.SetDrawEdge then   -- liseré permanent ; Blizzard le repose à chaque rafraîchissement
+        if on and cfg.edge then
+            if item.muscaEdge == nil then item.muscaEdge = cooldown:GetDrawEdge() and true or false end
+            cooldown:SetDrawEdge(true)
+        elseif item.muscaEdge ~= nil then
+            cooldown:SetDrawEdge(item.muscaEdge)
+            item.muscaEdge = nil
+        end
+    end
     local bar, icon, name, duration
     if def.bars then bar, icon, name, duration = BarParts(item) end
     local holder = (def.bars and type(icon) == "table" and icon.CreateTexture and icon) or item
@@ -477,10 +493,23 @@ function CooldownManager.StyleItem(item, def)
     if duration and duration.SetFont then StyleFont(duration, on and (cfg.fontSize or 0) or 0) end
 end
 
+--- Niveau d'affichage du viewer d'après le réglage ; l'original est gardé pour le rendre.
+local function StyleViewerStrata(viewer, def)
+    local wanted = active and (CooldownManager.db.skin[def.key] or {}).strata
+    if wanted and wanted ~= "default" then
+        if not viewer.muscaStrata then viewer.muscaStrata = viewer:GetFrameStrata() end
+        if viewer:GetFrameStrata() ~= wanted then viewer:SetFrameStrata(wanted) end
+    elseif viewer.muscaStrata then
+        viewer:SetFrameStrata(viewer.muscaStrata)
+        viewer.muscaStrata = nil
+    end
+end
+
 function CooldownManager:ApplySkin()
     for _, def in ipairs(VIEWERS) do
         local viewer = _G[def.name]
         if viewer then
+            StyleViewerStrata(viewer, def)
             for _, item in ipairs(Items(viewer)) do CooldownManager.StyleItem(item, def) end
         end
     end
@@ -624,6 +653,12 @@ function CooldownManager:BuildOptions(o)
         local prefix = "skin." .. def.key .. "."
         o.layout:Header(L[def.label], 20)
         o:Check(prefix .. "border", L.OPT_CDM_SKIN_BORDER, 36)
+        o:Check(prefix .. "edge", L.OPT_G_RES_CDM_EDGE, 36)
+        o:Slider(prefix .. "opacity", L.OPT_G_RES_CDM_OPACITY, 0, 1, 0.05, 36, "%.2f")
+        o:Dropdown(prefix .. "strata", L.OPT_G_RES_STRATA, {
+            { name = L.OPT_G_RES_STRATA_DEFAULT, value = "default" }, { name = L.OPT_STRATA_LOW, value = "LOW" },
+            { name = L.OPT_STRATA_MEDIUM, value = "MEDIUM" }, { name = L.OPT_STRATA_HIGH, value = "HIGH" },
+        }, 36)
         o:Advanced()
         o:Slider(prefix .. "fontSize", L.OPT_CDM_SKIN_FONT_SIZE, 0, 24, 1, 36)
         o:EndAdvanced()

@@ -13,6 +13,7 @@ local MovementAlert = NS.Modules:Register("movementalert", {
         enabled = false,
         iconSize = 36,
         readyAlert = true,        -- « Transfert prêt » à la fin de la recharge
+        combatOnly = false,       -- icônes et annonce seulement en combat
         extraSpells = "",         -- identifiants ajoutés à ceux de la classe
     },
 })
@@ -24,7 +25,6 @@ local CLASS_SPELLS = {
     DRUID = { 1850, 16979 },      -- Célérité, Charge farouche
     WARRIOR = { 100, 20252 },     -- Charge, Interception
     PALADIN = { 1044 },           -- Bénédiction de liberté
-    HUNTER = { 781 },             -- Désengagement
 }
 local READY_SECONDS = 1.5
 local SPACING = 4
@@ -113,7 +113,7 @@ function MovementAlert:Update()
         holderKey = shown .. ":" .. size
         holder:SetSize(math.max(size, shown * (size + SPACING) - SPACING), size)
     end
-    holder:SetShown(active)
+    holder:SetShown(active and (not self.db.combatOnly or UnitAffectingCombat("player") or NS:Previewing()))
 end
 
 local events = CreateFrame("Frame")
@@ -127,6 +127,8 @@ function MovementAlert:OnEnable()
     active = true
     NS.RegisterEventSafe(events, "SPELL_UPDATE_COOLDOWN")
     NS.RegisterEventSafe(events, "SPELLS_CHANGED")
+    NS.RegisterEventSafe(events, "PLAYER_REGEN_DISABLED")
+    NS.RegisterEventSafe(events, "PLAYER_REGEN_ENABLED")
     NS.Movers:Register("movementAlert", holder, L.MOVEMENT_TITLE, "CENTER", 0, -210)
     NS.Movers:Load("movementAlert")
     wasReady = {}
@@ -152,6 +154,7 @@ NS:On("PREVIEW", function() MovementAlert:Update() end)
 function MovementAlert:BuildOptions(o)
     o:Slider("iconSize", L.OPT_MOVEMENT_ICON_SIZE, 16, 64, 1)
     o:Check("readyAlert", L.OPT_MOVEMENT_READY_ALERT)
+    o:Check("combatOnly", L.OPT_G_QOL_MOVEMENT_COMBAT_ONLY)
     o:Advanced()
     o:EditBox("extraSpells", L.OPT_MOVEMENT_EXTRA_SPELLS, 1)
     o:EndAdvanced()

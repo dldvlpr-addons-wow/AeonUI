@@ -16,6 +16,11 @@ local L = NS.L
 local Elements = NS.UnitFrameElements
 local Movers = NS.Movers
 
+--- Indicateur de sort suivi : icône, carré de la couleur choisie ou barre de durée de cette couleur.
+local function IndicatorDefault(point)
+    return { spells = "", point = point, style = "icon", color = { r = 1, g = 0.82, b = 0 }, showIn = "all", glow = "none" }
+end
+
 local GroupFrames = NS.Modules:Register("groupframes", {
     reloadOnDisable = true,   -- cadres Blizzard rendus au /reload seulement : les options le proposent
     titleKey = "GROUPFRAMES_TITLE",
@@ -42,7 +47,11 @@ local GroupFrames = NS.Modules:Register("groupframes", {
         raidTiers = { { width = 120, height = 52, columns = 2 }, { width = 104, height = 46, columns = 5 } },
         raidThreshold = 5,              -- cadres de raid au-delà de 5, 10, 15, 20, 25 ou 40 membres (en dessous : disposition du groupe)
         nameLength = 12,                -- caractères du nom (0 = entier)
-        namePosition = "TOPLEFT",       -- "TOPLEFT" | "CENTER"
+        namePosition = "TOPLEFT",       -- l'un des 9 points (POINTS) du cadre de vie
+        nameSize = 0, nameOffsetX = 0, nameOffsetY = 0,   -- taille (écart au thème) et décalage du nom
+        nameAboveAuras = false,         -- true : le nom passe au-dessus des icônes d'aura (niveau de cadre)
+        nameCustomColor = false,        -- true : nameColor remplace la couleur de classe / blanc
+        nameColor = { r = 1, g = 1, b = 1 },
         roleIcons = true, dispel = true, aggro = true,
         roleIconStyle = "portrait",     -- "portrait" | "tiny" | "circle" (atlas, repli sur portrait)
         roleIconSize = 13, roleIconPosition = "BOTTOMLEFT",
@@ -63,7 +72,14 @@ local GroupFrames = NS.Modules:Register("groupframes", {
         auras = true, auraSize = 18, auraMax = 3,
         auraPosition = "INSIDE",        -- "INSIDE" (bas droite de la vie) | "ABOVE" | "BELOW"
         auraBuffs = false,              -- buffs après les débuffs
+        -- Texte des auras (mêmes réglages que les cadres d'unité, lus par AuraStyle de UnitFrameElements).
+        auraCountShow = true, auraCountSize = -2, auraCountPoint = "BOTTOMRIGHT",
+        auraDuration = "swipe",         -- "swipe" : chiffres du balayage | "text" : texte propre | "none"
+        auraDurationSize = -1, auraDurationPoint = "CENTER",
+        auraCountOffsetX = 0, auraCountOffsetY = 0, auraDurationOffsetX = 0, auraDurationOffsetY = 0,   -- décalages des textes
+        auraBorder = true, auraBorderSize = 0,   -- bordure des icônes d'aura ; épaisseur de la bordure de dissipation (0 : celle du thème)
         castbar = false, castbarHeight = 4,   -- incantation du membre, au bas de la vie
+        hideNoiseDebuffs = true,        -- masque Rassasié/Épuisement, Longanimité, Âme affaiblie
         auraFilter = "all",             -- préréglage des groupes de débuffs (NS.AURA_FILTERS) ; "mine" : tes débuffs
         -- Groupes de débuffs cumulables : point "flow" (avec les auras) ou ancre sur 9 points (une aura).
         debuffGroups = {
@@ -76,18 +92,39 @@ local GroupFrames = NS.Modules:Register("groupframes", {
         portrait = false,               -- portrait 2D à gauche, dans le cadre
         targetHighlight = true,         -- bordure d'accent sur la cible (après menace et dispel)
         mouseoverHighlight = true,      -- voile clair au survol
-        -- Sorts suivis : huit indicateurs (identifiants, tous les rangs, et ancre sur 9 points), icône et recharge.
+        -- Sorts suivis : huit indicateurs (identifiants, tous les rangs, ancre sur 9 points, rendu
+        -- "icon" | "square" | "bar" et sa couleur), avec recharge.
         indicators = {
-            { spells = "", point = "TOPLEFT" }, { spells = "", point = "TOPRIGHT" },
-            { spells = "", point = "BOTTOMLEFT" }, { spells = "", point = "BOTTOMRIGHT" },
-            { spells = "", point = "TOP" }, { spells = "", point = "BOTTOM" },
-            { spells = "", point = "LEFT" }, { spells = "", point = "RIGHT" },
+            IndicatorDefault("TOPLEFT"), IndicatorDefault("TOPRIGHT"), IndicatorDefault("BOTTOMLEFT"),
+            IndicatorDefault("BOTTOMRIGHT"), IndicatorDefault("TOP"), IndicatorDefault("BOTTOM"),
+            IndicatorDefault("LEFT"), IndicatorDefault("RIGHT"),
         },
         indicatorSize = 10, indicatorMine = true,   -- mine : seulement les auras posées par le joueur
         extraFrames = false, extraNames = "",       -- noms séparés par des virgules ; vide = tanks du groupe
         friendlyBoss = false,
         healerMana = "none",            -- "none" | "party" | "raid" | "both" : mana des soigneurs en texte
         hideBlizzard = true,
+        -- Lot G : finitions. Valeurs par défaut = rendu d'avant.
+        highlightSize = 0,              -- px du cadre de cible (et de survol en style bordure) ; 0 : bordure du thème
+        targetColorCustom = false, targetColor = { r = 1, g = 0.82, b = 0 },   -- sinon l'accent du thème
+        mouseoverStyle = "veil",        -- "veil" : voile sur la vie | "border" : cadre
+        mouseoverColor = { r = 1, g = 1, b = 1 },
+        aggroBorderSize = 0,            -- px du cadre de menace en style bordure ; 0 : bordure du thème
+        frameStrata = "MEDIUM",
+        smoothBars = false,             -- animation douce des barres de vie et de puissance
+        healPredictionColor = { r = 0.2, g = 0.9, b = 0.3, a = 0.45 },   -- soins entrants (Elements.Layout)
+        powerOverlay = false,           -- la vie reste pleine hauteur, la puissance se pose par-dessus
+        nameFormat = "full",            -- "full" | "first" | "last" : mot du nom gardé
+        raidNames = true,               -- noms affichés sur les cadres de raid
+        nameClassColor = true,          -- false : nom blanc (sans couleur personnalisée)
+        stateColors = { dead = { r = 0.14, g = 0.09, b = 0.09 }, offline = { r = 0.4, g = 0.4, b = 0.4 } },
+        roleOffsetX = 0, roleOffsetY = 0,
+        raidMarkSize = 14, raidMarkPoint = "TOPRIGHT", raidMarkOffsetX = 0, raidMarkOffsetY = 0,
+        statusIconPoint = "CENTER", statusIconOffsetX = 0, statusIconOffsetY = 0,
+        leaderIconSize = 12, leaderIconOffsetX = 0, leaderIconOffsetY = 0, leaderShowInCombat = true,
+        combatIcon = false, combatIconSize = 14, combatIconPoint = "TOPLEFT", combatIconOffsetX = 0, combatIconOffsetY = 0,
+        healerManaSize = 0, healerManaSpacing = 0, healerManaGrow = "DOWN",
+        healerManaColorCustom = false, healerManaColor = { r = 1, g = 1, b = 1 },
     },
 })
 
@@ -166,7 +203,6 @@ local VALID_POINT = {}
 for _, point in ipairs(POINTS) do VALID_POINT[point] = true end
 local function Point(point, fallback) return VALID_POINT[point] and point or fallback end
 GroupFrames.POINTS = POINTS
-local CORNERS = { "TOPLEFT", "TOPRIGHT", "BOTTOMLEFT", "BOTTOMRIGHT" }
 GroupFrames.MAX_INDICATORS = 8
 -- Préréglages d'indicateurs, tous les rangs Classic (et l'aura quand elle diffère du sort lancé).
 local INDICATOR_PRESETS = {
@@ -246,6 +282,8 @@ function GroupFrames.Size(key)
     return db.width, db.height
 end
 
+local WHITE = { r = 1, g = 1, b = 1 }
+
 local function Config(key)
     local db = GroupFrames.db
     local width, height = GroupFrames.Size(key)
@@ -254,10 +292,12 @@ local function Config(key)
         castbar = db.castbar, castbarHeight = db.castbarHeight,
         auras = db.auras, auraSize = db.auraSize, auraFilter = db.auraFilter, auraMax = db.auraMax,
         aurasAbove = db.auraPosition == "ABOVE", aurasInside = db.auraPosition == "INSIDE",
-        debuffsOnly = not db.auraBuffs, debuffGroups = db.debuffGroups,
-        vertical = db.vertical, name = true, level = false, combo = false,
+        debuffsOnly = not db.auraBuffs, hideNoiseDebuffs = db.hideNoiseDebuffs, debuffGroups = db.debuffGroups,
+        vertical = db.vertical, name = not (RAID_SIZED[key] and db.raidNames == false), level = false, combo = false,
+        nameFormat = db.nameFormat ~= "full" and db.nameFormat or nil,
         portrait = db.portrait, portraitInside = true,
         nameLength = (tonumber(db.nameLength) or 0) > 0 and db.nameLength or nil,
+        nameColor = db.nameCustomColor and db.nameColor or (db.nameClassColor == false and WHITE) or nil,
     }
 end
 
@@ -294,7 +334,71 @@ local function DispelKind(button)
     return db.dispel and not button.auraSlots and GroupFrames.DispellableType(button.unit, db.dispelMode == "all") or false
 end
 
-function GroupFrames:UpdateBorder(button)
+local EDGE_SIDES = { "TOP", "BOTTOM", "LEFT", "RIGHT" }
+
+--- Cadre de `size` px posé dans le bouton, par-dessus sa bordure (clé : cible, survol, menace) ;
+-- size nul ou nil : caché. Cadre à nous, enfant du bouton : jamais d'action protégée.
+local function SetEdges(button, key, size, r, g, b)
+    local host = button.edgeHosts and button.edgeHosts[key]
+    if not size or size <= 0 then
+        if host then host:Hide() end
+        return
+    end
+    if not host then
+        button.edgeHosts = button.edgeHosts or {}
+        host = CreateFrame("Frame", nil, button)
+        host:SetAllPoints(button)
+        host:SetFrameLevel(button.overlay:GetFrameLevel() + 20)
+        host.edges = {}
+        for _, side in ipairs(EDGE_SIDES) do host.edges[side] = host:CreateTexture(nil, "OVERLAY") end
+        button.edgeHosts[key] = host
+    end
+    local px = NS.Pixel:Scale(size)
+    for side, edge in pairs(host.edges) do
+        edge:ClearAllPoints()
+        if side == "TOP" or side == "BOTTOM" then
+            edge:SetPoint(side .. "LEFT", host, side .. "LEFT", 0, 0)
+            edge:SetPoint(side .. "RIGHT", host, side .. "RIGHT", 0, 0)
+            edge:SetHeight(px)
+        else
+            edge:SetPoint("TOP" .. side, host, "TOP" .. side, 0, 0)
+            edge:SetPoint("BOTTOM" .. side, host, "BOTTOM" .. side, 0, 0)
+            edge:SetWidth(px)
+        end
+        NS.SetSolidColor(edge, r, g, b, 1)
+    end
+    host:Show()
+end
+
+--- Couleur du cadre de cible : celle choisie, sinon l'accent du thème.
+local function TargetColor()
+    local db = GroupFrames.db
+    local c = db.targetColor
+    if db.targetColorCustom and type(c) == "table" then return c.r, c.g, c.b end
+    return NS.Media:Accent()
+end
+
+--- Cadre de la cible et du survol (style bordure), voile du survol (style voile).
+function GroupFrames:UpdateHighlight(button)
+    local db = self.db
+    local size = tonumber(db.highlightSize) or 0
+    if button.targeted and size > 0 then SetEdges(button, "target", size, TargetColor()) else SetEdges(button, "target") end
+    local color = type(db.mouseoverColor) == "table" and db.mouseoverColor or WHITE
+    local hovered = button.hovered and db.mouseoverHighlight
+    if hovered and db.mouseoverStyle == "border" then
+        SetEdges(button, "hover", math.max(size, 1), color.r, color.g, color.b)
+    else
+        SetEdges(button, "hover")
+    end
+    if hovered and db.mouseoverStyle ~= "border" then
+        NS.SetSolidColor(button.hover, color.r, color.g, color.b, 0.12)
+        button.hover:Show()
+    else
+        button.hover:Hide()
+    end
+end
+
+local function PaintStateBorder(self, button)
     local unit = button.unit
     if not unit then return end
     local db = self.db
@@ -312,6 +416,13 @@ function GroupFrames:UpdateBorder(button)
     end
     local threat = db.aggro and Threat(unit)
     local glow = db.aggroStyle == "glow"
+    local threatSize = threat and not glow and tonumber(db.aggroBorderSize) or 0
+    if threatSize > 0 then
+        local c = THREAT_COLORS[threat]
+        SetEdges(button, "threat", threatSize, c[1], c[2], c[3])
+    else
+        SetEdges(button, "threat")
+    end
     if button.glow then
         if threat and glow then
             local c = THREAT_COLORS[threat]
@@ -329,11 +440,18 @@ function GroupFrames:UpdateBorder(button)
     if dispelColor then PaintBorder(button, dispelColor.r, dispelColor.g, dispelColor.b) return end
     if db.targetHighlight and NS.IsTarget(unit) then   -- nil si secret : bordure du thème
         button.targeted = true
-        PaintBorder(button, NS.Media:Accent())
-        return
+        if (tonumber(db.highlightSize) or 0) <= 0 then
+            PaintBorder(button, TargetColor())
+            return
+        end
     end
     local c = NS.db.theme.border
     PaintBorder(button, c.r, c.g, c.b)
+end
+
+function GroupFrames:UpdateBorder(button)
+    PaintStateBorder(self, button)
+    self:UpdateHighlight(button)
 end
 
 --- Rôle assigné, ou TANK pour un tank principal ; nil si inconnu ou secret.
@@ -356,7 +474,7 @@ function GroupFrames:UpdatePowerRole(button)
     local wanted = db.power and (db.powerHeight or 0) > 0 and (not role or db[POWER_SHOWN[role]]) and true or false
     button.cfg.power = wanted
     local px = NS.Pixel:Scale(1)
-    local bottom = wanted and (NS.Pixel:Scale(db.powerHeight) + 2 * px) or px
+    local bottom = (wanted and not db.powerOverlay) and (NS.Pixel:Scale(db.powerHeight) + 2 * px) or px
     button.health:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -px, bottom)
     if button.cfg.vertical then   -- prédiction : même hauteur que la vie (enfants non protégés)
         local height = NS.Pixel:Scale(button.cfg.height) - px - bottom
@@ -373,7 +491,7 @@ function GroupFrames:UpdateRole(button)
     local leader
     if fake then leader = fake.leader
     else leader = _G.UnitIsGroupLeader and Known(UnitIsGroupLeader(unit)) or nil end
-    button.leader:SetShown(db.leaderIcon and leader and true or false)
+    button.leader:SetShown(db.leaderIcon and leader and not (db.leaderShowInCombat == false and inCombat) and true or false)
     local role = db.roleIcons and (fake and fake.role or UnitRole(unit))
     local coords = role and ROLE_COORDS[role]
     if coords and db[ROLE_SHOWN[role]] and not (db.roleHideInCombat and inCombat) then
@@ -478,8 +596,8 @@ function GroupFrames:UpdateState(button)
     if fill then fill:SetAlpha(state and 0 or 1) end
     button.health.text:SetAlpha(state and 0 or 1)
     if state then
-        local c = STATE_COLORS[state]
-        NS.SetSolidColor(button.stateTint, c[1], c[2], c[3], 1)
+        local c, base = self.db.stateColors and self.db.stateColors[state], STATE_COLORS[state]
+        NS.SetSolidColor(button.stateTint, c and c.r or base[1], c and c.g or base[2], c and c.b or base[3], 1)
         button.stateTint:Show()
         text:SetText(label)
         text:SetShown(not (unit and self.db.rezIcons and self.db.statusIcons and ResurrectionShown(unit)))
@@ -487,6 +605,18 @@ function GroupFrames:UpdateState(button)
         button.stateTint:Hide()
         text:Hide()
     end
+end
+
+--- Icône de combat : le membre est en combat (drapeau d'unité, secret : cachée).
+function GroupFrames:UpdateCombat(button)
+    local icon, unit = button.combatIcon, button.unit
+    if not icon then return end
+    local fighting = self.db.combatIcon
+    if fighting then
+        if button.fake then fighting = button.fake.combat
+        else fighting = unit and _G.UnitAffectingCombat and Known(UnitAffectingCombat(unit)) end
+    end
+    icon:SetShown(fighting and true or false)
 end
 
 function GroupFrames:UpdateRange(button)
@@ -537,11 +667,53 @@ local function IndicatorCandidates(list)
     return { includeSpellIDs = ids }
 end
 
---- Indicateur n° `index` : sorts et ancre lus du profil (ancre inconnue : centre).
+local INDICATOR_STYLES = { icon = true, square = true, bar = true }
+GroupFrames.INDICATOR_STYLES = { "icon", "square", "bar" }
+local INDICATOR_COLOR = { r = 1, g = 0.82, b = 0 }
+
+--- Indicateur n° `index` : sorts et ancre lus du profil (ancre inconnue : centre), puis rendu
+-- (inconnu : icône), couleur du carré ou de la barre, membres ciblés (inconnu : tous) et lueur
+-- (inconnue : aucune).
+local SHOW_IN = { tank = true, healer = true, damager = true, nonhealer = true }
+local GLOW_STYLES = {}
+for _, style in ipairs(NS.Glow.STYLES) do GLOW_STYLES[style] = true end
+GroupFrames.INDICATOR_SHOW_IN = { "all", "tank", "healer", "damager", "nonhealer" }
 function GroupFrames.Indicator(index)
     local entry = GroupFrames.db.indicators[index]
-    if type(entry) ~= "table" then return GroupFrames.SpellList(""), "CENTER" end
-    return GroupFrames.SpellList(entry.spells), Point(entry.point, "CENTER")
+    if type(entry) ~= "table" then return GroupFrames.SpellList(""), "CENTER", "icon", INDICATOR_COLOR, "all", "none" end
+    return GroupFrames.SpellList(entry.spells), Point(entry.point, "CENTER"),
+        INDICATOR_STYLES[entry.style] and entry.style or "icon", type(entry.color) == "table" and entry.color or INDICATOR_COLOR,
+        SHOW_IN[entry.showIn] and entry.showIn or "all", GLOW_STYLES[entry.glow] and entry.glow or "none"
+end
+
+--- Indicateur destiné à ce membre ? Rôle assigné du groupe ; rôle inconnu ou secret : montré.
+local function IndicatorWantedForRole(showIn, role)
+    if showIn == "all" then return true end
+    if role == nil or role == "NONE" then return true end
+    if showIn == "nonhealer" then return role ~= "HEALER" end
+    return role == showIn:upper()
+end
+
+local function IndicatorWanted(showIn, unit)
+    return IndicatorWantedForRole(showIn, unit and UnitRole(unit))
+end
+
+--- Rendu de l'indicateur sur le bouton du moteur préparé par InitAuraButton : l'icône et le balayage
+-- du moteur (icône), un aplat de la couleur (carré) ou une barre que le moteur vide avec la durée (barre).
+-- Aucune valeur d'aura n'est lue : seuls des widgets sont montrés ou cachés.
+local BAR_LENGTH = 3   -- longueur de la barre, en tailles d'indicateur
+local function StyleIndicator(holder, style, color, size, point, glow)
+    holder.icon:SetAlpha(style == "icon" and 1 or 0)
+    holder.cooldown:SetAlpha(style == "bar" and 0 or 1)
+    holder.top:SetAlpha(style == "bar" and 0 or 1)   -- bordure et piles : pas autour d'une barre
+    holder.fill:SetColorTexture(color.r, color.g, color.b, 1)
+    holder.fill:SetShown(style == "square")
+    holder.bar:SetStatusBarColor(color.r, color.g, color.b)
+    holder.bar:ClearAllPoints()
+    holder.bar:SetPoint(point, holder, point, 0, 0)
+    holder.bar:SetSize(size * BAR_LENGTH, math.max(NS.Pixel:Scale(3), size / 3))
+    holder.bar:SetShown(style == "bar")
+    NS.Glow.Set(holder, glow ~= "none", glow, color)
 end
 
 --- Indicateurs suivis par le moteur : un emplacement par indicateur, collé à la création sur un cadre
@@ -550,20 +722,39 @@ local function BuildIndicatorSlots(button, engine)
     local db = GroupFrames.db
     local size = NS.Pixel:Scale(db.indicatorSize)
     local filter = db.indicatorMine and "HELPFUL|PLAYER" or "HELPFUL"
+    button.indicatorRole, button.indicatorsStale = UnitRole(button.unit), nil   -- rôle pris en compte par « Afficher sur »
     button.indicatorAnchors = button.indicatorAnchors or {}
+    button.indicatorHolders = button.indicatorHolders or {}
     for index = 1, GroupFrames.MAX_INDICATORS do
-        local list, point = GroupFrames.Indicator(index)
+        local list, point, style, color, showIn, glow = GroupFrames.Indicator(index)
         local anchor = button.indicatorAnchors[index] or CreateFrame("Frame", nil, button.overlay)
         button.indicatorAnchors[index] = anchor
         anchor:SetSize(size, size)
         anchor:ClearAllPoints()
         anchor:SetPoint(point, button.health, point, 0, 0)
-        NS.SetAuraSlot(engine, "indicator" .. index, filter, not list.empty, function(slotButton)
-            NS.InitAuraButton(slotButton, { size = size, noNumbers = true })
+        NS.SetAuraSlot(engine, "indicator" .. index, filter, not list.empty and IndicatorWanted(showIn, button.unit), function(slotButton)
+            local holder = NS.InitAuraButton(slotButton, { size = size, noNumbers = true })
+            holder.fill = holder:CreateTexture(nil, "ARTWORK", nil, 1)
+            holder.fill:SetAllPoints(holder)
+            holder.bar = NS.Media:CreateStatusBar(holder)
+            NS.Media:CreateBorder(holder.bar)
+            pcall(slotButton.SetDurationBar, slotButton, holder.bar)
+            button.indicatorHolders[index] = holder
             pcall(slotButton.ClearAllPoints, slotButton)
             pcall(slotButton.SetAllPoints, slotButton, anchor)
         end, IndicatorCandidates(list))
+        local holder = button.indicatorHolders[index]
+        if holder then StyleIndicator(holder, style, color, size, point, glow) end   -- aussi au changement de réglage
     end
+end
+
+--- Rôle changé sur le même membre (« Afficher sur ») : emplacements refaits hors combat, sinon marqués
+-- périmés et refaits à la sortie de combat.
+local function SyncIndicatorRole(button)
+    if not button.auraSlots or not button.unit then return end
+    if button.indicatorRole == UnitRole(button.unit) and not button.indicatorsStale then return end
+    if NS.InCombat() then button.indicatorsStale = true return end
+    BuildIndicatorSlots(button, button.auraSlots)
 end
 
 --- Débuff dissipable vu par le moteur : bordure teintée à sa couleur, lueur (liseré fixe) et fond
@@ -608,7 +799,7 @@ local function BuildIndicators(button)
     button.indicators = button.indicators or {}
     local size = NS.Pixel:Scale(GroupFrames.db.indicatorSize)
     for index = 1, GroupFrames.MAX_INDICATORS do
-        local list, point = GroupFrames.Indicator(index)
+        local list, point, style, color, _, glow = GroupFrames.Indicator(index)
         local indicator = button.indicators[index]
         if not indicator and not list.empty then
             indicator = CreateFrame("Frame", nil, button.overlay)
@@ -624,9 +815,11 @@ local function BuildIndicators(button)
             button.indicators[index] = indicator
         end
         if indicator then
+            indicator.style, indicator.color = style, color
             indicator:SetSize(size, size)
             indicator:ClearAllPoints()
             indicator:SetPoint(point, button.health, point, 0, 0)
+            NS.Glow.Set(indicator, glow ~= "none", glow, color)
         end
     end
 end
@@ -634,6 +827,9 @@ end
 --- Premier buff de la liste de l'indicateur présent sur l'unité ; identifiant ou nom secrets : ignorés.
 function GroupFrames:UpdateIndicators(button, sameUnit)
     if button.auraSlots then   -- le moteur écoute UNIT_AURA ; ici, seulement l'unité
+        -- Rôle du nouveau membre : emplacements réactivés hors combat (en combat, au prochain relayout).
+        if not sameUnit and not NS.InCombat() then BuildIndicatorSlots(button, button.auraSlots)
+        elseif not sameUnit then button.indicatorsStale = true end
         NS.SetAuraContainerUnit(button.auraSlots, button.unit, not sameUnit)
         return
     end
@@ -648,14 +844,19 @@ function GroupFrames:UpdateIndicators(button, sameUnit)
     end
     local filter = self.db.indicatorMine and "HELPFUL|PLAYER" or "HELPFUL"
     for index, indicator in pairs(button.indicators) do
-        local list = self.Indicator(index)
+        local list, _, _, _, showIn = self.Indicator(index)
         local found, unreadable
-        for index = 1, list.empty and 0 or 40 do
+        for index = 1, (list.empty or not IndicatorWanted(showIn, button.unit)) and 0 or 40 do
             local icon, duration, expiration, _, _, _, spellId, _, _, name = NS.GetAura(button.unit, index, filter)
             if not NS.IsSecret(icon) and icon == nil then break end
             if NS.IsSecret(spellId) and NS.IsSecret(name) then unreadable = true end
             if (not NS.IsSecret(spellId) and list.ids[spellId]) or (not NS.IsSecret(name) and name and list.names[name]) then
-                indicator.texture:SetTexture(icon)
+                -- Sans moteur : carré ou barre se rendent en aplat de la couleur (pas de barre de durée sans lui).
+                if indicator.style == "icon" then
+                    indicator.texture:SetTexture(icon)
+                else
+                    indicator.texture:SetColorTexture(indicator.color.r, indicator.color.g, indicator.color.b, 1)
+                end
                 local d, e = Known(duration), Known(expiration)
                 if d and e and d > 0 then indicator.cooldown:SetCooldown(e - d, d) else indicator.cooldown:Clear() end
                 found = true
@@ -687,13 +888,15 @@ function GroupFrames:ApplyIndicatorPreset(name)
     return added
 end
 
---- Indicateur non vide ancré au point `point` ?
+--- Largeur de l'indicateur non vide ancré au point `point` (une barre en fait BAR_LENGTH), nil sinon.
 local function IndicatorAt(point)
     for index = 1, GroupFrames.MAX_INDICATORS do
-        local list, at = GroupFrames.Indicator(index)
-        if at == point and not list.empty then return true end
+        local list, at, style = GroupFrames.Indicator(index)
+        if at == point and not list.empty then
+            return NS.Pixel:Scale(GroupFrames.db.indicatorSize) * (style == "bar" and BAR_LENGTH or 1)
+        end
     end
-    return false
+    return nil
 end
 
 function GroupFrames:UpdateAll(button)
@@ -713,6 +916,7 @@ function GroupFrames:UpdateAll(button)
     self:UpdateBorder(button)
     self:UpdateStatus(button)
     self:UpdateState(button)
+    self:UpdateCombat(button)
     self:UpdateRange(button)
 end
 
@@ -746,43 +950,77 @@ end
 --- Icônes de rôle, de chef et d'état : taille et coin selon les réglages (Style, Relayout).
 local function PlaceIcons(button)
     local db = GroupFrames.db
+    local S = function(n) return NS.Pixel:Scale(n or 0) end
+    --- Décalage vers l'intérieur du cadre pour un point d'ancrage (0 au milieu).
+    local function Inward(point, amount)
+        return point:find("LEFT") and amount or point:find("RIGHT") and -amount or 0,
+            point:find("TOP") and -amount or point:find("BOTTOM") and amount or 0
+    end
     local icon = NS.Pixel:Scale(db.roleIconSize or 12)
-    local corner = db.roleIconPosition or "TOPLEFT"
+    local corner = Point(db.roleIconPosition, "TOPLEFT")
     -- Coin pris par un sort suivi : l'icône de rôle se range à côté, vers l'intérieur.
-    local taken = IndicatorAt(corner) and NS.Pixel:Scale(db.indicatorSize) + 2 or 0
+    local taken = (IndicatorAt(corner) or -2) + 2
+    local roleX, roleY = Inward(corner, 1)
     button.role:SetSize(icon, icon)
     button.role:ClearAllPoints()
-    button.role:SetPoint(corner, button.health, corner, corner:find("LEFT") and 1 + taken or -1 - taken,
-        corner:find("TOP") and -1 or 1)
-    if button.auras and button.cfg.aurasInside and IndicatorAt("BOTTOMRIGHT") then
+    button.role:SetPoint(corner, button.health, corner, roleX + (roleX ~= 0 and (roleX > 0 and taken or -taken) or 0)
+        + S(db.roleOffsetX), roleY + S(db.roleOffsetY))
+    local cornerWidth = IndicatorAt("BOTTOMRIGHT")
+    if button.auras and button.cfg.aurasInside and cornerWidth then
         button.auras:ClearAllPoints()   -- auras intérieures décalées à gauche du sort suivi
         button.auras:SetPoint("BOTTOMRIGHT", button.health, "BOTTOMRIGHT",
-            -NS.Pixel:Scale(db.indicatorSize) - 4, NS.Pixel:Scale(2))
+            -cornerWidth - 4, NS.Pixel:Scale(2))
     end
-    local leader = NS.Pixel:Scale(12)
+    local leader = S(db.leaderIconSize or 12)
     button.leader:SetSize(leader, leader)
     button.leader:ClearAllPoints()
-    button.leader:SetPoint("CENTER", button.health, "TOP", 0, 0)
-    local mark = NS.Pixel:Scale(14)
+    button.leader:SetPoint("CENTER", button.health, "TOP", S(db.leaderIconOffsetX), S(db.leaderIconOffsetY))
+    local mark = S(db.raidMarkSize or 14)
+    local markPoint = Point(db.raidMarkPoint, "TOPRIGHT")
+    local markX, markY = Inward(markPoint, 2)
     button.raidIcon:SetSize(mark, mark)
     button.raidIcon:ClearAllPoints()
-    button.raidIcon:SetPoint("TOPRIGHT", button.health, "TOPRIGHT", -2, -2)
-    local status = NS.Pixel:Scale(db.statusIconSize or 16)
+    button.raidIcon:SetPoint(markPoint, button.health, markPoint, markX + S(db.raidMarkOffsetX), markY + S(db.raidMarkOffsetY))
+    local status = S(db.statusIconSize or 16)
+    local statusPoint = Point(db.statusIconPoint, "CENTER")
+    local statusX, statusY = Inward(statusPoint, 2)
     button.status:SetSize(status, status)
     button.status:ClearAllPoints()
-    button.status:SetPoint("CENTER", button.health, "CENTER", 0, 0)
-    -- Nom en haut à gauche (place laissée au marqueur) ou au centre ; l'état passe alors dessous.
-    local inset = NS.Pixel:Scale(3)
-    local centered = db.namePosition == "CENTER"
-    button.name:ClearAllPoints()
-    if centered then
-        button.name:SetPoint("CENTER", button.health, "CENTER", 0, 0)
-        button.name:SetWidth(button:GetWidth() - 2 * inset)
-    else
-        button.name:SetPoint("TOPLEFT", button.health, "TOPLEFT", inset, -inset)
-        button.name:SetWidth(button:GetWidth() - 2 * inset - mark)
+    button.status:SetPoint(statusPoint, button.health, statusPoint, statusX + S(db.statusIconOffsetX),
+        statusY + S(db.statusIconOffsetY))
+    if button.combatIcon then
+        local combat = S(db.combatIconSize or 14)
+        local combatPoint = Point(db.combatIconPoint, "TOPLEFT")
+        local combatX, combatY = Inward(combatPoint, 2)
+        button.combatIcon:SetSize(combat, combat)
+        button.combatIcon:ClearAllPoints()
+        button.combatIcon:SetPoint(combatPoint, button.health, combatPoint, combatX + S(db.combatIconOffsetX),
+            combatY + S(db.combatIconOffsetY))
     end
-    button.name:SetJustifyH(centered and "CENTER" or "LEFT")
+    -- Nom sur l'un des 9 points (en haut : place laissée au marqueur) ; au centre, l'état passe dessous.
+    local inset = NS.Pixel:Scale(3)
+    local namePoint = Point(db.namePosition, "TOPLEFT")
+    local centered = namePoint == "CENTER"
+    local horizontal = namePoint:find("LEFT") and inset or namePoint:find("RIGHT") and -inset or 0
+    local vertical = namePoint:find("TOP") and -inset or namePoint:find("BOTTOM") and inset or 0
+    button.name:ClearAllPoints()
+    button.name:SetPoint(namePoint, button.health, namePoint, horizontal + NS.Pixel:Scale(db.nameOffsetX or 0),
+        vertical + NS.Pixel:Scale(db.nameOffsetY or 0))
+    button.name:SetWidth(button:GetWidth() - 2 * inset - (namePoint:find("TOP") and mark or 0))
+    button.name:SetJustifyH(namePoint:find("LEFT") and "LEFT" or namePoint:find("RIGHT") and "RIGHT" or "CENTER")
+    NS.Media:SetTextSizeDelta(button.name, db.nameSize or 0)
+    -- Nom au-dessus des auras : hôte dont le niveau dépasse celui du conteneur d'auras et de ses boutons.
+    if db.nameAboveAuras then
+        if not button.nameHost then
+            button.nameHost = CreateFrame("Frame", nil, button)
+            button.nameHost:SetAllPoints(button.health)
+            button.nameHost:EnableMouse(false)
+        end
+        button.nameHost:SetFrameLevel((button.auras or button):GetFrameLevel() + 15)
+        button.name:SetParent(button.nameHost)
+    else
+        button.name:SetParent(button.overlay)
+    end
     -- Texte de vie et d'état au même endroit : l'un s'efface quand l'autre s'affiche (UpdateState).
     for _, text in ipairs({ button.stateText, button.health.text }) do
         text:ClearAllPoints()
@@ -833,8 +1071,12 @@ local function Style(header, buttonName)
     button.hover:SetAllPoints(button.health)
     NS.SetSolidColor(button.hover, 1, 1, 1, 0.12)
     button.hover:Hide()
-    button:HookScript("OnEnter", function(self) if GroupFrames.db.mouseoverHighlight then self.hover:Show() end end)
-    button:HookScript("OnLeave", function(self) self.hover:Hide() end)
+    button.combatIcon = button.overlay:CreateTexture(nil, "OVERLAY", nil, 6)
+    button.combatIcon:SetTexture("Interface\\CharacterFrame\\UI-StateIcon")
+    button.combatIcon:SetTexCoord(0.5, 1, 0, 0.5)
+    button.combatIcon:Hide()
+    button:HookScript("OnEnter", function(self) self.hovered = true GroupFrames:UpdateHighlight(self) end)
+    button:HookScript("OnLeave", function(self) self.hovered = false GroupFrames:UpdateHighlight(self) end)
     Elements.Layout(button)
     PlaceCastbar(button)
     PlaceIcons(button)
@@ -979,8 +1221,11 @@ local function SetGrowth(header, unit, column, spacing)
     header:SetAttribute("columnSpacing", spacing)
 end
 
+local FRAME_STRATA = { BACKGROUND = true, LOW = true, MEDIUM = true, HIGH = true }
+
 local function Apply(header)
     local db = GroupFrames.db
+    header:SetFrameStrata(FRAME_STRATA[db.frameStrata] and db.frameStrata or "MEDIUM")
     local S = function(n) return NS.Pixel:Scale(n) end
     local width, height = GroupFrames.Size(header.key)
     header:SetAttribute("initial-width", S(width))
@@ -1203,6 +1448,7 @@ end
 local previewHeaders = {}
 
 --- Peint un faux membre : les mêmes régions que pour une unité, remplies à la main.
+local INDICATOR_PREVIEW_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local function PaintPreview(button, fake)
     local db = GroupFrames.db
     button.fake = fake
@@ -1214,8 +1460,12 @@ local function PaintPreview(button, fake)
     NS.Media:SetHealthColor(button.health, r, g, b)
     button.health.text:SetText(db.healthText ~= "none" and (fake.hp .. "%") or "")
     for _, bar in ipairs({ button.healPrediction, button.absorb, button.healAbsorb }) do bar:Hide() end
-    button.name:SetText(Elements.TruncateName(fake.name, button.cfg.nameLength))
-    if db.classColor and class then button.name:SetTextColor(class.r, class.g, class.b) else button.name:SetTextColor(1, 1, 1) end
+    button.name:SetText(Elements.TruncateName(Elements.FormatName(fake.name, button.cfg.nameFormat), button.cfg.nameLength))
+    button.name:SetShown(button.cfg.name ~= false)
+    local nameColor = button.cfg.nameColor
+    if nameColor then button.name:SetTextColor(nameColor.r, nameColor.g, nameColor.b)
+    elseif db.classColor and class then button.name:SetTextColor(class.r, class.g, class.b)
+    else button.name:SetTextColor(1, 1, 1) end
     GroupFrames:UpdatePowerRole(button)
     if button.cfg.power then
         local p = POWER_COLORS[fake.power] or POWER_COLORS.MANA
@@ -1225,6 +1475,7 @@ local function PaintPreview(button, fake)
         button.power:Show()
     end
     GroupFrames:UpdateRole(button)
+    GroupFrames:UpdateCombat(button)
     if fake.mark and _G.SetRaidTargetIconTexture then
         SetRaidTargetIconTexture(button.raidIcon, fake.mark)
         button.raidIcon:Show()
@@ -1242,6 +1493,13 @@ local function PaintPreview(button, fake)
         or dispelColor or NS.db.theme.border
     PaintBorder(button, border.r, border.g, border.b)
     Elements.PreviewAuras(button, fake.dispel and { PREVIEW_DEBUFF } or {})
+    -- Indicateurs configurés, montrés comme exemple (carré, barre : aplat de leur couleur).
+    for index, indicator in pairs(button.indicators or {}) do
+        local list, _, _, _, showIn = GroupFrames.Indicator(index)
+        if indicator.style == "icon" then indicator.texture:SetTexture(INDICATOR_PREVIEW_ICON)
+        else indicator.texture:SetColorTexture(indicator.color.r, indicator.color.g, indicator.color.b, 1) end
+        indicator:SetShown(not list.empty and IndicatorWantedForRole(showIn, fake.role))   -- sans sorts ou hors rôle : caché
+    end
     button.status:Hide()
     button:SetAlpha(fake.state == "offline" and db.range and db.rangeAlpha or 1)
 end
@@ -1392,9 +1650,31 @@ local function BuildHealerMana()
     end
 end
 
+--- Taille, interligne, sens de croissance : les lignes se posent depuis le haut ou le bas du cadre.
+local function LayoutHealerMana()
+    local db = GroupFrames.db
+    local step = NS.Pixel:Scale(ROW_HEIGHT + (tonumber(db.healerManaSpacing) or 0))
+    local up = db.healerManaGrow == "UP"
+    local edge = up and "BOTTOM" or "TOP"
+    for index, row in ipairs(manaFrame.rows) do
+        local y = (index - 1) * step * (up and 1 or -1)
+        row.name:ClearAllPoints()
+        row.name:SetPoint(edge .. "LEFT", manaFrame, edge .. "LEFT", 0, y)
+        row.value:ClearAllPoints()
+        row.value:SetPoint(edge .. "RIGHT", manaFrame, edge .. "RIGHT", 0, y)
+        NS.Media:SetTextSizeDelta(row.name, db.healerManaSize or 0)
+        NS.Media:SetTextSizeDelta(row.value, db.healerManaSize or 0)
+    end
+    manaFrame:SetHeight(HEALER_ROWS * step)
+end
+
 local function PaintMana(unit)
     local row = manaUnits[unit]
-    if row then Elements.SetUnitText(row.value, unit, "mana", "[perc]") end
+    if not row then return end
+    Elements.SetUnitText(row.value, unit, "mana", "[perc]")
+    local db, c = GroupFrames.db, GroupFrames.db.healerManaColor
+    if db.healerManaColorCustom and type(c) == "table" then row.value:SetTextColor(c.r, c.g, c.b)
+    else row.value:SetTextColor(1, 1, 1) end
 end
 
 --- Lignes des soigneurs du groupe (rôle assigné) ; rôle ou classe secrets : membre sauté.
@@ -1417,6 +1697,7 @@ function GroupFrames:UpdateHealerMana()
         Movers:Load("uf_healermana")
     end
     manaFrame:Show()
+    LayoutHealerMana()
     local units = {}
     if HealerManaWanted() then
         if IsInRaid() then
@@ -1455,7 +1736,7 @@ local UNIT_EVENTS = { "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_POWER_UPDATE", "UNI
                       "UNIT_HEAL_PREDICTION", "UNIT_ABSORB_AMOUNT_CHANGED", "UNIT_HEAL_ABSORB_AMOUNT_CHANGED",
                       "INCOMING_RESURRECT_CHANGED",
                       "INCOMING_SUMMON_CHANGED", "READY_CHECK_CONFIRM", "UNIT_PORTRAIT_UPDATE", "UNIT_MODEL_CHANGED",
-                      "UNIT_TARGET" }
+                      "UNIT_TARGET", "UNIT_FLAGS" }
 
 local function OnReadyCheck(event)
     if event == "READY_CHECK" then
@@ -1514,6 +1795,7 @@ local function RosterPass()
         else
             GroupFrames:UpdatePowerRole(button)
             GroupFrames:UpdateRole(button)
+            SyncIndicatorRole(button)
             GroupFrames:UpdateStatus(button)   -- offres de rez vidées par GROUP_ROSTER_UPDATE
             GroupFrames:UpdateState(button)
         end
@@ -1557,7 +1839,11 @@ events:SetScript("OnEvent", function(_, event, unit)
         inCombat = event == "PLAYER_REGEN_DISABLED"
         -- Aperçu caché en combat, repris à la sortie (SetPreview refuse le combat).
         if GroupFrames.previewSize then GroupFrames:SetPreview(GroupFrames.previewSize) end
-        if GroupFrames.db.roleHideInCombat then ForEach(nil, function(button) GroupFrames:UpdateRole(button) end) end
+        if GroupFrames.db.roleHideInCombat or GroupFrames.db.leaderShowInCombat == false then ForEach(nil, function(button) GroupFrames:UpdateRole(button) end) end
+        ForEach(nil, function(button) GroupFrames:UpdateMissingBuffs(button) end)
+        if not inCombat then ForEach(nil, SyncIndicatorRole) end
+    elseif event == "SPELLS_CHANGED" then
+        -- Sort appris : une famille de buffs devient détectable (Reminders actif ou non).
         ForEach(nil, function(button) GroupFrames:UpdateMissingBuffs(button) end)
     elseif event == "INCOMING_SUMMON_CHANGED" and not unit then
         ForEach(nil, function(button) GroupFrames:UpdateStatus(button) end)
@@ -1575,6 +1861,8 @@ events:SetScript("OnEvent", function(_, event, unit)
                 GroupFrames:UpdateBorder(button)
             elseif event == "UNIT_TARGET" then
                 GroupFrames:UpdateMemberTarget(button)
+            elseif event == "UNIT_FLAGS" then
+                GroupFrames:UpdateCombat(button)
             elseif event == "UNIT_AURA" then
                 -- Bordure refaite seulement si le type dissipable change ; la menace a son événement.
                 if DispelKind(button) ~= button.dispelKind then GroupFrames:UpdateBorder(button) end
@@ -1620,7 +1908,7 @@ function GroupFrames:OnEnable()
     for _, event in ipairs({ "GROUP_ROSTER_UPDATE", "PLAYER_ROLES_ASSIGNED", "PARTY_LEADER_CHANGED",
                              "PLAYER_ENTERING_WORLD", "RAID_TARGET_UPDATE", "READY_CHECK", "READY_CHECK_FINISHED",
                              "PLAYER_TARGET_CHANGED", "INSTANCE_ENCOUNTER_ENGAGE_UNIT",
-                             "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }) do
+                             "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "SPELLS_CHANGED" }) do
         NS.RegisterEventSafe(events, event)
     end
     for _, event in ipairs(UNIT_EVENTS) do NS.RegisterEventSafe(events, event) end
@@ -1771,6 +2059,14 @@ function GroupFrames:BuildOptions(o)
     o:Dropdown("healerMana", L.OPT_GF_HEALER_MANA, {
         { name = L.GF_HEALER_MANA_NONE, value = "none" }, { name = L.GF_HEALER_MANA_PARTY, value = "party" },
         { name = L.GF_HEALER_MANA_RAID, value = "raid" }, { name = L.GF_HEALER_MANA_BOTH, value = "both" } })
+    o:Advanced()
+    o:Slider("healerManaSize", L.OPT_GF_G_MANA_SIZE, -4, 6, 1, 36)
+    o:Slider("healerManaSpacing", L.OPT_GF_G_MANA_SPACING, 0, 10, 1, 36)
+    o:Dropdown("healerManaGrow", L.OPT_GF_G_MANA_GROW, {
+        { name = L.GF_GROWTH_DOWN, value = "DOWN" }, { name = L.GF_GROWTH_UP, value = "UP" } }, 36)
+    o:Check("healerManaColorCustom", L.OPT_GF_G_MANA_COLOR_CUSTOM, 36)
+    o:Color("healerManaColor", L.OPT_GF_G_MANA_COLOR, 52)
+    o:EndAdvanced()
 
     o:Tab(L.OPT_GF_TAB_BARS)
     o:Check("classColor", L.OPT_UF_CLASS_COLOR)
@@ -1779,11 +2075,16 @@ function GroupFrames:BuildOptions(o)
     o:EndAdvanced()
     o:Check("healPrediction", L.OPT_UF_HEAL_PREDICTION)
     o:Advanced()
+    o:Slider("healPredictionColor.a", L.OPT_GF_G_HEAL_ALPHA, 0.1, 1, 0.05, 36, "%.2f")
     o:Check("vertical", L.OPT_UF_VERTICAL)
+    o:Check("smoothBars", L.OPT_GF_G_SMOOTH)
+    o:Color("stateColors.dead", L.OPT_GF_G_STATE_COLOR_DEAD)
+    o:Color("stateColors.offline", L.OPT_GF_G_STATE_COLOR_OFFLINE)
     o:EndAdvanced()
     o:Check("power", L.OPT_UF_UNIT_POWER)
     o:Advanced()
     o:Slider("powerHeight", L.OPT_UF_POWER_HEIGHT, 0, 12, 1, 36)
+    o:Check("powerOverlay", L.OPT_GF_G_POWER_OVERLAY, 36)
     o:Check("powerShowTank", L.OPT_GF_ROLE_TANK, 36)
     o:Check("powerShowHealer", L.OPT_GF_ROLE_HEALER, 36)
     o:Check("powerShowDamager", L.OPT_GF_ROLE_DAMAGER, 36)
@@ -1796,13 +2097,25 @@ function GroupFrames:BuildOptions(o)
     o:Check("portrait", L.OPT_UF_UNIT_PORTRAIT)
 
     o:Tab(L.OPT_GF_TAB_TEXTS)
-    local corners = {}
-    for _, corner in ipairs(CORNERS) do corners[#corners + 1] = { name = L["OPT_GF_CORNER_" .. corner], value = corner } end
+    local namePoints = {}
+    for _, point in ipairs(POINTS) do namePoints[#namePoints + 1] = { name = L["POINT_" .. point], value = point } end
     o:Advanced()
-    o:Dropdown("namePosition", L.OPT_GF_NAME_POSITION, {
-        { name = L.OPT_GF_CORNER_TOPLEFT, value = "TOPLEFT" }, { name = L.GF_NAME_CENTER, value = "CENTER" } })
+    o:Dropdown("namePosition", L.OPT_GF_NAME_POSITION, namePoints)
+    o:Slider("nameOffsetX", L.OPT_GF_NAME_OFFSET_X, -20, 20, 1, 36)
+    o:Slider("nameOffsetY", L.OPT_GF_NAME_OFFSET_Y, -20, 20, 1, 36)
+    o:Slider("nameSize", L.OPT_GF_NAME_SIZE, -4, 6, 1)
+    o:Check("nameAboveAuras", L.OPT_GF_NAME_ABOVE_AURAS)
+    o:Check("nameCustomColor", L.OPT_GF_NAME_CUSTOM_COLOR)
+    o:Color("nameColor", L.OPT_GF_NAME_COLOR, 36)
     o:EndAdvanced()
     o:Slider("nameLength", L.OPT_GF_NAME_LENGTH, 0, 20, 1)
+    o:Advanced()
+    o:Dropdown("nameFormat", L.OPT_GF_G_NAME_FORMAT, {
+        { name = L.OPT_GF_G_NAME_FULL, value = "full" }, { name = L.OPT_GF_G_NAME_FIRST, value = "first" },
+        { name = L.OPT_GF_G_NAME_LAST, value = "last" } })
+    o:Check("raidNames", L.OPT_GF_G_RAID_NAMES)
+    o:Check("nameClassColor", L.OPT_GF_G_NAME_CLASS_COLOR)
+    o:EndAdvanced()
     o:Dropdown("healthText", L.OPT_UF_HEALTH_TEXT, Elements.TextModeChoices)
     o:Check("stateText", L.OPT_GF_STATE_TEXT)
     o:Check("roleIcons", L.OPT_GF_ROLES)
@@ -1813,7 +2126,9 @@ function GroupFrames:BuildOptions(o)
     o:Advanced()
     o:Dropdown("roleIconStyle", L.OPT_GF_ROLE_STYLE, styles, 36)
     o:Slider("roleIconSize", L.OPT_GF_ROLE_SIZE, 8, 24, 1, 36)
-    o:Dropdown("roleIconPosition", L.OPT_GF_ROLE_POSITION, corners, 36)
+    o:Dropdown("roleIconPosition", L.OPT_GF_ROLE_POSITION, namePoints, 36)
+    o:Slider("roleOffsetX", L.OPT_GF_G_OFFSET_X, -20, 20, 1, 52)
+    o:Slider("roleOffsetY", L.OPT_GF_G_OFFSET_Y, -20, 20, 1, 52)
     o:EndAdvanced()
     o:Check("roleShowTank", L.OPT_GF_ROLE_TANK, 36)
     o:Check("roleShowHealer", L.OPT_GF_ROLE_HEALER, 36)
@@ -1822,12 +2137,32 @@ function GroupFrames:BuildOptions(o)
     o:Check("roleHideInCombat", L.OPT_GF_ROLE_HIDE_COMBAT, 36)
     o:EndAdvanced()
     o:Check("leaderIcon", L.OPT_GF_LEADER_ICON)
+    o:Advanced()
+    o:Slider("leaderIconSize", L.OPT_GF_G_SIZE, 8, 24, 1, 36)
+    o:Slider("leaderIconOffsetX", L.OPT_GF_G_OFFSET_X, -20, 20, 1, 36)
+    o:Slider("leaderIconOffsetY", L.OPT_GF_G_OFFSET_Y, -20, 20, 1, 36)
+    o:Check("leaderShowInCombat", L.OPT_GF_G_LEADER_COMBAT, 36)
+    o:Slider("raidMarkSize", L.OPT_GF_G_MARK_SIZE, 8, 28, 1)
+    o:Dropdown("raidMarkPoint", L.OPT_GF_G_MARK_POSITION, namePoints)
+    o:Slider("raidMarkOffsetX", L.OPT_GF_G_OFFSET_X, -20, 20, 1, 36)
+    o:Slider("raidMarkOffsetY", L.OPT_GF_G_OFFSET_Y, -20, 20, 1, 36)
+    o:EndAdvanced()
+    o:Check("combatIcon", L.OPT_GF_G_COMBAT_ICON)
+    o:Advanced()
+    o:Slider("combatIconSize", L.OPT_GF_G_SIZE, 8, 24, 1, 36)
+    o:Dropdown("combatIconPoint", L.OPT_GF_G_COMBAT_POSITION, namePoints, 36)
+    o:Slider("combatIconOffsetX", L.OPT_GF_G_OFFSET_X, -20, 20, 1, 36)
+    o:Slider("combatIconOffsetY", L.OPT_GF_G_OFFSET_Y, -20, 20, 1, 36)
+    o:EndAdvanced()
     o:Check("statusIcons", L.OPT_GF_STATUS_ICONS)
     o:Check("readyIcons", L.OPT_GF_READY_ICONS, 36)
     o:Check("summonIcons", L.OPT_GF_SUMMON_ICONS, 36)
     o:Check("rezIcons", L.OPT_GF_REZ_ICONS, 36)
     o:Advanced()
     o:Slider("statusIconSize", L.OPT_GF_STATUS_SIZE, 10, 32, 1, 36)
+    o:Dropdown("statusIconPoint", L.OPT_GF_G_STATUS_POSITION, namePoints, 36)
+    o:Slider("statusIconOffsetX", L.OPT_GF_G_OFFSET_X, -20, 20, 1, 36)
+    o:Slider("statusIconOffsetY", L.OPT_GF_G_OFFSET_Y, -20, 20, 1, 36)
     o:EndAdvanced()
 
     o:Tab(L.OPT_GF_TAB_AURAS)
@@ -1860,6 +2195,22 @@ function GroupFrames:BuildOptions(o)
         o:EndAdvanced()
     end
     o:Check("auraBuffs", L.OPT_GF_AURA_BUFFS, 36)
+    o:Check("hideNoiseDebuffs", L.OPT_GF_HIDE_NOISE_DEBUFFS, 36)
+    o:Check("auraBorder", L.OPT_GF_G_AURA_BORDER)
+    o:Slider("auraBorderSize", L.OPT_GF_G_AURA_BORDER_SIZE, 0, 4, 1)
+    o.layout:Title(L.OPT_UF_AURA_TEXT)
+    o:Check("auraCountShow", L.OPT_UF_AURA_COUNT)
+    o:Dropdown("auraDuration", L.OPT_UF_AURA_DURATION, Elements.AuraDurationChoices)
+    o:Advanced()
+    o:Slider("auraCountSize", L.OPT_UF_AURA_COUNT_SIZE, -6, 6, 1)
+    o:Dropdown("auraCountPoint", L.OPT_UF_AURA_COUNT_POINT, Elements.AuraTextPointChoices)
+    o:Slider("auraCountOffsetX", L.OPT_GF_AURA_COUNT_OFFSET_X, -10, 10, 1, 36)
+    o:Slider("auraCountOffsetY", L.OPT_GF_AURA_COUNT_OFFSET_Y, -10, 10, 1, 36)
+    o:Slider("auraDurationSize", L.OPT_UF_AURA_DURATION_SIZE, -6, 6, 1)
+    o:Dropdown("auraDurationPoint", L.OPT_UF_AURA_DURATION_POINT, Elements.AuraTextPointChoices)
+    o:Slider("auraDurationOffsetX", L.OPT_GF_AURA_DURATION_OFFSET_X, -10, 10, 1, 36)
+    o:Slider("auraDurationOffsetY", L.OPT_GF_AURA_DURATION_OFFSET_Y, -10, 10, 1, 36)
+    o:EndAdvanced()
 
     o:Tab(L.OPT_GF_TAB_ALERTS)
     o:Check("dispel", L.OPT_GF_DISPEL)
@@ -1873,9 +2224,23 @@ function GroupFrames:BuildOptions(o)
     o:Advanced()
     o:Dropdown("aggroStyle", L.OPT_GF_AGGRO_STYLE, {
         { name = L.GF_AGGRO_GLOW, value = "glow" }, { name = L.GF_AGGRO_BORDER, value = "border" } }, 36)
+    o:Slider("aggroBorderSize", L.OPT_GF_G_AGGRO_SIZE, 0, 4, 1, 36)
     o:EndAdvanced()
     o:Check("targetHighlight", L.OPT_GF_TARGET_HIGHLIGHT)
+    o:Advanced()
+    o:Slider("highlightSize", L.OPT_GF_G_HIGHLIGHT_SIZE, 0, 4, 1, 36)
+    o:Check("targetColorCustom", L.OPT_GF_G_TARGET_COLOR_CUSTOM, 36)
+    o:Color("targetColor", L.OPT_GF_G_TARGET_COLOR, 52)
+    o:EndAdvanced()
     o:Check("mouseoverHighlight", L.OPT_GF_MOUSEOVER_HIGHLIGHT)
+    o:Advanced()
+    o:Dropdown("mouseoverStyle", L.OPT_GF_G_MOUSEOVER_STYLE, {
+        { name = L.OPT_GF_G_MOUSEOVER_VEIL, value = "veil" }, { name = L.OPT_GF_G_MOUSEOVER_BORDER, value = "border" } }, 36)
+    o:Color("mouseoverColor", L.OPT_GF_G_MOUSEOVER_COLOR, 36)
+    o:Dropdown("frameStrata", L.OPT_GF_G_STRATA, {
+        { name = L.OPT_GF_G_STRATA_BACKGROUND, value = "BACKGROUND" }, { name = L.OPT_GF_G_STRATA_LOW, value = "LOW" },
+        { name = L.OPT_GF_G_STRATA_MEDIUM, value = "MEDIUM" }, { name = L.OPT_GF_G_STRATA_HIGH, value = "HIGH" } })
+    o:EndAdvanced()
     o:Check("range", L.OPT_GF_RANGE)
     o:Advanced()
     o:Slider("rangeAlpha", L.OPT_GF_RANGE_ALPHA, 0.1, 0.9, 0.1, 36, "%.1f")
@@ -1886,9 +2251,23 @@ function GroupFrames:BuildOptions(o)
     o.layout:Note(L.NOTE_GF_SPELL_INDICATORS, 20)
     local points = {}
     for _, point in ipairs(POINTS) do points[#points + 1] = { name = L["POINT_" .. point], value = point } end
+    local styleChoices = {}
+    for _, style in ipairs(GroupFrames.INDICATOR_STYLES) do
+        styleChoices[#styleChoices + 1] = { name = L["GF_INDICATOR_" .. style:upper()], value = style }
+    end
+    local showChoices = {}
+    for _, mode in ipairs(GroupFrames.INDICATOR_SHOW_IN) do
+        showChoices[#showChoices + 1] = { name = L["OPT_GF_G_INDICATOR_SHOW_" .. mode:upper()], value = mode }
+    end
+    local glowChoices = NS.Glow.Choices()
+    table.insert(glowChoices, 1, { name = L.OPT_CDM_GLOW_NONE, value = "none" })
     for index = 1, GroupFrames.MAX_INDICATORS do
         o:EditBox("indicators." .. index .. ".spells", string.format(L.OPT_GF_INDICATOR_N, index), 1)
         o:Dropdown("indicators." .. index .. ".point", L.OPT_GF_INDICATOR_POINT, points, 20)
+        o:Dropdown("indicators." .. index .. ".style", L.OPT_GF_INDICATOR_STYLE, styleChoices, 20)
+        o:Color("indicators." .. index .. ".color", L.OPT_GF_INDICATOR_COLOR, 20)
+        o:Dropdown("indicators." .. index .. ".showIn", L.OPT_GF_G_INDICATOR_SHOW_IN, showChoices, 20)
+        o:Dropdown("indicators." .. index .. ".glow", L.OPT_GF_G_INDICATOR_GLOW, glowChoices, 20)
     end
     o:EndAdvanced()
     o:Slider("indicatorSize", L.OPT_GF_INDICATOR_SIZE, 6, 20, 1)

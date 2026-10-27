@@ -36,6 +36,19 @@ local MinimapFrame = NS.Modules:Register("minimap", {
         wheelZoom = true,
         buttonBar = "button",     -- "hover" | "always" | "button" | "off"
         buttonSize = 24,
+        borderMode = "theme",     -- "theme" | "accent" | "class" | "custom" ; autre que "theme" : borderSize s'applique
+        borderColor = { r = 1, g = 1, b = 1 },
+        borderSize = 1,
+        decorScale = 1,           -- échelle des boutons Blizzard gardés (suivi, calendrier, courrier, groupes)
+        zonePosition = "above",   -- "above" (au-dessus de la carte) | "inside" (dans la carte, en haut)
+        zoneSizeOffset = 0,       -- écarts à la police du thème
+        coordsSizeOffset = -2,
+        performanceSizeOffset = -2,
+        difficultySizeOffset = 0,
+        performanceInterval = 0.5, -- secondes entre deux mesures FPS / latence
+        performanceLatency = "worst", -- "worst" | "home" | "world" | "both"
+        accentText = false,       -- suffixes « fps » et « ms » à la couleur d'accent
+        difficultyColor = false,  -- difficulté colorée : héroïque orange, mythique violet
     },
 })
 
@@ -83,6 +96,7 @@ local originalParent
 local events = CreateFrame("Frame")
 local hooked = false
 local coordsTicker
+local lastPerformance = -1000
 local hovering = false
 local DIFFICULTY_FRAMES = { "MinimapCluster.InstanceDifficulty", "MiniMapInstanceDifficulty" }
 
@@ -104,6 +118,26 @@ local function Reveal(object, element)
     end
 end
 
+-- Échelle d'origine (Edit Mode) des boutons gardés, capturée au premier réglage et rendue ensuite.
+local originalScale = setmetatable({}, { __mode = "k" })
+
+local function ScaleDecor(object, factor)
+    if not object.SetScale then return end
+    if factor == 1 and not originalScale[object] then return end   -- rien touché : l'échelle de Blizzard reste
+    originalScale[object] = originalScale[object] or object:GetScale()
+    object:SetScale(originalScale[object] * factor)
+end
+
+local function RestoreDecorScale()
+    for _, entry in ipairs(DECOR_PLACE) do
+        local object = Lookup(entry[1])
+        if object and object.SetScale and originalScale[object] then
+            object:SetScale(originalScale[object])
+            originalScale[object] = nil
+        end
+    end
+end
+
 -- Boutons utiles aux coins de la carte, décor caché seulement. Blizzard replace l'indicateur de
 -- courrier (MiniMapIndicatorFrame_UpdatePosition, SetHeaderUnderneath) : rappelé après lui.
 local function PlaceDecor()
@@ -113,6 +147,7 @@ local function PlaceDecor()
         if object and object.ClearAllPoints then
             object:ClearAllPoints()
             object:SetPoint(entry[2], Minimap, entry[2], entry[3], entry[4])
+            ScaleDecor(object, MinimapFrame.db.decorScale)
         end
     end
 end
@@ -162,7 +197,8 @@ local function Build()
     local bg = holder:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(holder)
     NS.SetSolidColor(bg, 0, 0, 0, 1)
-    Media:CreateBorder(holder)
+    holder.borderColor = {}   -- remplie seulement hors thème ; la table suit les rafraîchissements de Media
+    holder.borderEdges = Media:CreateBorder(holder, holder.borderColor)
     holder.zone = Media:CreateText(holder, "OVERLAY", 0)
     holder.zone:SetPoint("BOTTOM", holder, "TOP", 0, 4)
     holder.zone:SetJustifyH("CENTER")
@@ -218,6 +254,7 @@ end
 
 local function ApplyDecor()
     local db = MinimapFrame.db
+    if not db.hideDecor then RestoreDecorScale() end
     for _, path in ipairs(DECOR_HIDE) do
         local object = Lookup(path)
         if object then
@@ -251,6 +288,30 @@ local function OnMouseWheel(_, delta)
     else Minimap:SetZoom(math.max(zoom - 1, 0)) end
 end
 
+--- Couleur de la bordure selon le mode ; nil pour le thème.
+function MinimapFrame.BorderColor(db)
+    if db.borderMode == "accent" then return Media:Accent() end
+    if db.borderMode == "class" then
+        local _, classFile = UnitClass("player")
+        if classFile and not NS.IsSecret(classFile) then return NS.ClassColor(classFile) end
+    elseif db.borderMode == "custom" then
+        return db.borderColor.r, db.borderColor.g, db.borderColor.b
+    end
+    return nil
+end
+
+--- Bordure de la carte : couleur et épaisseur au choix, ou celles du thème.
+function MinimapFrame.ApplyBorder()
+    local db, edges, color = MinimapFrame.db, holder.borderEdges, holder.borderColor
+    local r, g, b = MinimapFrame.BorderColor(db)
+    local size = NS.Pixel:Scale(r and db.borderSize or NS.db.theme.borderSize or 1)
+    color.r, color.g, color.b, color.a = r, g, b, r and 1 or nil
+    local paint = r and { r = r, g = g, b = b } or NS.db.theme.border
+    for _, side in ipairs({ "top", "bottom" }) do edges[side]:SetHeight(size) end
+    for _, side in ipairs({ "left", "right" }) do edges[side]:SetWidth(size) end
+    for _, edge in pairs(edges) do NS.SetSolidColor(edge, paint.r, paint.g, paint.b, 1) end
+end
+
 local function Layout()
     local db = MinimapFrame.db
     local size = S(db.size)
@@ -266,6 +327,14 @@ local function Layout()
     Minimap:EnableMouseWheel(true)
     Minimap:SetScript("OnMouseWheel", OnMouseWheel)
     if db.zoneText then holder.zone:Show() else holder.zone:Hide() end
+    MinimapFrame.ApplyBorder()
+    holder.zone:ClearAllPoints()
+    if db.zonePosition == "inside" then holder.zone:SetPoint("TOP", holder, "TOP", 0, -4)
+    else holder.zone:SetPoint("BOTTOM", holder, "TOP", 0, 4) end
+    Media:SetTextSizeDelta(holder.zone, db.zoneSizeOffset)
+    Media:SetTextSizeDelta(holder.coords, db.coordsSizeOffset)
+    Media:SetTextSizeDelta(holder.performance, db.performanceSizeOffset)
+    Media:SetTextSizeDelta(holder.difficulty, db.difficultySizeOffset)
     holder:Show()
 end
 
@@ -307,6 +376,19 @@ function MinimapFrame.FormatCoords(x, y, precision)
     return string.format(COORD_FORMATS[p], x, y)
 end
 
+--- Texte FPS + latence. `mode` : "worst" (la pire des deux latences), "home", "world" ou "both" ;
+-- `accent` : couleur d'accent hexadécimale des suffixes, nil pour du texte brut.
+function MinimapFrame.FormatPerformance(fps, home, world, mode, accent)
+    local function suffix(text) return accent and ("|c" .. accent .. text .. "|r") or text end
+    local function colored(ms, tail) return string.format("|c%s%d%s|r", MinimapFrame.LatencyColor(ms), ms, tail or "") end
+    local fpsText = string.format("%d %s", math.floor(fps + 0.5), suffix("fps"))
+    if mode == "both" then return fpsText .. "  " .. colored(home) .. "/" .. colored(world) .. " " .. suffix("ms") end
+    local ms = mode == "home" and home or mode == "world" and world or math.max(home, world)
+    -- sans accent, l'unité reste dans la couleur du palier (rendu historique)
+    if accent then return fpsText .. "  " .. colored(ms) .. " " .. suffix("ms") end
+    return fpsText .. "  " .. colored(ms, " ms")
+end
+
 --- Latence -> couleur : vert sous 100 ms, jaune sous 250 ms, rouge au-delà.
 function MinimapFrame.LatencyColor(ms)
     if ms < 100 then return "ff33dd33" elseif ms < 250 then return "ffffd100" end
@@ -326,14 +408,17 @@ local function UpdateCoords()
         local x, y = MinimapFrame.PlayerCoords()
         holder.coords:SetText(x and MinimapFrame.FormatCoords(x, y, db.coordsPrecision) or "")
     end
-    if db.performance then
+    local now = GetTime()
+    if db.performance and now - lastPerformance >= db.performanceInterval - 0.1 then
+        lastPerformance = now
         local fps = _G.GetFramerate and GetFramerate() or 0
-        local ms = 0
+        local home, world = 0, 0
         if _G.GetNetStats then
-            local _, _, home, world = GetNetStats()
-            ms = math.max(home or 0, world or 0)
+            local _, _, homeMs, worldMs = GetNetStats()
+            home, world = homeMs or 0, worldMs or 0
         end
-        holder.performance:SetFormattedText("%d fps  |c%s%d ms|r", math.floor(fps + 0.5), MinimapFrame.LatencyColor(ms), ms)
+        holder.performance:SetText(MinimapFrame.FormatPerformance(fps, home, world, db.performanceLatency,
+            db.accentText and Media:AccentHex() or nil))
     end
 end
 
@@ -347,6 +432,7 @@ local function ApplyCoords()
     else holder.performance:SetPoint("TOP", holder, "BOTTOM", 0, -4) end
     MinimapFrame.UpdateCoordsAlpha()
     if db.coords or db.performance then
+        lastPerformance = -1000
         UpdateCoords()
         coordsTicker = C_Timer.NewTicker(COORDS_INTERVAL, UpdateCoords)
     end
@@ -365,6 +451,18 @@ function MinimapFrame.DifficultyText()
     return maxPlayers .. suffix
 end
 
+--- Difficulté courte colorée par palier : « 5H » orange, « 25M » violet.
+function MinimapFrame.ColorDifficulty(text)
+    local tier = text:match("%a$")
+    local color = tier == "H" and "ffff8040" or tier == "M" and "ffa335ee" or nil
+    return color and ("|c" .. color .. text .. "|r") or text
+end
+
+local function DifficultyLabel()
+    local text = MinimapFrame.DifficultyText()
+    return MinimapFrame.db.difficultyColor and MinimapFrame.ColorDifficulty(text) or text
+end
+
 local function ApplyDifficulty()
     local db = MinimapFrame.db
     local compact = db.showDifficulty and db.compactDifficulty
@@ -374,7 +472,7 @@ local function ApplyDifficulty()
         if object and object.SetAlpha then object:SetAlpha((db.showDifficulty and not compact) and 1 or 0) end
     end
     holder.difficulty:SetShown(compact)
-    if compact then holder.difficulty:SetText(MinimapFrame.DifficultyText()) end
+    if compact then holder.difficulty:SetText(DifficultyLabel()) end
 end
 
 --------------------------------------------------------------------------------
@@ -487,7 +585,7 @@ end
 events:SetScript("OnEvent", function(_, event)
     if not active then return end
     UpdateZone()
-    if MinimapFrame.db.compactDifficulty then holder.difficulty:SetText(MinimapFrame.DifficultyText()) end
+    if MinimapFrame.db.compactDifficulty then holder.difficulty:SetText(DifficultyLabel()) end
     if event == "PLAYER_REGEN_ENABLED" then
         events:UnregisterEvent("PLAYER_REGEN_ENABLED")
         ReparentMinimap()
@@ -530,6 +628,7 @@ function MinimapFrame:OnDisable()
     events:UnregisterAllEvents()
     if coordsTicker then coordsTicker:Cancel() coordsTicker = nil end
     Release()
+    RestoreDecorScale()
     for object, element in pairs(decor) do Reveal(object, element) end
     for _, path in ipairs(DIFFICULTY_FRAMES) do
         local object = Lookup(path)
@@ -553,6 +652,10 @@ function MinimapFrame:OnRefresh()
     if active then self:Apply() end
 end
 
+NS:On("THEME_CHANGED", function()
+    if active and holder then MinimapFrame.ApplyBorder() end
+end)
+
 NS:On("PIXEL_CHANGED", function()
     if active then NS:RunOutOfCombat(function() if active then MinimapFrame:Apply() end end) end
 end)
@@ -563,22 +666,49 @@ end)
 
 function MinimapFrame:BuildOptions(o)
     o.layout:Note(L.NOTE_MINIMAP_RELOAD, 20)
-    o:Slider("size", L.OPT_MINIMAP_SIZE, 100, 400, 2)
+    o:Slider("size", L.OPT_MINIMAP_SIZE, 100, 600, 2)
     o:Check("square", L.OPT_MINIMAP_SQUARE)
     o:Check("hideDecor", L.OPT_MINIMAP_HIDE_DECOR)
+    o:Advanced()
+    o:Dropdown("borderMode", L.OPT_G_MAP_BORDER, {
+        { name = L.OPT_G_MAP_BORDER_THEME, value = "theme" }, { name = L.OPT_G_MAP_BORDER_ACCENT, value = "accent" },
+        { name = L.OPT_G_MAP_BORDER_CLASS, value = "class" }, { name = L.OPT_G_MAP_BORDER_CUSTOM, value = "custom" },
+    }, 36)
+    o:Color("borderColor", L.OPT_G_MAP_BORDER_COLOR, 52)
+    o:Slider("borderSize", L.OPT_G_MAP_BORDER_SIZE, 1, 6, 1, 52)
+    o:Slider("decorScale", L.OPT_G_MAP_DECOR_SCALE, 0.6, 1.6, 0.05, 36, "%.2f")
+    o:EndAdvanced()
     o:Check("zoneText", L.OPT_MINIMAP_ZONE)
+    o:Advanced()
+    o:Dropdown("zonePosition", L.OPT_G_MAP_ZONE_POSITION, {
+        { name = L.OPT_G_MAP_ZONE_ABOVE, value = "above" }, { name = L.OPT_G_MAP_ZONE_INSIDE, value = "inside" },
+    }, 36)
+    o:Slider("zoneSizeOffset", L.OPT_G_MAP_ZONE_SIZE, -4, 10, 1, 36)
+    o:EndAdvanced()
     o:Check("coords", L.OPT_MINIMAP_COORDS)
     o:Advanced()
     o:Dropdown("coordsMode", L.OPT_MINIMAP_COORDS_MODE, {
         { name = L.MINIMAP_BUTTONS_ALWAYS, value = "always" }, { name = L.MINIMAP_BUTTONS_HOVER, value = "hover" },
     }, 36)
     o:Slider("coordsPrecision", L.OPT_MINIMAP_COORDS_PRECISION, 0, 2, 1, 36)
+    o:Slider("coordsSizeOffset", L.OPT_G_MAP_COORDS_SIZE, -6, 8, 1, 36)
     o:EndAdvanced()
     o:Check("performance", L.OPT_MINIMAP_PERFORMANCE)
+    o:Advanced()
+    o:Dropdown("performanceLatency", L.OPT_G_MAP_LATENCY, {
+        { name = L.OPT_G_MAP_LATENCY_WORST, value = "worst" }, { name = L.OPT_G_MAP_LATENCY_HOME, value = "home" },
+        { name = L.OPT_G_MAP_LATENCY_WORLD, value = "world" }, { name = L.OPT_G_MAP_LATENCY_BOTH, value = "both" },
+    }, 36)
+    o:Slider("performanceInterval", L.OPT_G_MAP_PERFORMANCE_INTERVAL, 0.5, 5, 0.5, 36, "%.1f")
+    o:Slider("performanceSizeOffset", L.OPT_G_MAP_PERFORMANCE_SIZE, -6, 8, 1, 36)
+    o:Check("accentText", L.OPT_G_MAP_ACCENT_TEXT, 36)
+    o:EndAdvanced()
     o:Check("showTracking", L.OPT_MINIMAP_SHOW_TRACKING)
     o:Check("showMail", L.OPT_MINIMAP_SHOW_MAIL)
     o:Check("showDifficulty", L.OPT_MINIMAP_SHOW_DIFFICULTY)
     o:Check("compactDifficulty", L.OPT_MINIMAP_COMPACT_DIFFICULTY, 36)
+    o:Check("difficultyColor", L.OPT_G_MAP_DIFFICULTY_COLOR, 52)
+    o:Slider("difficultySizeOffset", L.OPT_G_MAP_DIFFICULTY_SIZE, -4, 10, 1, 52)
     o:Check("showClock", L.OPT_MINIMAP_SHOW_CLOCK)
     o:Check("showZoom", L.OPT_MINIMAP_SHOW_ZOOM)
     o:Check("wheelZoom", L.OPT_MINIMAP_WHEEL)

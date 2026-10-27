@@ -170,9 +170,12 @@ Mock.knownSpells = {}      -- [id] = true
 
 local function SpellId(identifier)
     if type(identifier) == "number" then return identifier end
+    -- Plusieurs rangs portent le même nom : le client répond par le plus haut id (rang le plus haut).
+    local found
     for id, name in pairs(Mock.spells) do
-        if name == identifier then return id end
+        if name == identifier and (not found or id > found) then found = id end
     end
+    return found
 end
 
 _G.C_Spell = {
@@ -227,7 +230,7 @@ _G.C_Container = {
         if not item then return nil end
         return { itemID = item.itemID, quality = item.quality, stackCount = item.stackCount or 1,
                  hasNoValue = item.hasNoValue, isLocked = item.isLocked, hyperlink = item.itemID,
-                 isBound = item.isBound == true }
+                 isBound = item.isBound == true, hasLoot = item.hasLoot == true }
     end,
     UseContainerItem = function(bag, slot)
         Mock.used[#Mock.used + 1] = { bag = bag, slot = slot }
@@ -269,7 +272,7 @@ _G.C_Item = {
     -- Mock.items[itemID].equipLoc, .classID
     GetItemInfoInstant = function(item)
         local info = Mock.items[item]
-        return item, nil, nil, info and info.equipLoc or "", nil, info and info.classID
+        return item, nil, nil, info and info.equipLoc or "", nil, info and info.classID, info and info.subclassID
     end,
 }
 function C_Item.GetWeaponEnchantInfo(weaponSlot)
@@ -350,6 +353,7 @@ for _, name in ipairs({
     FrameMeta[name] = NoOp
 end
 function FrameMeta:SetTexture(texture) self.texture = texture end
+function FrameMeta:GetTexture() return self.texture end
 function FrameMeta:SetFontString(fontString) self.fontString = fontString end
 function FrameMeta:GetFontString() return self.fontString end
 
@@ -496,9 +500,12 @@ function _G.CreateFrame(frameType, name, parent, template)
         local function Button(self, init)
             local button = NewObject(self)
             for _, method in ipairs({ "SetIcon", "SetDurationCooldown", "SetApplicationCount", "AddDispelTypeTexture",
-                                      "SetMouseClickEnabled", "SetMouseMotionEnabled", "SetCancelAuraButtons" }) do
+                                      "SetMouseMotionEnabled" }) do
                 button[method] = function(b, region) b[method] = region end
             end
+            -- Réglables plusieurs fois (clic droit d'annulation, coupé en combat) : l'état se lit à part.
+            function button:SetMouseClickEnabled(enabled) self.clickEnabled = enabled end
+            function button:SetCancelAuraButtons(tokens) self.cancelButtons = tokens end
             if init then init(button) end
             return button
         end
@@ -547,10 +554,12 @@ function _G.CreateFrame(frameType, name, parent, template)
     if Mock.combat and frame.secure then error("ADDON_ACTION_BLOCKED: frame sécurisée créée en combat") end
     if template == "ActionBarButtonTemplate" then Mock.SetupActionButton(frame) end
     if template == "SecureHandlerBaseTemplate" then
-        function frame:WrapScript(target, script, body)
+        function frame:WrapScript(target, script, body, post)
             if InCombatLockdown() then error("ADDON_ACTION_BLOCKED WrapScript") end
             target.wrapped = target.wrapped or {}
             target.wrapped[script] = body
+            target.wrappedPost = target.wrappedPost or {}
+            target.wrappedPost[script] = post
         end
     end
     Mock.frames[#Mock.frames + 1] = frame
@@ -620,6 +629,7 @@ function FrameMeta:GetEffectiveScale()
 end
 function FrameMeta:IsProtected() return self.secure == true end
 function FrameMeta:SetShadowOffset(x, y) self.shadowOffset = { x, y } end
+function FrameMeta:GetShadowOffset() local o = self.shadowOffset or { 0, 0 } return o[1], o[2] end
 function FrameMeta:EnableKeyboard(enabled) self.keyboard = enabled end
 function FrameMeta:SetPropagateKeyboardInput(propagate) self.propagateKeyboard = propagate end
 -- Rectangle : Mock.SetRect(frame, left, bottom, width, height) simule la position rendue.
@@ -889,6 +899,36 @@ function Mock.FireEvent(event, ...)
     end
 end
 
+-- Exécute un extrait sécurisé (corps de WrapScript) avec l'environnement restreint minimal ;
+-- renvoie ses retours (nouveau bouton, message).
+function Mock.RunSecure(frame, body, extra)
+    local env = { self = frame, UnitExists = UnitExists, UnitIsDead = UnitIsDead, PlayerInCombat = function() return Mock.combat end,
+                  UnitIsGhost = function(unit) return Mock.units[unit] ~= nil and Mock.units[unit].ghost == true end }
+    for k, v in pairs(extra or {}) do env[k] = v end
+    -- Interdits de l'environnement restreint réel (RestrictedExecution.lua).
+    assert(not body:find("function", 1, true), "The function keyword is not permitted")
+    assert(not body:find("[{}]"), "Direct table creation is not permitted")
+    local chunk
+    if setfenv then
+        chunk = assert(loadstring(body))
+        setfenv(chunk, env)
+    else
+        chunk = assert(load(body, "snippet", "t", env))
+    end
+    return chunk()
+end
+
+-- Clic fidèle sur un bouton enveloppé : pre de PreClick ; OnClick ; post de PreClick seulement si le
+-- pre a renvoyé un message ; puis wrap de PostClick. `onClick` lit l'état au moment du clic.
+function Mock.SimulateClick(frame, onClick)
+    local wrapped, post = frame.wrapped or {}, frame.wrappedPost or {}
+    local newButton, message
+    if wrapped.PreClick then newButton, message = Mock.RunSecure(frame, wrapped.PreClick, { button = "LeftButton" }) end
+    if onClick then onClick() end
+    if post.PreClick and message ~= nil then Mock.RunSecure(frame, post.PreClick, { message = message }) end
+    if wrapped.PostClick then Mock.RunSecure(frame, wrapped.PostClick) end
+end
+
 Mock.timers = {}
 local TimerMeta = {}
 TimerMeta.__index = TimerMeta
@@ -1061,7 +1101,44 @@ _G.C_GossipInfo = {
     GetAvailableQuests = function() return Mock.gossip.available end,
     SelectActiveQuest = function(id) QuestLog("gossip-turnin:" .. id) end,
     SelectAvailableQuest = function(id) QuestLog("gossip-accept:" .. id) end,
+    GetOptions = function() return Mock.gossip.options or {} end,
+    SelectOption = function(id) QuestLog("gossip-option:" .. id) end,
+    ForceGossip = function() return Mock.gossip.force == true end,
 }
+
+-- Entraîneur : Mock.trainer = { services = { { type = "available", cost = 10, isProfession = false } } }
+Mock.trainer = { services = {}, bought = {} }
+_G.ClassTrainerFrame = CreateFrame("Frame", "ClassTrainerFrame", UIParent)
+_G.ClassTrainerTrainButton = CreateFrame("Button", "ClassTrainerTrainButton", ClassTrainerFrame)
+function _G.GetNumTrainerServices() return #Mock.trainer.services end
+function _G.GetTrainerServiceInfo(index) local service = Mock.trainer.services[index] return "Sort " .. index, service.type end
+function _G.GetTrainerServiceCost(index) local service = Mock.trainer.services[index] return service.cost, service.isProfession end
+function _G.BuyTrainerService(index)
+    local service = Mock.trainer.services[index]
+    Mock.money = Mock.money - service.cost
+    Mock.trainer.bought[#Mock.trainer.bought + 1] = index
+    service.type = "used"
+end
+function _G.IsTradeskillTrainer() return Mock.trainer.tradeskill == true end
+
+-- Journal de combat, talents, carte du monde, toasts
+Mock.logging = false
+function _G.LoggingCombat(value) if value ~= nil then Mock.logging = value end return Mock.logging end
+_G.C_ChatInfo.IsLoggingCombat = function() return Mock.logging end
+Mock.talentPoints = { 0, 0 }   -- classe, spécialisation
+_G.C_ClassTalents = {
+    HasUnspentTalentPoints = function() return Mock.talentPoints[1] + Mock.talentPoints[2] > 0, Mock.talentPoints[1], Mock.talentPoints[2] end,
+}
+Mock.mapLevels = {}   -- [uiMapID] = { min, max }
+_G.C_Map.GetMapLevels = function(mapID) local levels = Mock.mapLevels[mapID] if levels then return levels[1], levels[2], 0, 0 end end
+Mock.mapCursor = { 0.5, 0.25 }
+_G.WorldMapFrame = CreateFrame("Frame", "WorldMapFrame", UIParent)
+WorldMapFrame:Hide()
+function WorldMapFrame:GetMapID() return Mock.mapID end
+function WorldMapFrame:GetNormalizedCursorPosition() return Mock.mapCursor[1], Mock.mapCursor[2] end
+_G.AlertFrame = CreateFrame("Frame", "AlertFrame", UIParent)
+AlertFrame:SetSize(10, 10)
+AlertFrame:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 128)
 
 -- Chat
 Mock.chat = {}
@@ -1377,6 +1454,7 @@ function FrameMeta:SetTimerDuration(duration, interpolation, direction)
     self.timer = { duration = duration, interpolation = interpolation, direction = direction }
 end
 function FrameMeta:SetWordWrap() end
+function FrameMeta:SetPassThroughButtons(...) self.passThrough = { ... } end
 function FrameMeta:SetAlpha(alpha) self.alpha = alpha end
 function FrameMeta:GetAlpha() return self.alpha or 1 end
 
@@ -1587,6 +1665,7 @@ end
 function GameTooltip:SetUnit(unit) Mock.ShowUnitTooltip(unit) end
 _G.GameTooltipTextLeft2 = NewObject(GameTooltip)
 _G.GameTooltipStatusBar = CreateFrame("StatusBar", "GameTooltipStatusBar", GameTooltip)
+GameTooltipStatusBar:SetHeight(8)   -- hauteur Blizzard (9 en jeu), relevée par le module d'habillage
 function _G.GameTooltip_SetDefaultAnchor(tooltip, parent) tooltip:SetOwner(parent, "ANCHOR_NONE") end
 Mock.guilds = {}   -- [unit] = { guilde, rang }
 function _G.GetGuildInfo(unit) local g = Mock.guilds[unit] if g then return g[1], g[2] end end
@@ -1601,7 +1680,8 @@ function _G.SetBinding(key, command)
 end
 function _G.GetCurrentBindingSet() return 1 end
 function _G.SaveBindings() Mock.saved = Mock.saved + 1 end
-function _G.GetCursorInfo() return Mock.cursorItem end
+-- Mock.cursorItem = "spell" ; Mock.cursorSpellID = id du sort tenu (4e retour, comme le client).
+function _G.GetCursorInfo() return Mock.cursorItem, nil, nil, Mock.cursorItem == "spell" and Mock.cursorSpellID or nil end
 
 -- Chiffres de recharge (CVar native)
 Mock.cvars.countdownForCooldowns = "0"
@@ -1647,5 +1727,9 @@ function FrameMeta:SetCountdownFormatter(formatter) self.countdownFormatter = fo
 function FrameMeta:SetHideCountdownNumbers(hide) self.hideCountdown = hide end
 Mock.secretUnits = {}
 _G.C_Secrets = { ShouldUnitIdentityBeSecret = function(unit) return Mock.secretUnits[unit] == true end }
+
+-- Ombre de texte (chat) : ignorée par le mock.
+if not FrameMeta.SetShadowColor then function FrameMeta:SetShadowColor(r, g, b, a) self.shadowColor = { r, g, b, a } end end
+if not FrameMeta.GetShadowColor then function FrameMeta:GetShadowColor() local c = self.shadowColor or { 0, 0, 0, 1 } return c[1], c[2], c[3], c[4] end end
 
 return Mock

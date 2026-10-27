@@ -191,6 +191,10 @@ function NS:ImportProfile(text, allowAccount, sections)
     end
     Reload(function()
         local profile, report = NS.Database:ImportProfile(text, allowAccount, sections, anchorKeys)
+        if not profile then   -- migration de la chaîne en échec : profil actuel intact
+            NS.Print(L.MSG_IMPORT_FAILED)
+            return NS.db
+        end
         NS.Print(L.MSG_IMPORT_OK)
         if report.clamped + report.anchors + report.sensitive > 0 then
             NS.Print(string.format(L.MSG_IMPORT_REPORT, report.clamped, report.anchors, report.sensitive))

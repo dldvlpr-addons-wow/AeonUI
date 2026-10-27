@@ -12,6 +12,10 @@ local FlightTimer = NS.Modules:Register("flighttimer", {
     descKey = "FLIGHT_DESC",
     defaults = {
         enabled = true,
+        width = 220,
+        height = 16,
+        barColor = { r = 0.35, g = 0.65, b = 1 },
+        classColor = false,   -- barre à la couleur de la classe
     },
 })
 
@@ -94,8 +98,20 @@ local function Tick()
     end
 end
 
+--- Taille et couleur de la barre selon les réglages.
+local function ApplyLook(db)
+    holder:SetSize(db.width, db.height)
+    local color = db.barColor
+    if db.classColor then
+        local r, g, b = NS.ClassColor(select(2, UnitClass("player")))
+        color = { r = r, g = g, b = b }
+    end
+    bar:SetStatusBarColor(color.r, color.g, color.b)
+end
+
 function FlightTimer:Update()
     if not holder then return end
+    ApplyLook(self.db)
     if not active then
         holder:Hide()
         return
@@ -227,4 +243,8 @@ NS:On("PREVIEW", function() FlightTimer:Update() end)
 
 function FlightTimer:BuildOptions(o)
     o:Hint(L.OPT_FLIGHT_HINT)
+    o:Slider("width", L.OPT_G_QOL_WIDTH, 100, 500, 5)
+    o:Slider("height", L.OPT_G_QOL_HEIGHT, 8, 40, 1)
+    o:Color("barColor", L.OPT_G_QOL_BAR_COLOR)
+    o:Check("classColor", L.OPT_G_QOL_CLASS_COLOR)
 end

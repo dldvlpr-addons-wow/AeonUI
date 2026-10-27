@@ -6,12 +6,14 @@
 -- Cadre sécurisé : les conditions deviennent un state driver (conditions macro), posé hors
 -- combat ; l'instance n'a pas de condition macro et y est ignorée. Survol : alpha (permis en
 -- combat), partagé par les cadres d'un même groupe de survol.
+-- « instance » et « softtarget » n'ont pas de condition macro (ignorées sur cadre sécurisé) ;
+-- « gamepad » non plus, mais un cadre sécurisé la reçoit en filtre posé hors combat (voir Apply).
 local _, NS = ...
 
 local Visibility = { entries = {} }
 NS.Visibility = Visibility
 
-Visibility.CONDITIONS = { "combat", "group", "raid", "instance", "mounted", "target" }
+Visibility.CONDITIONS = { "combat", "group", "raid", "instance", "mounted", "target", "softtarget", "gamepad" }
 
 -- Condition -> { vraie, fausse } en conditions macro. Absente : non exprimable (instance).
 local MACRO = {
@@ -22,6 +24,7 @@ local MACRO = {
     target = { "@target,exists", "@target,noexists" },
 }
 
+Visibility.MACRO = MACRO
 local HOVER_INTERVAL = 0.1
 
 --- Réglage par défaut : toujours visible. `overrides` remplace des champs.
@@ -69,6 +72,14 @@ function Visibility.Macro(spec)
     return "[" .. table.concat(parts, ",") .. "] show; hide"
 end
 
+--- Vrai si les conditions sans macro d'un cadre sécurisé (« gamepad ») refusent l'affichage.
+-- Elles s'ajoutent en filtre aux conditions macro (sauf « Au moins une » avec une macro, voir Apply).
+function Visibility.SecureLuaHidden(spec, state)
+    local wanted = spec.gamepad
+    if wanted ~= "yes" and wanted ~= "no" then return false end
+    return (state.gamepad and true or false) ~= (wanted == "yes")
+end
+
 --- Clauses « hide » à poser devant le pilote propre d'un cadre sécurisé (« [nocombat] hide; ») :
 -- cachent le cadre quand le réglage n'est pas satisfait. "" sans condition exprimable.
 function Visibility.HideClauses(spec)
@@ -105,6 +116,8 @@ function Visibility.State(event)
     sharedState.instance = instanceType ~= nil and instanceType ~= "none"
     sharedState.mounted = _G.IsMounted and IsMounted() or false
     sharedState.target = UnitExists("target") and true or false
+    sharedState.softtarget = UnitExists("softenemy") and true or false
+    sharedState.gamepad = NS.GamepadActive()
     return sharedState
 end
 
@@ -112,7 +125,7 @@ end
 -- Éléments enregistrés
 --------------------------------------------------------------------------------
 -- opts : secure (state driver), prefix (conditions macro posées avant, « [petbattle] hide; »),
--- hoverGroup (survol partagé), alpha() (opacité visible, 1 par défaut), apply(frame, visible)
+-- hoverGroup (survol partagé), hoverExtra() (vrai : un enfant hors du cadre compte comme survol), alpha() (opacité visible, 1 par défaut), apply(frame, visible)
 -- (application propre au module à la place de SetShown), forceVisible() (vrai : rien de caché ;
 -- cadre sécurisé : conditions retirées hors combat, préfixe gardé).
 
@@ -120,7 +133,9 @@ local hoverFrame = CreateFrame("Frame")
 hoverFrame.elapsed = 0
 
 local function Hovered(entry)
-    if entry.frame:IsShown() and entry.frame:IsMouseOver() then return true end
+    if entry.frame:IsShown() and (entry.frame:IsMouseOver() or (entry.opts.hoverExtra and entry.opts.hoverExtra())) then
+        return true
+    end
     local group = entry.opts.hoverGroup
     if not group then return false end
     for _, other in pairs(Visibility.entries) do
@@ -165,11 +180,19 @@ end
 local function Apply(entry, state)
     local spec, opts = entry.getSpec(), entry.opts
     if opts.secure then
+        if entry.pending then return end   -- une pose est déjà en attente : elle relira le réglage
+        entry.pending = true
         NS:RunOutOfCombat(function()
+            entry.pending = nil
             if Visibility.entries[entry.key] ~= entry then return end
             -- forceVisible : conditions retirées, préfixe gardé (glisser vers une barre cachée).
-            local macro = not (opts.forceVisible and opts.forceVisible()) and Visibility.Macro(spec) or nil
-            if macro or opts.prefix then
+            local forced = opts.forceVisible and opts.forceVisible()
+            local macro = not forced and Visibility.Macro(spec) or nil
+            -- « Au moins une » avec une condition macro : un filtre en plus la rendrait « toutes » ; ignoré.
+            local anyMacro = macro and spec.match == "any"
+            if not forced and not anyMacro and Visibility.SecureLuaHidden(spec, Visibility.State()) then
+                RegisterStateDriver(entry.frame, "visibility", (opts.prefix or "") .. "hide")
+            elseif macro or opts.prefix then
                 RegisterStateDriver(entry.frame, "visibility", (opts.prefix or "") .. (macro or "show"))
             else
                 UnregisterStateDriver(entry.frame, "visibility")
@@ -222,7 +245,8 @@ end
 
 local events = CreateFrame("Frame")
 for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "GROUP_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD",
-                         "ZONE_CHANGED_NEW_AREA", "PLAYER_TARGET_CHANGED", "PLAYER_MOUNT_DISPLAY_CHANGED" }) do
+                         "ZONE_CHANGED_NEW_AREA", "PLAYER_TARGET_CHANGED", "PLAYER_MOUNT_DISPLAY_CHANGED",
+                         "PLAYER_SOFT_ENEMY_CHANGED", "GAME_PAD_ACTIVE_CHANGED" }) do
     NS.RegisterEventSafe(events, event)
 end
 events:SetScript("OnEvent", function(_, event)
@@ -230,6 +254,10 @@ events:SetScript("OnEvent", function(_, event)
     -- Les drivers suivent seuls leurs conditions : seuls les cadres non sécurisés sont recalculés.
     local state = Visibility.State(event)
     for _, entry in pairs(Visibility.entries) do
-        if not entry.opts.secure then Apply(entry, state) end
+        if not entry.opts.secure then
+            Apply(entry, state)
+        elseif event == "GAME_PAD_ACTIVE_CHANGED" and (entry.getSpec().gamepad == "yes" or entry.getSpec().gamepad == "no") then
+            Apply(entry, state)   -- filtre « manette » d'un cadre sécurisé : posé hors combat
+        end
     end
 end)

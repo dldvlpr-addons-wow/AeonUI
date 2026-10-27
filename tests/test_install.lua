@@ -22,6 +22,9 @@ test("installation : préréglage complet allume les modules MuscaUI, pose les a
     truthy(NS.Modules:Get("blizzardframes").enabled)
     eq(NS.db.modules.groupframes.healthText, "percent")
     eq(NS.db.modules.groupframes.spacing, 3, "clé non couverte par le rôle : inchangée")
+    local tiers = NS.db.modules.groupframes.raidTiers
+    eq(tiers[2].height, 48, "soigneur : palier 25 réglé, pas seulement le raid de 40")
+    eq(tiers[1].columns, 2, "colonnes du palier gardées")
     eq(Mock.cvars.nameplateMaxDistance, "60")
     eq(NS.global.firstRunDone, true)
     truthy(Mock.FindPrinted("Install"))

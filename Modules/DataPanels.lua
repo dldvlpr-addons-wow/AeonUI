@@ -25,6 +25,10 @@ local function Panel(enabled, keys)
     return {
         enabled = enabled, width = 360, height = 22, slotCount = #keys,
         backgroundAlpha = 0.75, slots = slots,
+        border = true,              -- bordure du thème autour du panneau
+        textAlign = "CENTER",       -- "LEFT" | "CENTER" | "RIGHT" dans chaque emplacement
+        textSizeOffset = 0,         -- écart à la police du thème
+        hoverHighlight = false,     -- emplacement éclairci au survol
         visibility = NS.Visibility.Spec(),   -- conditions communes (Core/Visibility)
     }
 end
@@ -156,8 +160,18 @@ local function NewSlot(panel)
     end)
     button.label = Media:CreateText(button, "OVERLAY")
     button.label:SetPoint("CENTER")
-    button:SetScript("OnEnter", ShowTooltip)
-    button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    button.highlight = button:CreateTexture(nil, "BACKGROUND")
+    button.highlight:SetAllPoints(button)
+    NS.SetSolidColor(button.highlight, 1, 1, 1, 0.12)
+    button.highlight:Hide()
+    button:SetScript("OnEnter", function(self)
+        if self.hoverHighlight then self.highlight:Show() end
+        ShowTooltip(self)
+    end)
+    button:SetScript("OnLeave", function(self)
+        self.highlight:Hide()
+        GameTooltip:Hide()
+    end)
     button:SetScript("OnClick", OnClick)
     button.elapsed = 0
     return button
@@ -166,7 +180,7 @@ end
 local function Build(i)
     local panel = CreateFrame("Frame", "MuscaUIDataPanel" .. i, UIParent)
     panel:SetFrameStrata("LOW")
-    panel.bg = Media:CreateBackdrop(panel)
+    panel.bg, panel.edges = Media:CreateBackdrop(panel)
     panel.slots = {}
     for s = 1, MAX_SLOTS do panel.slots[s] = NewSlot(panel) end
     frames[i] = panel
@@ -178,6 +192,14 @@ end
 --------------------------------------------------------------------------------
 
 local function MoverKey(i) return "datapanel" .. i end
+
+--- Texte d'un emplacement calé à gauche, au centre ou à droite.
+function DataPanels.AlignLabel(button, align)
+    local point = (align == "LEFT" or align == "RIGHT") and align or "CENTER"
+    button.label:ClearAllPoints()
+    button.label:SetPoint(point, button, point, point == "LEFT" and NS.Pixel:Scale(2) or point == "RIGHT" and -NS.Pixel:Scale(2) or 0, 0)
+    button.label:SetJustifyH(point)
+end
 
 local function Layout(i)
     local cfg = i <= Count() and PanelConfig(i) or nil
@@ -195,6 +217,7 @@ local function Layout(i)
     panel:SetSize(S(cfg.width), S(cfg.height))
     local c = NS.db.theme.backdrop
     NS.SetSolidColor(panel.bg, c.r, c.g, c.b, cfg.backgroundAlpha)
+    for _, edge in pairs(panel.edges or {}) do edge:SetShown(cfg.border) end
     local count = math.max(1, math.min(MAX_SLOTS, tonumber(cfg.slotCount) or 1))
     local width = S(cfg.width) / count
     for s, button in ipairs(panel.slots) do
@@ -203,6 +226,9 @@ local function Layout(i)
             button:SetSize(width, S(cfg.height))
             button:SetPoint("LEFT", panel, "LEFT", (s - 1) * width, 0)
             button.label:SetWidth(width - S(4))
+            DataPanels.AlignLabel(button, cfg.textAlign)
+            Media:SetTextSizeDelta(button.label, cfg.textSizeOffset)
+            button.hoverHighlight = cfg.hoverHighlight
             button.dataKey = cfg.slots["slot" .. s]
             button.panelIndex, button.slotIndex = i, s
             button.elapsed = 0
@@ -328,6 +354,13 @@ function DataPanels:BuildOptions(o)
     o:Slider(Key("slotCount"), L.OPT_DATAPANEL_SLOTS, 1, MAX_SLOTS, 1, 36)
     o:Advanced()
     o:Slider(Key("backgroundAlpha"), L.OPT_TOPBAR_ALPHA, 0, 1, 0.05, 36, "%.2f")
+    o:Check(Key("border"), L.OPT_G_MAP_PANEL_BORDER, 36)
+    o:Dropdown(Key("textAlign"), L.OPT_G_MAP_PANEL_ALIGN, {
+        { name = L.OPT_G_MAP_ALIGN_LEFT, value = "LEFT" }, { name = L.OPT_G_MAP_ALIGN_CENTER, value = "CENTER" },
+        { name = L.OPT_G_MAP_ALIGN_RIGHT, value = "RIGHT" },
+    }, 36)
+    o:Slider(Key("textSizeOffset"), L.OPT_G_MAP_PANEL_TEXT_SIZE, -6, 8, 1, 36)
+    o:Check(Key("hoverHighlight"), L.OPT_G_MAP_PANEL_HIGHLIGHT, 36)
     o:EndAdvanced()
     for s = 1, MAX_SLOTS do
         o:Dropdown(Key("slots.slot" .. s), string.format(L.OPT_DATAPANEL_SLOT, s), choices, 36)
@@ -342,4 +375,5 @@ for i = 1, MAX_PANELS do
     NS.Database.bounds[prefix .. "height"] = { 14, 40 }
     NS.Database.bounds[prefix .. "slotCount"] = { 1, MAX_SLOTS }
     NS.Database.bounds[prefix .. "backgroundAlpha"] = { 0, 1 }
+    NS.Database.bounds[prefix .. "textSizeOffset"] = { -6, 8 }
 end

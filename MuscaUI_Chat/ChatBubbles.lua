@@ -16,6 +16,7 @@ local ChatBubbles = NS.Modules:Register("chatbubbles", {
         say = true, yell = true, party = true, npc = true,   -- canaux affichés ; décoché = bulle masquée
         fontSize = 12,
         channelBorder = true,     -- bordure à la couleur du canal, sinon celle du thème
+        hideInInstance = false,   -- bulles coupées (CVars) en instance, rendues à la sortie
     },
 })
 
@@ -102,8 +103,20 @@ function ChatBubbles:Scan()
     for _, bubble in pairs(C_ChatBubbles.GetAllChatBubbles() or {}) do Style(bubble) end
 end
 
+local BUBBLE_CVARS = { "chatBubbles", "chatBubblesParty" }
+
+--- Bulles coupées par CVar en instance ; l'origine reste dans la base enregistrée (NS.CVars) et
+-- revient à la sortie, option coupée ou module coupé. Rien n'est écrit tant que l'option n'a pas servi.
+function ChatBubbles.ApplyInstanceCVars()
+    local hide = active and ChatBubbles.db.hideInInstance and _G.IsInInstance and IsInInstance()
+    for _, name in ipairs(BUBBLE_CVARS) do
+        if hide then NS.CVars:Set(name, 0) else NS.CVars:Restore(name) end
+    end
+end
+
 local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event, text)
+    if event == "PLAYER_ENTERING_WORLD" then ChatBubbles.ApplyInstanceCVars() return end
     Remember(text, CHANNELS[event])
     -- La bulle apparaît à la frame suivante, texte déjà posé.
     C_Timer.After(0, function() ChatBubbles:Scan() end)
@@ -112,16 +125,20 @@ end)
 function ChatBubbles:OnEnable()
     active = true
     for event in pairs(CHANNELS) do NS.RegisterEventSafe(events, event) end
+    NS.RegisterEventSafe(events, "PLAYER_ENTERING_WORLD")
+    ChatBubbles.ApplyInstanceCVars()
 end
 
 function ChatBubbles:OnDisable()
     active = false
     events:UnregisterAllEvents()
+    ChatBubbles.ApplyInstanceCVars()
     for bubble, entry in pairs(styled) do Unstyle(bubble, entry) end
     recent = {}
 end
 
 function ChatBubbles:OnRefresh()
+    ChatBubbles.ApplyInstanceCVars()
     self:Scan()
 end
 
@@ -133,4 +150,5 @@ function ChatBubbles:BuildOptions(o)
     o:Check("npc", L.BUBBLES_NPC)
     o:Slider("fontSize", L.OPT_CHAT_FONT_SIZE, 8, 20, 1)
     o:Check("channelBorder", L.OPT_BUBBLES_CHANNEL_BORDER)
+    o:Check("hideInInstance", L.OPT_G_SOCIAL_BUBBLES_HIDE_INSTANCE)
 end

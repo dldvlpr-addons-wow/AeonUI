@@ -14,10 +14,23 @@ local FRAMES = {
     { key = "cdm_buffbar",   names = { "BuffBarCooldownViewer" },   label = "MOVER_CDM_BUFFBAR",   default = { "CENTER", 330, -120 }, anchor = "CENTER" },
     { key = "buffs",         names = { "BuffFrame" },               label = "MOVER_BUFFS",         default = { "TOPRIGHT", -230, -60 }, anchor = "TOPRIGHT" },
     { key = "debuffs",       names = { "DebuffFrame" },             label = "MOVER_DEBUFFS",       default = { "TOPRIGHT", -230, -180 }, anchor = "TOPRIGHT" },
+    -- Toasts (succès, butin gagné...) : empilés au-dessus de ce cadre, position d'origine de Blizzard.
+    { key = "toasts",        names = { "AlertFrame" },              label = "MOVER_TOASTS",        default = { "BOTTOM", 0, 128 }, anchor = "BOTTOM", size = { 300, 40 } },   -- AlertFrame fait 10x10 : support saisissable
+    -- Fenêtre de butin Blizzard : « keep » d'office (position Edit Mode). Laissée à Blizzard quand le
+    -- butin est sous la souris ou quand la fenêtre MuscaUI la remplace. Les jets de groupe
+    -- (GroupLootContainer) sont gérés par la pile de cadres du bas de l'écran : non déplaçables ici,
+    -- le module Butin a son propre mover de jets.
+    { key = "lootframe",     names = { "LootFrame" },               label = "MOVER_BLIZZ_LOOT",    default = { "LEFT", 300, 100 }, anchor = "TOPLEFT", keep = true,
+      skip = function()
+          local loot = NS.Modules:Get("loot")
+          -- Blizzard ancre au curseur (CVar, ou manette) : on ne réancre pas. Relu sur CVAR_UPDATE.
+          return NS.CVars:Get("lootUnderMouse") == "1" or NS.CVars:Get("GamePadEnable") == "1"
+              or (loot and loot.enabled and loot.db.window)
+      end },
 }
 
 local defaults = { enabled = false }
-for _, def in ipairs(FRAMES) do defaults[def.key] = "move" end   -- "move" | "keep"
+for _, def in ipairs(FRAMES) do defaults[def.key] = def.keep and "keep" or "move" end   -- "move" | "keep"
 
 local BlizzardFrames = NS.Modules:Register("blizzardframes", {
     titleKey = "BF_TITLE",
@@ -41,8 +54,9 @@ function BlizzardFrames:Apply()
     for _, def in ipairs(FRAMES) do
         local frame = Resolve(def)
         if frame then
-            if self.db[def.key] == "move" then
-                Movers:Adopt(def.key, frame, L[def.label], def.default[1], def.default[2], def.default[3], def.anchor)
+            if self.db[def.key] == "move" and not (def.skip and def.skip()) then
+                local holder = Movers:Adopt(def.key, frame, L[def.label], def.default[1], def.default[2], def.default[3], def.anchor)
+                if def.size then holder:SetSize(def.size[1], def.size[2]) end
             elseif Movers.adopted[def.key] and Movers.adopted[def.key].active then
                 -- « move » -> « keep » : le cadre reste posé sur le support jusqu'au /reload.
                 Movers:Release(def.key)
@@ -63,6 +77,7 @@ function BlizzardFrames:OnEnable()
     self:Apply()
     NS.RegisterEventSafe(events, "ADDON_LOADED")
     NS.RegisterEventSafe(events, "PLAYER_ENTERING_WORLD")
+    NS.RegisterEventSafe(events, "CVAR_UPDATE")
 end
 
 function BlizzardFrames:OnDisable()

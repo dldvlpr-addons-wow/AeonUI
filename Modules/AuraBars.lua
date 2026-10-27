@@ -24,11 +24,16 @@ local AuraBars = NS.Modules:Register("aurabars", {
         height = 18,
         spacing = 2,
         growUp = false,
+        sort = "shortest",        -- "shortest", "longest" (durée restante), "name"
+        showBorder = true,
+        textSizeBonus = 0,        -- points ajoutés à la taille des textes
+        preciseBelow = 0,         -- dixièmes de seconde sous ce seuil (barres maison), 0 : jamais
         buffColor = { r = 0.25, g = 0.66, b = 0.96 },
     },
 })
 
 local MAX_AURAS = 40
+local ENGINE_SORTS = { shortest = "expiration", longest = "expirationLongest", name = "name" }
 local UPDATE_INTERVAL = 0.1
 
 local active = false
@@ -69,21 +74,33 @@ function AuraBars.Collect()
         if not (entry.duration and entry.expiration) then return math.huge - 1 end
         return entry.expiration - GetTime()
     end
-    table.sort(list, function(a, b) return Remaining(a) < Remaining(b) end)
+    local sort = db.sort
+    table.sort(list, function(a, b)
+        if sort == "name" then
+            local nameA, nameB = Known(a.name) or "", Known(b.name) or ""
+            if nameA ~= nameB then return nameA < nameB end
+            return false
+        end
+        if sort == "longest" then return Remaining(a) > Remaining(b) end
+        return Remaining(a) < Remaining(b)
+    end)
     return list
 end
 
 local function FormatTime(seconds)
+    local precise = AuraBars.db and AuraBars.db.preciseBelow or 0
+    if seconds < precise then return string.format("%.1f", seconds) end
+    seconds = math.floor(seconds + 0.5)   -- 599.9999 (expiration - GetTime() en flottants) donne 10m, pas 9m
     if seconds >= 3600 then return string.format("%dh", math.floor(seconds / 3600)) end
     if seconds >= 60 then return string.format("%dm", math.floor(seconds / 60)) end
-    return string.format("%.0f", seconds)
+    return tostring(seconds)
 end
 
 local function Bar(index)
     local bar = bars[index]
     if bar then return bar end
     bar = Media:CreateStatusBar(holder)
-    Media:CreateBorder(bar)
+    bar.border = Media:CreateBorder(bar)
     bar.icon = bar:CreateTexture(nil, "ARTWORK")
     bar.icon:SetPoint("RIGHT", bar, "LEFT", -2, 0)
     bar.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -137,7 +154,7 @@ local function InitEngineBar(slotButton, harmful)
     local bar = Media:CreateStatusBar(frame)
     bar:SetPoint("TOPLEFT", icon, "TOPRIGHT", 2, 0)
     bar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-    Media:CreateBorder(bar)
+    local border = Media:CreateBorder(bar)
     local name = Media:CreateText(bar, "OVERLAY")
     name:SetPoint("LEFT", bar, "LEFT", 4, 0)
     local time = Media:CreateText(bar, "OVERLAY")
@@ -157,7 +174,8 @@ local function InitEngineBar(slotButton, harmful)
         local c = db.buffColor
         bar:SetStatusBarColor(c.r, c.g, c.b)
     end
-    engineBars[#engineBars + 1] = { bar = bar, icon = icon, harmful = harmful }
+    engineBars[#engineBars + 1] = { bar = bar, icon = icon, harmful = harmful, border = border,
+                                    name = name, time = time, count = count }
 end
 
 --- Groupes du moteur d'après le réglage (hors combat : les boutons se retaillent).
@@ -174,7 +192,7 @@ local function LayoutEngine()
     }
     for key, group in pairs(groups) do
         NS.SetAuraGroup(engine, key, { filter = group.filter, max = group.shown and db.maxBars or 0,
-            index = group.index, width = db.width, height = db.height, spacing = db.spacing, sort = "expiration",
+            index = group.index, width = db.width, height = db.height, spacing = db.spacing, sort = ENGINE_SORTS[db.sort] or "expiration",
             candidates = candidates, init = function(slotButton) InitEngineBar(slotButton, group.harmful) end })
         for _, slotButton in ipairs(NS.AuraGroupButtons(engine, key)) do
             pcall(slotButton.SetSize, slotButton, db.width, db.height)
@@ -182,6 +200,10 @@ local function LayoutEngine()
     end
     for _, entry in ipairs(engineBars) do
         entry.icon:SetSize(db.height, db.height)
+        for _, edge in pairs(entry.border) do edge:SetShown(db.showBorder) end
+        Media:SetTextSizeDelta(entry.name, db.textSizeBonus)
+        Media:SetTextSizeDelta(entry.time, db.textSizeBonus)
+        Media:SetTextSizeDelta(entry.count, -2 + db.textSizeBonus)
         if not entry.harmful then entry.bar:SetStatusBarColor(db.buffColor.r, db.buffColor.g, db.buffColor.b) end
     end
     NS.SetAuraContainerUnit(engine, "player", true)
@@ -208,6 +230,9 @@ function AuraBars:Update()
         bar.manual = nil
         bar:SetSize(db.width - db.height - 2, db.height)
         bar.icon:SetSize(db.height, db.height)
+        for _, edge in pairs(bar.border) do edge:SetShown(db.showBorder) end
+        Media:SetTextSizeDelta(bar.name, db.textSizeBonus)
+        Media:SetTextSizeDelta(bar.time, db.textSizeBonus)
         bar:ClearAllPoints()
         local offset = (shown - 1) * (db.height + db.spacing)
         if db.growUp then
@@ -290,6 +315,11 @@ function AuraBars:BuildOptions(o)
         { name = L.OPT_AURABARS_BOTH, value = "both" }, { name = L.OPT_AURABARS_BUFFS, value = "buffs" },
         { name = L.OPT_AURABARS_DEBUFFS, value = "debuffs" },
     })
+    o:Dropdown("sort", L.OPT_G_RES_AURA_SORT, {
+        { name = L.OPT_G_RES_AURA_SORT_SHORTEST, value = "shortest" },
+        { name = L.OPT_G_RES_AURA_SORT_LONGEST, value = "longest" },
+        { name = L.OPT_G_RES_AURA_SORT_NAME, value = "name" },
+    })
     o:Check("hidePermanent", L.OPT_AURABARS_HIDE_PERMANENT)
     o:Check("weaponEnchants", L.OPT_AURABARS_WEAPON_ENCHANTS)
     o:Slider("maxBars", L.OPT_AURABARS_MAX, 1, 40, 1)
@@ -298,6 +328,9 @@ function AuraBars:BuildOptions(o)
     o:Advanced()
     o:Slider("spacing", L.OPT_AURABARS_SPACING, 0, 10, 1)
     o:Check("growUp", L.OPT_AURABARS_GROW_UP)
+    o:Check("showBorder", L.OPT_G_RES_AURA_BORDER)
+    o:Slider("textSizeBonus", L.OPT_G_QOL_REM_TEXT_SIZE, -4, 6, 1)
+    o:Slider("preciseBelow", L.OPT_G_RES_AURA_PRECISE, 0, 60, 1, nil, "%d s")
     o:EndAdvanced()
     o:Color("buffColor", L.OPT_AURABARS_BUFF_COLOR)
 end

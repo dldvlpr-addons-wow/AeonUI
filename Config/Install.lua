@@ -57,12 +57,14 @@ Install.PRESETS = {
 }
 
 -- Réglages par rôle, fusionnés dans les modules (les clés absentes restent telles quelles).
+-- Raid : les paliers 10 et 25 (raidTiers) comme le palier 40 (raidWidth, raidHeight).
 -- `anchors` d'un rôle remplace les ancrages de base pour ces clés.
 Install.ROLES = {
     -- Dégâts : disposition de base, barre d'incantation détachée sous les recharges, groupe et raid en
     -- colonnes à gauche, menace sur les plaques.
     dps = {
-        groupframes = { width = 110, height = 48, raidWidth = 90, raidHeight = 40, power = false, range = true, dispel = false, horizontal = false },
+        groupframes = { width = 110, height = 48, raidWidth = 90, raidHeight = 40, power = false, range = true, dispel = false, horizontal = false,
+                        raidTiers = { { width = 110, height = 48 }, { width = 100, height = 44 } } },
         unitframes = { units = { player = { castbarDetached = true }, focus = { auras = true } } },
         nameplateframes = { threatColor = true },
         anchors = {},
@@ -71,7 +73,8 @@ Install.ROLES = {
     -- en ligne au même endroit, barre d'incantation sous le cadre du joueur, dispel et portée.
     heal = {
         groupframes = { width = 110, height = 52, raidWidth = 96, raidHeight = 44, power = true, powerHeight = 4, range = true, dispel = true, healthText = "percent",
-                        horizontal = true, mainTanks = true, raidUnitsPerColumn = 5, raidColumns = 8 },
+                        horizontal = true, mainTanks = true, raidUnitsPerColumn = 5, raidColumns = 8,
+                        raidTiers = { { width = 120, height = 52 }, { width = 104, height = 48 } } },
         unitframes = { units = { player = { castbarDetached = false }, target = { auras = true }, focus = { auras = true } } },
         nameplateframes = { friendlyHealth = true },
         anchors = {
@@ -84,7 +87,8 @@ Install.ROLES = {
     },
     -- Tank : comme dégâts, agro sur les cadres de groupe, co-tank au-dessus du focus.
     tank = {
-        groupframes = { width = 120, height = 52, raidWidth = 90, raidHeight = 40, power = false, aggro = true, range = true, horizontal = false },
+        groupframes = { width = 120, height = 52, raidWidth = 90, raidHeight = 40, power = false, aggro = true, range = true, horizontal = false,
+                        raidTiers = { { width = 110, height = 48 }, { width = 100, height = 44 } } },
         unitframes = { units = { player = { castbarDetached = true } } },
         cotank = { enabled = true },
         nameplateframes = { threatColor = true },
@@ -123,7 +127,6 @@ Install.PLAYSTYLES = {
     melee = { role = "dps", overrides = {
         resourcebars = { enabled = true, health = false, power = true, width = 220 },
         swingtimer = MELEE_SWING,
-        movementalert = { enabled = true },
         nameplateframes = { threatRole = "dps" },
         unitframes = { castGCD = false },
         anchors = MELEE_ANCHORS,
@@ -139,8 +142,7 @@ Install.PLAYSTYLES = {
         movementalert = { enabled = true },
         nameplateframes = { threatRole = "dps" },
         unitframes = { castGCD = false, units = { player = { castbarWidth = 260 } } },
-        anchors = { uf_castbar_player = { "CENTER", 0, -260 }, swingTimer = { "CENTER", 0, -282 },
-                    movementAlert = { "CENTER", 0, 120 } },
+        anchors = { uf_castbar_player = { "CENTER", 0, -260 }, swingTimer = { "CENTER", 0, -282 } },
     } },
 }
 
